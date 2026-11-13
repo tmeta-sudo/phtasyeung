@@ -4,6 +4,7 @@
 // Everything runs in the browser with onnxruntime-web — ID card photos never leave the
 // device. The int8 model (~39 MB) is downloaded once and kept in Cache Storage.
 import wasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
+import { prepareCard, flip180 } from './prep.js';
 import mjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
 import { khnormal } from 'khmer-normalizer';
 
@@ -280,14 +281,33 @@ export function findLines(canvas) {
 }
 
 /** OCR a whole document photo: returns [{ text, confidence, box }] top-to-bottom. */
-export async function readDocument(model, src, { onLine } = {}) {
-  const canvas = await imageToCanvas(src);
-  const lines = findLines(canvas);
-  const out = [];
-  for (const [i, l] of lines.entries()) {
-    const r = await readLine(model, l.canvas);
-    out.push({ ...r, box: { x: l.x, y: l.y, w: l.w, h: l.h } });
-    onLine?.(i + 1, lines.length);
+/**
+ * `score(lines)` lets the caller judge a read (e.g. how many ID fields parsed); it decides between
+ * the photo and its upside-down copy. A read scoring >= `good` skips the second try.
+ */
+export async function readDocument(model, src, { onLine, prepare = true, score, good = Infinity } = {}) {
+  let canvas = await imageToCanvas(src);
+  let info = { angle: 0, cropped: false, rotated90: false };
+  if (prepare) { const r = prepareCard(canvas); canvas = r.canvas; info = r; }
+  const readAll = async (cv, base, span) => {
+    const lines = findLines(cv);
+    const out = [];
+    for (const [i, l] of lines.entries()) {
+      const r = await readLine(model, l.canvas);
+      out.push({ ...r, box: { x: l.x, y: l.y, w: l.w, h: l.h } });
+      onLine?.(base + ((i + 1) / lines.length) * span, 1);
+    }
+    return out;
+  };
+  const mean = (ls) => (ls.length ? ls.reduce((a, l) => a + l.confidence * Math.min(1, l.text.length / 8), 0) / ls.length : 0);
+  const judge = (ls) => (score ? score(ls) : 0) + mean(ls);
+  let lines = await readAll(canvas, 0, info.rotated90 ? 0.5 : 1);
+  // A sideways photo may have been turned the wrong way: try upside-down and keep the better read.
+  if ((info.rotated90 || mean(lines) < 0.35) && judge(lines) < good) {
+    const flipped = flip180(canvas);
+    const alt = await readAll(flipped, 0.5, 0.5);
+    if (judge(alt) > judge(lines)) { lines = alt; canvas = flipped; }
   }
-  return { lines: out, width: canvas.width, height: canvas.height, canvas };
+  onLine?.(1, 1);
+  return { lines, width: canvas.width, height: canvas.height, canvas, prep: info };
 }

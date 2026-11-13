@@ -35,7 +35,8 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
       for (const side of ['front', 'back']) {
         if (!files[side]) { read[side] = []; continue; }
         setProgress(0);
-        const doc = await readDocument(model, files[side], { onLine: (i, n) => setProgress(i / n) });
+        const fieldsOf = (ls) => Object.keys((side === 'front' ? parseIdCard(ls, []) : parseIdCard([], ls)).fields).length;
+        const doc = await readDocument(model, files[side], { onLine: (i, n) => setProgress(i / n), score: fieldsOf, good: 3 });
         read[side] = doc.lines;
       }
       setLines(read);
