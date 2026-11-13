@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR, AddressPicker, addressText, usePumi, useVillageName, StatusPill } from '../ui.jsx';
 import { uploadFile } from '../api.js';
+import ContractModal from './ContractModal.jsx';
 import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm } from '../../shared/khmer.js';
 
 const FILTERS = [
@@ -82,6 +83,7 @@ export function CustomerDetail({ id }) {
   const t = state.tenants.find((x) => x.id === id);
   const village = useVillageName(t?.address?.villageId);
   const [viewer, setViewer] = useState('');
+  const [contract, setContract] = useState(() => new URLSearchParams(location.search).has('contract'));
   if (!t) return <Empty icon={UserRound} title="រកមិនឃើញអតិថិជន"><button className="btn ghost" onClick={() => navigate('/customers')}>ត្រឡប់ក្រោយ</button></Empty>;
 
   const room = state.rooms.find((r) => r.id === t.roomId);
@@ -105,6 +107,7 @@ export function CustomerDetail({ id }) {
         <div className="head-actions">
           <button className="btn ghost" onClick={() => print(<WelcomeSheet t={t} portal={portal} tgLink={tgLink} property={state.settings.propertyName} />)}><Printer size={16} /> បោះពុម្ពប័ណ្ណស្វាគមន៍</button>
           <button className="btn ghost danger" onClick={remove}><Trash2 size={16} /> លុប</button>
+          <button className="btn ghost" onClick={() => setContract(true)}><FileText size={16} /> {t.lease?.required === false ? 'គ្មានកិច្ចសន្យា' : t.lease?.text ? 'កិច្ចសន្យា' : 'បង្កើតកិច្ចសន្យា'}</button>
           <button className="btn primary" onClick={() => openCustomerForm(t)}><Pencil size={16} /> កែប្រែព័ត៌មាន</button>
         </div>
       </div>
@@ -204,6 +207,7 @@ export function CustomerDetail({ id }) {
           </section>
         </div>
       </div>
+      {contract && <ContractModal tenant={t} onClose={() => { setContract(false); if (location.search) history.replaceState({}, '', location.pathname); }} />}
       {viewer && <Modal title="មើលឯកសារ" onClose={() => setViewer('')} wide><img className="viewer-img" src={viewer} alt="" /></Modal>}
     </>
   );
@@ -302,7 +306,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
     notify('បានរក្សាទុកអតិថិជន');
     setBusy(false);
     onClose();
-    if (!tenant && id) navigate('/customers/' + id);
+    if (!tenant && id) navigate(`/customers/${id}?contract=1`);
   }
 
   return (

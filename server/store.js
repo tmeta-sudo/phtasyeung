@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS lookups (kind text NOT NULL, key text NOT NULL, org_i
 CREATE INDEX IF NOT EXISTS lookups_org ON lookups(org_id);
 CREATE TABLE IF NOT EXISTS files (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, mime text NOT NULL, size int NOT NULL, data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS files_org ON files(org_id);
+ALTER TABLE files ADD COLUMN IF NOT EXISTS backend text NOT NULL DEFAULT 'db';
+ALTER TABLE files ADD COLUMN IF NOT EXISTS ref text NOT NULL DEFAULT '';
+ALTER TABLE files ALTER COLUMN data DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS rate_limits (key text PRIMARY KEY, window_start timestamptz NOT NULL, count int NOT NULL);
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS suspended boolean NOT NULL DEFAULT false;
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS last_active timestamptz;
@@ -94,6 +97,10 @@ export function init() {
 
 export const storeKind = () => driver?.kind || '';
 
+// Upgrades older landlord documents in place when they are opened (set by app.js).
+let migrateDocument = (d) => d;
+export const setDocMigrator = (fn) => { migrateDocument = fn; };
+
 /** Run a query on the current transaction when inside withOrg, else on the pool. */
 export async function q(sql, params = []) {
   await init();
@@ -128,7 +135,8 @@ export async function withOrg(orgId, fn) {
     const { rows } = await tq('SELECT doc, suspended FROM orgs WHERE id = $1 FOR UPDATE', [orgId]);
     if (!rows.length) { const e = new Error('Org not found'); e.status = 404; throw e; }
     if (rows[0].suspended) { const e = new Error('គណនីនេះត្រូវបានផ្អាក។ សូមទាក់ទងក្រុមការងារផ្ទះយើង។'); e.status = 403; throw e; }
-    const ctx = { orgId, doc: typeof rows[0].doc === 'string' ? JSON.parse(rows[0].doc) : rows[0].doc, dirty: false, q: tq, after: [] };
+    const raw = typeof rows[0].doc === 'string' ? JSON.parse(rows[0].doc) : rows[0].doc;
+    const ctx = { orgId, doc: migrateDocument(raw), dirty: false, q: tq, after: [] };
     const out = await als.run(ctx, fn);
     if (ctx.dirty) {
       await tq('UPDATE orgs SET doc = $2::jsonb, updated_at = now(), last_active = now() WHERE id = $1', [orgId, JSON.stringify(ctx.doc)]);

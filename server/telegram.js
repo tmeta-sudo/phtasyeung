@@ -111,6 +111,10 @@ export async function registerBot(token, botKey) {
     commands: [
       { command: 'invoice', description: 'មើលវិក្កយបត្រ' },
       { command: 'profile', description: 'ព័ត៌មានរបស់ខ្ញុំ' },
+      { command: 'repair', description: 'រាយការណ៍ជួសជុល' },
+      { command: 'message', description: 'ផ្ញើសារម្ចាស់ផ្ទះ' },
+      { command: 'location', description: 'ទីតាំងផ្ទះ' },
+      { command: 'contract', description: 'កិច្ចសន្យាជួល' },
       { command: 'recover', description: 'ចូល / ស្តារគណនីម្ចាស់ផ្ទះ' },
       { command: 'help', description: 'ជំនួយ' },
     ],
@@ -130,7 +134,14 @@ export function portalUrl(tenant) {
   return base ? `${base}/p/${tenant.portalToken}` : '';
 }
 
-const MENU = { keyboard: [[{ text: '🧾 វិក្កយបត្រ' }, { text: '👤 ព័ត៌មានរបស់ខ្ញុំ' }], [{ text: '❓ ជំនួយ' }]], resize_keyboard: true };
+const MENU = {
+  keyboard: [
+    [{ text: '🧾 វិក្កយបត្រ' }, { text: '🔧 រាយការណ៍ជួសជុល' }],
+    [{ text: '💬 ផ្ញើសារម្ចាស់ផ្ទះ' }, { text: '📍 ទីតាំង' }],
+    [{ text: '📄 កិច្ចសន្យា' }, { text: '👤 ព័ត៌មានរបស់ខ្ញុំ' }],
+  ],
+  resize_keyboard: true,
+};
 const ADMIN_MENU = { keyboard: [[{ text: '📊 សង្ខេបខែនេះ' }, { text: '⏳ មិនទាន់បង់' }], [{ text: '🔑 ចូលគណនី' }, { text: '❓ ជំនួយ' }]], resize_keyboard: true };
 
 export const send = (chatId, html, extra = {}) =>
@@ -158,7 +169,7 @@ function invoiceButtons(inv, tenant) {
 }
 
 /** Send one invoice (with its KHQR) to the tenant's Telegram. */
-export async function sendInvoice(inv, { reminder = false } = {}) {
+export async function sendInvoice(inv, { reminder = false, image = null } = {}) {
   const tenant = db().tenants.find((t) => t.id === inv.tenantId);
   if (!tokenOf(db())) return { ok: false, error: 'Telegram bot មិនទាន់ដំណើរការ' };
   if (!tenant?.telegram?.chatId) return { ok: false, error: 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram' };
@@ -167,8 +178,9 @@ export async function sendInvoice(inv, { reminder = false } = {}) {
   const reply_markup = invoiceButtons(inv, tenant);
   try {
     let msg;
-    if (qr) {
-      const png = await QRCode.toBuffer(qr, { width: 640, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#0b1220' } });
+    if (qr || image) {
+      // A designed invoice picture from the web app, or just the KHQR code.
+      const png = image || await QRCode.toBuffer(qr, { width: 640, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#0b1220' } });
       const form = new FormData();
       form.set('chat_id', String(tenant.telegram.chatId));
       form.set('caption', caption);
@@ -268,7 +280,15 @@ function profileHtml(t) {
   return lines.join('\n');
 }
 
-const HELP = ['❓ <b>ជំនួយ</b>', '🧾 /invoice — មើលវិក្កយបត្រ និង KHQR', '👤 /profile — ព័ត៌មានរបស់ខ្ញុំ', '📷 ផ្ញើរូបបង្កាន់ដៃបង់ប្រាក់ ដើម្បីជូនដំណឹងម្ចាស់ផ្ទះ'].join('\n');
+const HELP = [
+  '❓ <b>ជំនួយ</b>',
+  '🧾 វិក្កយបត្រ — មើលវិក្កយបត្រ និង KHQR',
+  '🔧 រាយការណ៍ជួសជុល — ប្រាប់ម្ចាស់ផ្ទះពីបញ្ហា (អាចផ្ញើរូបបាន)',
+  '💬 ផ្ញើសារម្ចាស់ផ្ទះ — សួរ ឬប្រាប់អ្វីមួយ',
+  '📍 ទីតាំង — ផែនទី និងអាសយដ្ឋានផ្ទះ',
+  '📄 កិច្ចសន្យា — មើលកិច្ចសន្យាជួល',
+  '📷 ផ្ញើរូបបង្កាន់ដៃបង់ប្រាក់ ដើម្បីជូនដំណឹងម្ចាស់ផ្ទះ',
+].join('\n');
 
 /** Orgs on this bot that know this chat. */
 async function orgsForChat(botKey, chatId) {
@@ -317,11 +337,18 @@ export async function handleUpdate(botKey, token, u) {
       if (botKeyOf(db()) !== botKey) return;
       const admin = isAdminChat(chatId);
       const tenant = tenantByChat(chatId);
+      if (admin && m.reply_to_message && await handleOwnerReply(chatId, m)) return;
       if (admin && await handleAdminText(chatId, text)) return;
       if (!tenant) {
         if (admin) await send(chatId, '📊 /summary · ⏳ /unpaid · 🧾 /generate', { reply_markup: ADMIN_MENU });
         return;
       }
+      // Tenant is writing a maintenance report / message, or replying to one.
+      if (!photoHandled && await handleTenantConversation(tenant, m, text)) { photoHandled = true; return; }
+      if (text === '🔧 រាយការណ៍ជួសជុល' || text === '/repair') return startConversation(tenant, 'maintenance');
+      if (text === '💬 ផ្ញើសារម្ចាស់ផ្ទះ' || text === '/message') return startConversation(tenant, 'message');
+      if (text === '📍 ទីតាំង' || text === '/location') return sendLocationTo(chatId);
+      if (text === '📄 កិច្ចសន្យា' || text === '/contract') return sendContractTo(tenant);
       if (m.photo?.length || m.document?.mime_type?.startsWith('image/')) {
         if (photoHandled) return;
         const inv = latestInvoices(tenant).find((i) => i.status !== 'paid');
@@ -400,12 +427,13 @@ async function handleAdminText(chatId, text) {
 
 async function handleCallback(botKey, token, query) {
   const chatId = query.message?.chat?.id;
-  const [action, org, id] = String(query.data || '').split(':');
+  const [action, org, id, extra] = String(query.data || '').split(':');
   const answer = (text) => api(token, 'answerCallbackQuery', { callback_query_id: query.id, text }).catch(() => {});
   if (!org || !id) return answer('');
   try {
     return await withOrg(org, async () => {
       if (botKeyOf(db()) !== botKey) return answer('មិនមានសិទ្ធិ');
+      if (action.startsWith('t')) return handleTicketCallback(action, id, extra, chatId, answer);
       const inv = db().invoices.find((i) => i.id === id);
       if (!inv) return answer('រកមិនឃើញវិក្កយបត្រ');
       if (action === 'p') {
@@ -429,6 +457,171 @@ async function handleCallback(botKey, token, query) {
   } catch {
     return answer('រកមិនឃើញ');
   }
+}
+
+// ---------- tenant ↔ owner conversations (maintenance & messages) ----------
+
+const TICKET_KIND = { maintenance: '🔧 ការជួសជុល', message: '💬 សារ' };
+const TICKET_STATUS = { open: '🟡 ថ្មី', progress: '🔵 កំពុងដោះស្រាយ', done: '✅ រួចរាល់' };
+const CONV_TTL = 15 * 60 * 1000;
+
+function startConversation(tenant, kind) {
+  tenant.botState = { mode: kind, at: now() };
+  save();
+  const ask = kind === 'maintenance'
+    ? '🔧 <b>រាយការណ៍ជួសជុល</b>\nសូមរៀបរាប់បញ្ហា (ឧ. ម៉ាស៊ីនត្រជាក់មិនត្រជាក់) ហើយអាចផ្ញើរូបភាពមកជាមួយ។'
+    : '💬 <b>ផ្ញើសារទៅម្ចាស់ផ្ទះ</b>\nសរសេរសាររបស់អ្នកខាងក្រោម។';
+  return send(tenant.telegram.chatId, ask, { reply_markup: { inline_keyboard: [[{ text: '✖️ បោះបង់', callback_data: `tx:${orgId()}:${tenant.id}` }]] } });
+}
+
+const ticketHtml = (t, msg) => `${TICKET_KIND[t.kind]} <b>#${kmDigits(t.no)}</b> · ${esc(t.roomId || '—')} · ${esc(t.name)}\n${TICKET_STATUS[t.status]}\n\n${esc(msg.text || (msg.photo ? '📷 រូបភាព' : ''))}`;
+
+function ownerButtons(t) {
+  const o = orgId();
+  return { inline_keyboard: [
+    [{ text: '↩️ ឆ្លើយតប', callback_data: `tr:${o}:${t.id}` }],
+    [{ text: '🔵 កំពុងដោះស្រាយ', callback_data: `ts:${o}:${t.id}:progress` }, { text: '✅ រួចរាល់', callback_data: `ts:${o}:${t.id}:done` }],
+  ] };
+}
+
+/** Forward a tenant's text/photo to every owner chat and remember the message ids for replies. */
+async function forwardToOwners(t, msg) {
+  const html = ticketHtml(t, msg);
+  for (const c of db().settings.telegram.adminChats) {
+    const sent = msg.photo
+      ? await call('sendPhoto', { chat_id: c.chatId, photo: msg.photo, caption: html, parse_mode: 'HTML', reply_markup: ownerButtons(t) }).catch(() => null)
+      : await send(c.chatId, html, { reply_markup: ownerButtons(t) }).catch(() => null);
+    if (sent) t.adminMsgIds.push([c.chatId, sent.message_id]);
+  }
+  t.adminMsgIds = t.adminMsgIds.slice(-60);
+}
+
+async function handleTenantConversation(tenant, m, text) {
+  const s = db();
+  const photo = m.photo?.length ? m.photo[m.photo.length - 1].file_id : (m.document?.mime_type?.startsWith('image/') ? m.document.file_id : '');
+  const body = (m.caption || text || '').trim();
+  // 1) Replying (swipe-reply) to one of the bot's ticket messages → add to that ticket.
+  const replyId = m.reply_to_message?.message_id;
+  let t = replyId && s.tickets.find((x) => x.tenantId === tenant.id && x.tenantMsgIds?.includes(replyId));
+  // 2) In "report a problem" / "message the owner" mode → start a ticket.
+  const state = tenant.botState;
+  if (!t && state && Date.now() - new Date(state.at).getTime() < CONV_TTL && (body || photo) && !body.startsWith('/') && !MENU_TEXTS.includes(body)) {
+    s.counters.ticket = (s.counters.ticket || 0) + 1;
+    t = { id: uid(), no: s.counters.ticket, kind: state.mode, tenantId: tenant.id, roomId: tenant.roomId, name: tenant.nameKm || tenant.nameEn, status: 'open', createdAt: now(), updatedAt: now(), unread: 0, messages: [], adminMsgIds: [], tenantMsgIds: [] };
+    s.tickets.push(t);
+    if (s.tickets.length > 500) s.tickets.splice(0, s.tickets.length - 500);
+    tenant.botState = null;
+    if (state.mode === 'maintenance') s.activities.push({ id: uid(), kind: 'maintenance', title: body.slice(0, 120) || '📷 រូបភាព', detail: `Telegram #${t.no} · ${t.name}`, roomId: tenant.roomId, done: false, at: now(), ticketId: t.id });
+  }
+  if (!t || (!body && !photo)) return false;
+  const msg = { from: 'tenant', text: body.slice(0, 3000), photo, at: now(), via: 'telegram' };
+  t.messages.push(msg);
+  t.unread = (t.unread || 0) + 1;
+  t.updatedAt = now();
+  if (t.status === 'done') t.status = 'open';
+  save();
+  logEvent('tenant', `${TICKET_KIND[t.kind]} #${t.no} ពី ${t.name} (${t.roomId || '—'})`, { ticketId: t.id });
+  await forwardToOwners(t, msg);
+  const ack = await send(tenant.telegram.chatId, `📨 បានផ្ញើទៅម្ចាស់ផ្ទះ (#${kmDigits(t.no)})។\nឆ្លើយតប (reply) សារនេះ ដើម្បីផ្ញើព័ត៌មានបន្ថែម។`, { reply_markup: MENU }).catch(() => null);
+  if (ack) { t.tenantMsgIds = [...(t.tenantMsgIds || []), ack.message_id].slice(-30); save(); }
+  return true;
+}
+
+/** Owner replied (swipe-reply) to a ticket notification or to the "reply to…" prompt. */
+async function handleOwnerReply(chatId, m) {
+  const rid = m.reply_to_message?.message_id;
+  const t = db().tickets.find((x) => x.adminMsgIds?.some(([c, id]) => c === chatId && id === rid));
+  if (!t) return false;
+  const text = (m.text || m.caption || '').trim();
+  if (!text) return true;
+  const r = await replyToTicket(t, text, 'telegram');
+  await send(chatId, r.ok ? `✅ បានផ្ញើទៅ ${esc(t.name)} (#${kmDigits(t.no)})` : `⚠️ ${esc(r.error)}`);
+  return true;
+}
+
+/** Send an owner's reply to the tenant (from Telegram or the web inbox). */
+export async function replyToTicket(t, text, via) {
+  const tenant = db().tenants.find((x) => x.id === t.tenantId);
+  if (!tenant?.telegram?.chatId) return { ok: false, error: 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram' };
+  try {
+    const sent = await send(tenant.telegram.chatId, `💬 <b>ម្ចាស់ផ្ទះ</b> (#${kmDigits(t.no)})\n\n${esc(text)}\n\n<i>ឆ្លើយតប (reply) សារនេះ ដើម្បីឆ្លើយទៅវិញ។</i>`);
+    t.tenantMsgIds = [...(t.tenantMsgIds || []), sent.message_id].slice(-30);
+    t.messages.push({ from: 'owner', text: text.slice(0, 3000), at: now(), via });
+    t.unread = 0;
+    t.updatedAt = now();
+    if (t.status === 'open') t.status = 'progress';
+    save();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+export async function setTicketStatus(t, status) {
+  t.status = status;
+  t.updatedAt = now();
+  if (status === 'done') {
+    const act = db().activities.find((a) => a.ticketId === t.id);
+    if (act) act.done = true;
+  }
+  save();
+  const tenant = db().tenants.find((x) => x.id === t.tenantId);
+  if (tenant?.telegram?.chatId) await send(tenant.telegram.chatId, `${TICKET_KIND[t.kind]} #${kmDigits(t.no)}: ${TICKET_STATUS[status]}`).catch(() => {});
+}
+
+async function handleTicketCallback(action, id, extra, chatId, answer) {
+  if (action === 'tx') { // tenant cancels "report a problem"
+    const tenant = db().tenants.find((x) => x.id === id && x.telegram?.chatId === chatId);
+    if (tenant) { tenant.botState = null; save(); }
+    return answer('បានបោះបង់');
+  }
+  if (!isAdminChat(chatId)) return answer('មិនមានសិទ្ធិ');
+  const t = db().tickets.find((x) => x.id === id);
+  if (!t) return answer('រកមិនឃើញ');
+  if (action === 'tr') {
+    const prompt = await send(chatId, `↩️ សរសេរចម្លើយទៅ <b>${esc(t.name)}</b> (#${kmDigits(t.no)})៖`, { reply_markup: { force_reply: true, input_field_placeholder: 'ចម្លើយរបស់អ្នក…' } }).catch(() => null);
+    if (prompt) { t.adminMsgIds.push([chatId, prompt.message_id]); save(); }
+    return answer('');
+  }
+  if (action === 'ts' && ['progress', 'done'].includes(extra)) {
+    await setTicketStatus(t, extra);
+    return answer(TICKET_STATUS[extra]);
+  }
+  return answer('');
+}
+
+const MENU_TEXTS = MENU.keyboard.flat().map((b) => b.text);
+
+/** 📍 Property location: native map pin + Khmer address + Google Maps link. */
+export function propertyAddressText(doc = db()) {
+  const L = doc.settings.location || {};
+  return [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || doc.settings.address].filter(Boolean).join(', ');
+}
+
+async function sendLocationTo(chatId) {
+  const s = db().settings;
+  const L = s.location || {};
+  const addr = propertyAddressText();
+  if (Number.isFinite(L.lat) && Number.isFinite(L.lng)) {
+    await call('sendVenue', { chat_id: chatId, latitude: L.lat, longitude: L.lng, title: s.propertyName, address: (addr || s.propertyName).slice(0, 200) }).catch(() => {});
+    return send(chatId, `📍 <b>${esc(s.propertyName)}</b>\n${esc(addr)}\n🗺 https://maps.google.com/?q=${L.lat},${L.lng}`);
+  }
+  return send(chatId, addr ? `📍 <b>${esc(s.propertyName)}</b>\n${esc(addr)}` : 'ម្ចាស់ផ្ទះមិនទាន់កំណត់ទីតាំងនៅឡើយទេ។');
+}
+
+async function sendContractTo(tenant) {
+  const text = tenant.lease?.text;
+  if (!text || tenant.lease?.required === false) return send(tenant.telegram.chatId, 'មិនមានកិច្ចសន្យាជាលាយលក្ខណ៍អក្សរទេ។ សូមសាកសួរម្ចាស់ផ្ទះ។');
+  const parts = text.match(/[\s\S]{1,3800}/g) || [];
+  for (const [i, part] of parts.entries()) await send(tenant.telegram.chatId, (i === 0 ? '📄 <b>កិច្ចសន្យាជួល</b>\n\n' : '') + esc(part));
+}
+
+/** Download a Telegram file (ticket photo) for the web inbox. */
+export async function fetchTelegramFile(fileId) {
+  const f = await call('getFile', { file_id: fileId });
+  const res = await fetch(`${API}/file/bot${tokenOf(db())}/${f.file_path}`);
+  if (!res.ok) throw new Error('Telegram file error');
+  return { type: res.headers.get('content-type') || 'image/jpeg', data: Buffer.from(await res.arrayBuffer()) };
 }
 
 // ---------- webhook (production) ----------

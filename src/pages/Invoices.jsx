@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Send, Download, Printer, Check, Trash2, BellRing, ReceiptText, Undo2, Pencil } from 'lucide-react';
+import { Plus, Send, Download, Printer, Check, Trash2, BellRing, ReceiptText, Undo2, Pencil, Palette, Image as ImageIcon } from 'lucide-react';
+import { navigate } from '../ui.jsx';
 import { useApp, useFmt, Modal, StatusPill, Empty, invStatus } from '../ui.jsx';
-import InvoiceDoc from '../InvoiceDoc.jsx';
+import InvoiceDoc, { invoiceProperty } from '../InvoiceDoc.jsx';
+import { nodeToPng, shareBlob } from '../exportImage.js';
+import { api } from '../api.js';
 import { monthKm, matchesQuery, dateKm } from '../../shared/khmer.js';
 
 export default function Invoices() {
@@ -16,7 +19,8 @@ export default function Invoices() {
   const sum = (arr) => arr.reduce((s, i) => s + i.total, 0);
   const paid = all.filter((i) => i.status === 'paid');
   const unsent = all.filter((i) => !i.sentAt && i.status !== 'paid');
-  const property = { name: state.settings.propertyName, nameEn: state.settings.propertyNameEn, address: state.settings.address, phone: state.settings.phone };
+  const property = invoiceProperty(state.settings);
+  const design = state.settings.invoiceDesign;
   const botOk = state.bot.running;
 
   function exportCSV() {
@@ -39,8 +43,9 @@ export default function Invoices() {
         <h1>វិក្កយបត្រ</h1>
         <div className="head-actions">
           <input className="month-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="ខែ" />
+          <button className="btn ghost" onClick={() => navigate('/invoices/design')}><Palette size={16} /> រចនា</button>
           <button className="btn ghost" onClick={exportCSV} disabled={!all.length}><Download size={16} /> Excel</button>
-          <button className="btn ghost" onClick={() => print(<div className="print-stack">{all.map((i) => <InvoiceDoc key={i.id} inv={i} property={property} khmer={k} />)}</div>)} disabled={!all.length}><Printer size={16} /> បោះពុម្ពទាំងអស់</button>
+          <button className="btn ghost" onClick={() => print(<div className="print-stack">{all.map((i) => <InvoiceDoc key={i.id} inv={i} property={property} khmer={k} design={design} />)}</div>)} disabled={!all.length}><Printer size={16} /> បោះពុម្ពទាំងអស់</button>
           <button className="btn primary" onClick={() => call('POST', '/api/invoices/generate', { month, send: botOk }, (r) => `បានបង្កើត ${n(r.result.created)}${r.result.sent ? ` · ផ្ញើ Telegram ${n(r.result.sent.ok)}` : ''}`)}>
             <Plus size={16} /> បង្កើត{botOk ? ' និងផ្ញើ' : ''}
           </button>
@@ -86,13 +91,16 @@ export default function Invoices() {
 }
 
 export function InvoiceModal({ id, onClose }) {
-  const { state, call, print } = useApp();
+  const { state, call, print, setState, notify } = useApp();
   const { $, k } = useFmt();
   const inv = state.invoices.find((i) => i.id === id);
   const [editing, setEditing] = useState(null);
+  const [busy, setBusy] = useState('');
+  const docRef = React.useRef();
   if (!inv) return null;
   const tenant = state.tenants.find((t) => t.id === inv.tenantId);
-  const property = { name: state.settings.propertyName, nameEn: state.settings.propertyNameEn, address: state.settings.address, phone: state.settings.phone };
+  const property = invoiceProperty(state.settings);
+  const design = state.settings.invoiceDesign;
   const canSend = state.bot.running && tenant?.telegram?.chatId;
   const lastClaim = inv.claims?.at(-1);
 
@@ -127,13 +135,24 @@ export function InvoiceModal({ id, onClose }) {
           <div className="form-actions"><button className="btn ghost" onClick={() => setEditing(null)}>បោះបង់</button><button className="btn primary" onClick={saveItems}>រក្សាទុក</button></div>
         </div>
       ) : (
-        <InvoiceDoc inv={inv} property={property} khmer={k} />
+        <InvoiceDoc inv={inv} property={property} khmer={k} design={design} innerRef={docRef} />
       )}
       {!editing && (
         <div className="modal-actions">
           <button className="btn ghost danger" onClick={() => window.confirm('លុបវិក្កយបត្រនេះ?') && call('DELETE', `/api/invoices/${inv.id}`, undefined, 'បានលុប').then((r) => r && onClose())}><Trash2 size={15} /></button>
           {inv.status !== 'paid' && <button className="btn ghost" onClick={() => setEditing(inv.items.map((x) => ({ ...x })))}><Pencil size={15} /> កែ</button>}
-          <button className="btn ghost" onClick={() => print(<InvoiceDoc inv={inv} property={property} khmer={k} />)}><Printer size={15} /> បោះពុម្ព</button>
+          <button className="btn ghost" onClick={() => print(<InvoiceDoc inv={inv} property={property} khmer={k} design={design} />)}><Printer size={15} /> បោះពុម្ព</button>
+          <button className="btn ghost" disabled={!!busy} onClick={async () => { setBusy('png'); try { await shareBlob(await nodeToPng(docRef.current), `${inv.number}.png`, inv.number); } finally { setBusy(''); } }}><ImageIcon size={15} /> {busy === 'png' ? '…' : 'PNG'}</button>
+          <button className="btn ghost" disabled={!canSend || !!busy} title="ផ្ញើរូបវិក្កយបត្រដែលបានរចនា ទៅ Telegram អតិថិជន"
+            onClick={async () => {
+              setBusy('img');
+              try {
+                const form = new FormData();
+                form.set('file', await nodeToPng(docRef.current), `${inv.number}.png`);
+                setState(await api('POST', `/api/invoices/${inv.id}/send-image`, form));
+                notify('បានផ្ញើរូបវិក្កយបត្រតាម Telegram ✅');
+              } catch (e) { notify(e.message, true); } finally { setBusy(''); }
+            }}><Send size={15} /> {busy === 'img' ? '…' : 'ផ្ញើរូបភាព'}</button>
           <button className="btn ghost" disabled={!canSend || inv.status === 'paid'} title={canSend ? '' : 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram ឬ bot មិនដំណើរការ'}
             onClick={() => call('POST', `/api/invoices/${inv.id}/send`, { reminder: !!inv.sentAt }, inv.sentAt ? 'បានផ្ញើការរំលឹក' : 'បានផ្ញើតាម Telegram')}>
             <Send size={15} /> {inv.sentAt ? 'រំលឹក' : 'ផ្ញើ Telegram'}

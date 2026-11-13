@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound, Send, Palette, Unlink } from 'lucide-react';
+import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound, Send, Palette, Unlink, FileText } from 'lucide-react';
 import TelegramLogin from '../TelegramLogin.jsx';
 import { ThemePicker } from '../theme.jsx';
+import KhqrCard from '../settings/KhqrCard.jsx';
+import LocationCard from '../settings/LocationCard.jsx';
+import { PLACEHOLDERS } from '../contract.js';
+import StorageCard from '../settings/StorageCard.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
 import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.js';
@@ -9,7 +13,7 @@ import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.j
 export default function SettingsPage() {
   const { state, call, notify, reload } = useApp();
   const { $ } = useFmt();
-  const [f, setF] = useState(() => ({ ...state.settings, khqr: { ...state.settings.khqr } }));
+  const [f, setF] = useState(() => ({ ...state.settings, khqr: { ...state.settings.khqr }, contract: { ...state.settings.contract } }));
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const [pw, setPw] = useState({ current: '', next: '' });
   const [linking, setLinking] = useState(false);
@@ -47,18 +51,20 @@ export default function SettingsPage() {
           <button className="btn primary">រក្សាទុក</button>
         </form>
 
-        <form className="card" onSubmit={(e) => save(e, { khqr: f.khqr })}>
-          <h3 className="sec-title"><Wallet size={17} /> KHQR (Bakong)</h3>
-          <p className="muted">ដាក់ Bakong account ID របស់អ្នក (ឧ. <code>yourname@aclb</code>, <code>yourname@abaa</code>, <code>yourname@wing</code>)។ វិក្កយបត្រនីមួយៗនឹងមាន KHQR ជាមួយចំនួនទឹកប្រាក់ និងលេខវិក្កយបត្រស្រាប់ — អតិថិជនស្កេនបង់តាមកម្មវិធីធនាគារណាមួយ។</p>
-          <div className="form-grid">
-            <Field label="Bakong account ID"><input value={f.khqr.accountId} onChange={(e) => set('khqr', { ...f.khqr, accountId: e.target.value })} placeholder="name@aclb" /></Field>
-            <Field label="ឈ្មោះអ្នកទទួល (ឡាតាំង)"><input maxLength={25} value={f.khqr.merchantName} onChange={(e) => set('khqr', { ...f.khqr, merchantName: e.target.value })} placeholder="SOK DARA" /></Field>
-            <Field label="ទីក្រុង"><input maxLength={15} value={f.khqr.city} onChange={(e) => set('khqr', { ...f.khqr, city: e.target.value })} /></Field>
+        <LocationCard />
+
+        <KhqrCard />
+
+        <form className="card wide-card" onSubmit={(e) => save(e, { ownerName: f.ownerName, contract: f.contract })}>
+          <h3 className="sec-title"><FileText size={17} /> គំរូកិច្ចសន្យា</h3>
+          <div className="form-grid three">
+            <Field label="ឈ្មោះម្ចាស់ផ្ទះ (ក្នុងកិច្ចសន្យា)"><input value={f.ownerName || ''} onChange={(e) => set('ownerName', e.target.value)} /></Field>
+            <Field label="ប្រាក់កក់ (ខែ)"><input type="number" min="0" max="12" value={f.contract?.depositMonths ?? 1} onChange={(e) => set('contract', { ...f.contract, depositMonths: e.target.value })} /></Field>
+            <Field label="បង់មុន (ខែ)"><input type="number" min="0" max="12" value={f.contract?.prepaidMonths ?? 1} onChange={(e) => set('contract', { ...f.contract, prepaidMonths: e.target.value })} /></Field>
           </div>
-          <div className="row-btns">
-            <button className="btn primary">រក្សាទុក</button>
-            {state.settings.khqrReady && state.invoices.find((i) => i.khqr) && <QR value={state.invoices.find((i) => i.khqr).khqr} size={84} />}
-          </div>
+          <Field label="អត្ថបទគំរូ"><textarea rows={10} className="contract-text" value={f.contract?.template || ''} onChange={(e) => set('contract', { ...f.contract, template: e.target.value })} /></Field>
+          <div className="ph-list">{PLACEHOLDERS.map(([k, l]) => <button type="button" key={k} onClick={() => set('contract', { ...f.contract, template: (f.contract?.template || '') + `{{${k}}}` })} title="បញ្ចូល">{`{{${k}}}`}<small>{l}</small></button>)}</div>
+          <button className="btn primary">រក្សាទុក</button>
         </form>
 
         <form className="card" onSubmit={(e) => save(e, { publicUrl: f.publicUrl, khmerNumerals: f.khmerNumerals })}>
@@ -108,6 +114,8 @@ export default function SettingsPage() {
           <ThemePicker />
           <p className="muted small">«តាមប្រព័ន្ធ» ប្តូរពន្លឺ/ងងឹតតាមការកំណត់ទូរស័ព្ទ ឬកុំព្យូទ័ររបស់អ្នក។</p>
         </div>
+
+        <StorageCard />
 
         <div className="card">
           <h3 className="sec-title"><UserRound size={17} /> គណនី</h3>

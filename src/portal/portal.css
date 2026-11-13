@@ -103,3 +103,4 @@
 :root[data-theme="dark"] .pt-shell { --pill: #eef1f7; --pill-ink: #0b0e14; --pt-top: #131a2b; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pt-shell { --pill: #eef1f7; --pill-ink: #0b0e14; --pt-top: #131a2b; } }
 .pt-top-actions { display: flex; gap: 8px; }
+.pt-tg-icon.map { background: #0f9d75; } .pt-tg-icon.lease { background: #7a5cff; }
