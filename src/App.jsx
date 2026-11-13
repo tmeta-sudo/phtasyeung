@@ -31,35 +31,70 @@ export default function App() {
   const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then(setAuth).catch(() => setAuth({ error: true })), []);
   useEffect(() => { refreshAuth(); }, [refreshAuth]);
   if (!auth) return <div className="boot"><span className="spinner" /></div>;
-  if (!auth.authed) return <Login setup={auth.setupRequired} onDone={refreshAuth} />;
+  if (!auth.authed) return <Login onDone={refreshAuth} />;
   return <Admin onLogout={refreshAuth} />;
 }
 
-function Login({ setup, onDone }) {
-  const [pw, setPw] = useState('');
-  const [pw2, setPw2] = useState('');
+function Login({ onDone }) {
+  const [mode, setMode] = useState('login'); // login | signup | forgot | reset
+  const [f, setF] = useState({ email: '', password: '', password2: '', propertyName: '', phone: '', code: '' });
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
+  const m = mode;
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const go = (next) => { setMode(next); setError(''); setInfo(''); };
   async function submit(e) {
     e.preventDefault();
-    if (setup && pw !== pw2) return setError('ពាក្យសម្ងាត់ទាំងពីរមិនដូចគ្នា');
+    setError('');
+    if ((m === 'signup' || m === 'reset') && f.password !== f.password2) return setError('ពាក្យសម្ងាត់ទាំងពីរមិនដូចគ្នា');
     setBusy(true);
     try {
-      await api('POST', setup ? '/api/auth/setup' : '/api/auth/login', { password: pw });
+      if (m === 'login') await api('POST', '/api/auth/login', { email: f.email, password: f.password });
+      if (m === 'signup') await api('POST', '/api/auth/signup', { email: f.email, password: f.password, propertyName: f.propertyName, phone: f.phone });
+      if (m === 'forgot') { const r = await api('POST', '/api/auth/forgot', { email: f.email }); setInfo(r.message); setMode('reset'); return; }
+      if (m === 'reset') await api('POST', '/api/auth/reset', { email: f.email, code: f.code, password: f.password });
       onDone();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
+  const titles = { login: 'ចូលគណនីម្ចាស់ផ្ទះ', signup: 'បង្កើតគណនីឥតគិតថ្លៃ', forgot: 'ភ្លេចពាក្យសម្ងាត់', reset: 'កំណត់ពាក្យសម្ងាត់ថ្មី' };
+  const subs = {
+    login: 'គ្រប់គ្រងបន្ទប់ជួល វិក្កយបត្រ និងអតិថិជនរបស់អ្នក។',
+    signup: 'ឥតគិតថ្លៃសម្រាប់ម្ចាស់ផ្ទះជួលខ្មែរ — មិនត្រូវការកាតឥណទាន។',
+    forgot: 'យើងនឹងផ្ញើលេខកូដ ៦ ខ្ទង់ទៅ Telegram ម្ចាស់ផ្ទះដែលអ្នកបានភ្ជាប់។',
+    reset: 'បញ្ចូលលេខកូដពី Telegram និងពាក្យសម្ងាត់ថ្មី។',
+  };
   return (
     <div className="login">
-      <div className="login-photo"><div className="login-caption"><b>ផ្ទះយើង</b><span>ជួល បង់ប្រាក់ និងគ្រប់គ្រងអតិថិជន ក្នុងកន្លែងតែមួយ</span></div></div>
+      <div className="login-photo">
+        <div className="login-caption">
+          <b>ផ្ទះយើង</b>
+          <span>វិក្កយបត្រស្វ័យប្រវត្តិតាម Telegram · បង់តាម KHQR · គ្រប់គ្រងអតិថិជន</span>
+          <ul className="login-points"><li>✓ ឥតគិតថ្លៃ</li><li>✓ ភាសាខ្មែរពេញលេញ</li><li>✓ ទិន្នន័យឯកជន និងសុវត្ថិភាព</li></ul>
+        </div>
+      </div>
       <form className="login-card" onSubmit={submit}>
         <span className="logo lg">ផ</span>
-        <h1>{setup ? 'បង្កើតពាក្យសម្ងាត់ម្ចាស់ផ្ទះ' : 'ចូលគណនីម្ចាស់ផ្ទះ'}</h1>
-        <p>{setup ? 'ជាលើកដំបូង សូមកំណត់ពាក្យសម្ងាត់ (យ៉ាងហោចណាស់ ៨ តួ)។' : 'សូមបញ្ចូលពាក្យសម្ងាត់របស់អ្នក។'}</p>
-        <input type="password" autoFocus autoComplete={setup ? 'new-password' : 'current-password'} placeholder="ពាក្យសម្ងាត់" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={setup ? 8 : 1} />
-        {setup && <input type="password" autoComplete="new-password" placeholder="បញ្ជាក់ពាក្យសម្ងាត់" value={pw2} onChange={(e) => setPw2(e.target.value)} required />}
+        {(m === 'login' || m === 'signup') && (
+          <div className="seg">
+            <button type="button" className={m === 'login' ? 'on' : ''} onClick={() => go('login')}>ចូលគណនី</button>
+            <button type="button" className={m === 'signup' ? 'on' : ''} onClick={() => go('signup')}>បង្កើតគណនី</button>
+          </div>
+        )}
+        <h1>{titles[m]}</h1>
+        <p>{subs[m]}</p>
+        {m === 'signup' && <input autoComplete="organization" placeholder="ឈ្មោះផ្ទះជួល / អគារ (ឧ. ផ្ទះជួលសុខា)" value={f.propertyName} onChange={set('propertyName')} required />}
+        <input type={m === 'login' ? 'text' : 'email'} autoComplete="username" placeholder="អ៊ីមែល" value={f.email} onChange={set('email')} required autoFocus />
+        {m === 'signup' && <input type="tel" autoComplete="tel" placeholder="ទូរស័ព្ទ (មិនចាំបាច់)" value={f.phone} onChange={set('phone')} />}
+        {m === 'reset' && <input inputMode="numeric" autoComplete="one-time-code" placeholder="លេខកូដ ៦ ខ្ទង់" value={f.code} onChange={set('code')} required />}
+        {m !== 'forgot' && <input type="password" autoComplete={m === 'login' ? 'current-password' : 'new-password'} placeholder={m === 'login' ? 'ពាក្យសម្ងាត់' : 'ពាក្យសម្ងាត់ (≥ ៨ តួ)'} value={f.password} onChange={set('password')} required minLength={m === 'login' ? 1 : 8} />}
+        {(m === 'signup' || m === 'reset') && <input type="password" autoComplete="new-password" placeholder="បញ្ជាក់ពាក្យសម្ងាត់" value={f.password2} onChange={set('password2')} required />}
+        {info && <p className="form-warn">{info}</p>}
         {error && <p className="form-error">{error}</p>}
-        <button className="btn primary block" disabled={busy}>{setup ? 'បង្កើត និងចូល' : 'ចូល'}</button>
+        <button className="btn primary block" disabled={busy}>{busy ? '…' : { login: 'ចូល', signup: 'បង្កើតគណនី', forgot: 'ផ្ញើលេខកូដ', reset: 'ប្តូរពាក្យសម្ងាត់' }[m]}</button>
+        {m === 'login' && <button type="button" className="link-btn center" onClick={() => go('forgot')}>ភ្លេចពាក្យសម្ងាត់?</button>}
+        {(m === 'forgot' || m === 'reset') && <button type="button" className="link-btn center" onClick={() => go('login')}>← ត្រឡប់ទៅចូលគណនី</button>}
+        {m === 'signup' && <small className="muted center">ដោយបង្កើតគណនី អ្នកយល់ព្រមរក្សាព័ត៌មានអតិថិជនដោយទំនួលខុសត្រូវ។ អ្នកអាចនាំចេញ ឬលុបទិន្នន័យទាំងអស់បានគ្រប់ពេល។</small>}
       </form>
     </div>
   );
@@ -81,7 +116,13 @@ function Admin({ onLogout }) {
   }, []);
 
   const load = useCallback(() => api('GET', '/api/state').then(setState).catch((e) => (e.status === 401 ? onLogout() : notify(e.message, true))), [notify, onLogout]);
-  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [load]);
+  useEffect(() => {
+    load();
+    const t = setInterval(() => document.visibilityState === 'visible' && load(), 20000);
+    const onFocus = () => document.visibilityState === 'visible' && load();
+    document.addEventListener('visibilitychange', onFocus);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onFocus); };
+  }, [load]);
 
   /** Call an endpoint that returns the full admin state. Returns the response or null. */
   const call = useCallback(async (method, url, body, success) => {
@@ -264,7 +305,7 @@ function ProfileMenu({ onLogout }) {
       </button>
       {open && (
         <div className="dropdown right" onMouseLeave={() => setOpen(false)}>
-          <p className="pad"><b>{greetingKm(state.today.hour)}!</b><br /><small className="muted">ម្ចាស់ផ្ទះ · {state.settings.propertyName}</small></p>
+          <p className="pad"><b>{greetingKm(state.today.hour)}!</b><br /><small className="muted">{state.account.email} · {state.settings.propertyName}</small></p>
           <button onClick={() => { setOpen(false); navigate('/settings'); }}><Settings size={16} /> ការកំណត់</button>
           <button onClick={onLogout}><LogOut size={16} /> ចាកចេញ</button>
         </div>

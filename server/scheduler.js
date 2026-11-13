@@ -1,12 +1,13 @@
-// Auto invoice generator: on the configured day/hour (Phnom Penh time) create this
-// month's invoices and push them to each customer's Telegram; then send reminders.
+// Auto invoices + reminders for every landlord. Triggered daily by Vercel Cron
+// (/api/cron/daily) in production, or hourly by a timer when running locally.
+// Each step is idempotent (lastRunMonth / lastReminderDay), so extra runs are harmless.
 import { db, save, logEvent } from './db.js';
+import { withOrg, listOrgIds } from './store.js';
 import { generateInvoices, isOverdue } from './invoices.js';
 import { sendInvoices, notifyAdmins, botStatus } from './telegram.js';
 import { nowInCambodia, monthKm, kmDigits, usd } from '../shared/khmer.js';
 
-let running = false;
-
+/** Generate this month's invoices for the current org and send them. */
 export async function runAutoInvoices({ force = false } = {}) {
   const s = db();
   const auto = s.settings.auto;
@@ -15,15 +16,14 @@ export async function runAutoInvoices({ force = false } = {}) {
   auto.lastRunMonth = t.ym;
   save();
   let sent = { ok: 0, failed: 0, errors: [] };
-  if (auto.send && botStatus().running) {
-    // Send newly created ones plus any of this month's that were never delivered.
+  if (auto.send && (await botStatus()).configured) {
     const pending = s.invoices.filter((i) => i.month === t.ym && !i.sentAt && i.status !== 'paid');
     sent = await sendInvoices(pending);
   }
   if (created.length || force) {
     const total = created.reduce((a, i) => a + i.total, 0);
     logEvent('auto', `ស្វ័យប្រវត្តិ: បង្កើត ${kmDigits(created.length)} · ផ្ញើតាម Telegram ${kmDigits(sent.ok)}`);
-    await notifyAdmins(`🤖 <b>វិក្កយបត្រស្វ័យប្រវត្តិ ${monthKm(t.ym)}</b>\nបានបង្កើត: ${kmDigits(created.length)} (${usd(total)})\nបានផ្ញើ: ${kmDigits(sent.ok)}${sent.failed ? `\nមិនបានផ្ញើ: ${kmDigits(sent.failed)}` : ''}`);
+    await notifyAdmins(`🤖 <b>វិក្កយបត្រស្វ័យប្រវត្តិ ${monthKm(t.ym)}</b>\n🏠 ${s.settings.propertyName}\nបានបង្កើត: ${kmDigits(created.length)} (${usd(total)})\nបានផ្ញើ: ${kmDigits(sent.ok)}${sent.failed ? `\nមិនបានផ្ញើ: ${kmDigits(sent.failed)}` : ''}`);
   }
   return { created: created.length, ...sent };
 }
@@ -37,7 +37,7 @@ export async function runReminders() {
     if (i.status !== 'unpaid' || !i.sentAt) return false;
     const last = i.reminders.at(-1) || i.sentAt;
     const days = (Date.now() - new Date(last).getTime()) / 86400000;
-    return days >= every || (isOverdue(i, t.ymd) && i.reminders.length === 0);
+    return days >= every - 0.1 || (isOverdue(i, t.ymd) && i.reminders.length === 0);
   });
   auto.lastReminderDay = t.ymd;
   save();
@@ -47,24 +47,34 @@ export async function runReminders() {
   return r;
 }
 
-async function tick() {
-  if (running) return;
-  running = true;
-  try {
-    const { auto } = db().settings;
-    if (!auto.enabled) return;
-    const t = nowInCambodia();
-    if (t.hour < +auto.hour) return;
-    if (auto.lastRunMonth !== t.ym && t.day >= +auto.day) await runAutoInvoices();
-    if (auto.send && +auto.reminderDays > 0 && auto.lastReminderDay !== t.ymd && botStatus().running) await runReminders();
-  } catch (e) {
-    console.error('[scheduler]', e);
-  } finally {
-    running = false;
-  }
+/** One landlord's daily duties. `respectHour` is used by the local hourly timer. */
+async function dailyForOrg({ respectHour }) {
+  const { auto } = db().settings;
+  if (!auto.enabled) return null;
+  const t = nowInCambodia();
+  if (respectHour && t.hour < +auto.hour) return null;
+  const out = {};
+  if (auto.lastRunMonth !== t.ym && t.day >= +auto.day) out.invoices = await runAutoInvoices();
+  if (auto.send && +auto.reminderDays > 0 && auto.lastReminderDay !== t.ymd && (await botStatus()).configured) out.reminders = await runReminders();
+  return out;
 }
 
-export function startScheduler() {
-  setTimeout(tick, 5000);
-  setInterval(tick, 60 * 1000);
+export async function runDailyAll({ respectHour = false, concurrency = 4 } = {}) {
+  const ids = await listOrgIds();
+  const results = { orgs: ids.length, ran: 0, errors: 0 };
+  let i = 0;
+  async function worker() {
+    while (i < ids.length) {
+      const id = ids[i++];
+      try {
+        const r = await withOrg(id, () => dailyForOrg({ respectHour }));
+        if (r) results.ran += 1;
+      } catch (e) {
+        results.errors += 1;
+        console.error('[scheduler]', id, e.message);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+  return results;
 }
