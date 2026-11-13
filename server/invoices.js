@@ -247,3 +247,26 @@ export function reopenCarried(inv) {
     if (prev && prev.paidVia === 'carried') Object.assign(prev, { status: 'unpaid', paidVia: null, paidAt: null, carriedTo: null });
   }
 }
+
+/** Copy expenses marked "every month" into the current month (once). Returns how many were added. */
+export function repeatMonthlyExpenses(ym = nowInCambodia().ym) {
+  const s = db();
+  const list = s.expenses || [];
+  const templates = new Map();
+  for (const e of list) if (e.repeat && e.date.slice(0, 7) < ym) {
+    const key = e.seriesId || e.id;
+    const prev = templates.get(key);
+    if (!prev || prev.date < e.date) templates.set(key, e);
+  }
+  let added = 0;
+  for (const [key, e] of templates) {
+    if (list.some((x) => (x.seriesId || x.id) === key && x.date.slice(0, 7) === ym)) continue;
+    const day = e.repeatDay || e.date.slice(8, 10); // keep the original day (31st stays 31st after February)
+    const [y, m] = ym.split('-').map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    list.push({ ...e, id: uid(), seriesId: key, repeatDay: day, date: `${ym}-${String(Math.min(+day, last)).padStart(2, '0')}`, createdAt: now(), auto: true });
+    added += 1;
+  }
+  if (added) { s.expenses = list; save(); logEvent('auto', `បានបន្ថែមចំណាយប្រចាំខែ ${kmDigits(added)}`); }
+  return added;
+}

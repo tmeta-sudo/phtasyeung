@@ -142,6 +142,7 @@ async function fullState(req) {
     activities: s.activities,
     tickets: (s.tickets || []).slice(-300),
     notices: (s.notices || []).slice(0, 30),
+    expenses: (s.expenses || []).slice(-2000),
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
@@ -771,6 +772,44 @@ app.delete('/api/activities/:id', ...owner((req) => {
 app.get('/api/account/export', ...owner((req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="phteah-yeung-${nowInCambodia().ymd}.json"`);
   res.json(exportData());
+}));
+
+// ---------- expenses (for profit in Reports) ----------
+
+export const EXPENSE_CATS = ['electric', 'water', 'repair', 'cleaning', 'salary', 'internet', 'tax', 'loan', 'other'];
+function cleanExpense(b, cur = {}) {
+  const e = {
+    ...cur,
+    date: date(b.date) || cur.date || nowInCambodia().ymd,
+    category: EXPENSE_CATS.includes(b.category) ? b.category : (cur.category || 'other'),
+    amount: money(b.amount ?? cur.amount),
+    note: str(b.note ?? cur.note, 200),
+    building: str(b.building ?? cur.building, 60),
+    repeat: typeof b.repeat === 'boolean' ? b.repeat : !!cur.repeat,
+  };
+  if (!(e.amount > 0)) fail('សូមបញ្ចូលចំនួនទឹកប្រាក់');
+  return e;
+}
+app.post('/api/expenses', ...owner((req) => {
+  const s = db();
+  s.expenses = s.expenses || [];
+  if (s.expenses.length >= 5000) fail('ចំណាយច្រើនពេក');
+  s.expenses.push({ id: uid(), ...cleanExpense(req.body || {}), createdAt: now() });
+  save();
+  return adminState(req);
+}));
+app.put('/api/expenses/:id', ...owner((req) => {
+  const s = db();
+  const i = (s.expenses || []).findIndex((e) => e.id === req.params.id);
+  if (i < 0) fail('រកមិនឃើញ', 404);
+  s.expenses[i] = cleanExpense(req.body || {}, s.expenses[i]);
+  save();
+  return adminState(req);
+}));
+app.delete('/api/expenses/:id', ...owner((req) => {
+  db().expenses = (db().expenses || []).filter((e) => e.id !== req.params.id);
+  save();
+  return adminState(req);
 }));
 
 // ---------- announcements to tenants (Telegram + portal) ----------

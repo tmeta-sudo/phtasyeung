@@ -7,7 +7,7 @@ import { googleUpload } from './blob.js';
 import { sendBackupToTelegram } from './backup.js';
 import { checkAllUnpaid } from './bakong.js';
 import { orgId } from './db.js';
-import { generateInvoices, isOverdue, applyLateFees } from './invoices.js';
+import { generateInvoices, isOverdue, applyLateFees, repeatMonthlyExpenses } from './invoices.js';
 import { sendInvoices, notifyAdmins, botStatus } from './telegram.js';
 import { nowInCambodia, monthKm, kmDigits, usd } from '../shared/khmer.js';
 
@@ -81,6 +81,7 @@ async function dailyForOrg({ respectHour }) {
   }
   await checkAllUnpaid({ limit: 60 }).catch((e) => console.error('[bakong]', e.message));
   applyLateFees();
+  repeatMonthlyExpenses();
   if (!auto.enabled) return null;
   const t = nowInCambodia();
   if (respectHour && t.hour < +auto.hour) return null;

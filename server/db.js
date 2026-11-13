@@ -108,6 +108,7 @@ export function newOrgDoc({ name, nameEn = '', phone = '' }) {
     events: [],
     tickets: [],
     notices: [],
+    expenses: [],
     counters: { invoice: 0, ticket: 0 },
     settings,
   };

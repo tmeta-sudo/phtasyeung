@@ -1137,3 +1137,5 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .settle-doc .grand td { font-weight: 700; font-size: 17px; border-bottom: 0; }
 .settle-doc .signs { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; text-align: center; font-size: 13px; }
 .settle-doc .signs div { border-top: 1px dashed var(--line); padding-top: 6px; }
+.exp-form { display: grid; gap: 10px; margin-bottom: 10px; }
+.stat-tiles { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }

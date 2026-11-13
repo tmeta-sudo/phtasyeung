@@ -31,6 +31,7 @@ const RULES = [
   ['*', '/api/invoices*', 'manager'],
   ['POST', '/api/auto/run', 'manager'],
   ['*', '/api/notices*', 'manager'],
+  ['*', '/api/expenses*', 'manager'],
   ['PUT', '/api/settings', 'manager'], // the handler limits managers to invoice/utility keys
 ];
 
@@ -62,6 +63,7 @@ export function staffView(st) {
     invoices: [],
     events: [],
     notices: [],
+    expenses: [],
     settings: {
       ...pick(s, ['propertyName', 'propertyNameEn', 'address', 'phone', 'khmerNumerals', 'location', 'theme']),
       khqr: {}, telegram: { adminChats: [] }, bakong: { enabled: false }, backup: {}, auto: {}, contract: {},
