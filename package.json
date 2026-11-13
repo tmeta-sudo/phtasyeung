@@ -29,6 +29,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^1.72.0",
     "multer": "^2.5.0",
+    "onnxruntime-web": "^1.31.1",
     "pg": "^8.23.1",
     "pumi": "^1.0.3",
     "qrcode": "^1.5.4",

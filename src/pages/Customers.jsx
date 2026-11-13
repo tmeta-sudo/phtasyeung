@@ -1,10 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  Plus, Phone, Send, IdCard, Pencil, Trash2, ArrowLeft, Upload, Link2, RefreshCw, MapPin, HeartPulse, FileText, Unlink, ExternalLink, UserRound, Printer,
+  ScanText, Plus, Phone, Send, IdCard, Pencil, Trash2, ArrowLeft, Upload, Link2, RefreshCw, MapPin, HeartPulse, FileText, Unlink, ExternalLink, UserRound, Printer,
 } from 'lucide-react';
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR, AddressPicker, addressText, usePumi, useVillageName, StatusPill } from '../ui.jsx';
 import { uploadFile } from '../api.js';
 import ContractModal from './ContractModal.jsx';
+import { lazy, Suspense } from 'react';
+
+const IdScanner = lazy(() => import('../ocr/IdScanner.jsx'));
 import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm } from '../../shared/khmer.js';
 
 const FILTERS = [
@@ -282,6 +285,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
   const { state, call, setState, notify } = useApp();
   const [f, setF] = useState(() => ({ ...blank, ...(tenant || {}), ...(preset || {}) }));
   const [pending, setPending] = useState({});
+  const [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -328,6 +332,9 @@ export function CustomerForm({ tenant, preset, onClose }) {
         </fieldset>
         <fieldset>
           <legend>អត្តសញ្ញាណប័ណ្ណ</legend>
+          <button type="button" className="ocr-cta" onClick={() => setScan(true)}>
+            <ScanText size={20} /><span><b>ស្កេនអត្តសញ្ញាណប័ណ្ណ</b><small>ថតរូប → បំពេញឈ្មោះ លេខ ថ្ងៃខែឆ្នាំកំណើតដោយស្វ័យប្រវត្តិ (Chakkhu OCR)</small></span>
+          </button>
           <div className="form-grid">
             <Field label="ប្រភេទឯកសារ"><select value={f.idType} onChange={(e) => set('idType', e.target.value)}>{ID_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
             <Field label="លេខ"><input value={f.idNumber} onChange={(e) => set('idNumber', e.target.value)} placeholder="0xxxxxxxx" /></Field>
@@ -363,6 +370,20 @@ export function CustomerForm({ tenant, preset, onClose }) {
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
         </fieldset>
+        {scan && (
+          <Suspense fallback={null}>
+            <IdScanner initial={{ front: pending.idFront, back: pending.idBack }} onClose={() => setScan(false)}
+              onApply={(fields, files) => {
+                setF((x) => ({
+                  ...x,
+                  ...Object.fromEntries(['nameKm', 'nameEn', 'idNumber', 'gender', 'dob', 'idIssued', 'idExpiry'].filter((k) => fields[k]).map((k) => [k, fields[k]])),
+                  idType: 'national_id',
+                  address: fields.addressDetail && !x.address?.detail ? { ...x.address, detail: fields.addressDetail } : x.address,
+                }));
+                setPending((p) => ({ ...p, ...(files.front ? { idFront: files.front } : {}), ...(files.back ? { idBack: files.back } : {}) }));
+              }} />
+          </Suspense>
+        )}
         {warnings.map((w) => <p key={w} className="form-warn">⚠️ {w}</p>)}
         {error && <p className="form-error">{error}</p>}
         <div className="form-actions">

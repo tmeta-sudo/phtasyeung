@@ -941,3 +941,35 @@ fieldset > :not(legend) { clear: both; }
   .thread-head .back { display: grid; }
   .inbox-empty { display: none; }
 }
+
+/* ---------- OCR ---------- */
+.ocr-cta { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 12px 14px; border-radius: 16px; margin-bottom: 12px; background: linear-gradient(120deg, var(--blue-soft), color-mix(in srgb, var(--pink) 12%, transparent)); color: var(--blue); border: 1.5px dashed var(--blue-3); }
+.ocr-cta span { display: grid; }
+.ocr-cta small { color: var(--ink-2); font-size: 12px; }
+.ocr-privacy { display: flex; gap: 8px; align-items: flex-start; background: var(--ok-soft); color: var(--ink-2); border-radius: 12px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+.ocr-privacy svg { color: var(--ok); flex-shrink: 0; margin-top: 3px; }
+.ocr-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ocr-side { aspect-ratio: 1.58; border-radius: 16px; border: 2px dashed var(--blue-3); background: var(--card); display: grid; place-items: center; position: relative; overflow: hidden; }
+.ocr-side.has { border-style: solid; }
+.ocr-side img { width: 100%; height: 100%; object-fit: cover; }
+.ocr-side > span { display: grid; justify-items: center; gap: 4px; color: var(--blue); font-weight: 500; }
+.ocr-side small { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(13,20,36,.6); color: #fff; font-size: 11.5px; padding: 4px; }
+.ocr-progress { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin: 12px 0; }
+.ocr-progress .bar { grid-column: 1 / -1; }
+.ocr-result { display: grid; gap: 10px; margin-top: 12px; }
+.mrz-badge { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; border-radius: 999px; padding: 4px 12px; justify-self: start; }
+.mrz-badge.ok { background: var(--ok-soft); color: var(--ok); } .mrz-badge.warn { background: var(--warn-soft); color: var(--warn); }
+.ocr-fields { display: grid; gap: 6px; }
+.ocr-field { display: grid; grid-template-columns: auto 160px 1fr; gap: 10px; align-items: center; padding: 9px 12px; border-radius: 12px; background: var(--card); cursor: pointer; opacity: .6; }
+.ocr-field.on { opacity: 1; background: var(--blue-soft); }
+.ocr-field input { accent-color: var(--blue); width: 18px; height: 18px; }
+.ocr-field span { color: var(--muted); font-size: 12.5px; }
+.ocr-raw summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.ocr-raw div { font-size: 12.5px; padding: 3px 0; display: flex; gap: 8px; }
+.ocr-raw div span { color: var(--muted); width: 36px; flex-shrink: 0; }
+@media (max-width: 640px) { .ocr-sides { grid-template-columns: 1fr; } .ocr-field { grid-template-columns: auto 1fr; } .ocr-field b { grid-column: 2; } }
+/* Same shrink rule for app forms. */
+.form-grid > *, .field, .field input, .field select, .field textarea { min-width: 0; }
+.form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .form-grid, .form-grid.three { grid-template-columns: minmax(0, 1fr); } }
