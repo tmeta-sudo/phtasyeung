@@ -9,6 +9,7 @@ import { withOrg, findOrgs, q, listOrgIds } from './store.js';
 import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices } from './invoices.js';
 import { usd, khr, monthKm, kmDigits, nowInCambodia, dateKm } from '../shared/khmer.js';
 import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
+import { checkInvoice } from './bakong.js';
 
 const API = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org';
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -440,6 +441,7 @@ async function handleCallback(botKey, token, query) {
         const tenant = tenantByChat(chatId);
         if (!tenant || tenant.id !== inv.tenantId) return answer('មិនមានសិទ្ធិ');
         if (inv.status === 'paid') return answer('បានបង់រួចហើយ ✅');
+        if (await checkInvoice(inv, { minIntervalMs: 0 }) === 'paid') return answer('បានទទួលការបង់ប្រាក់ ✅');
         await claimPayment(inv, 'telegram');
         return answer('បានជូនដំណឹងម្ចាស់ផ្ទះ ✅');
       }

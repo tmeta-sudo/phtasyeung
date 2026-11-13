@@ -15,6 +15,8 @@ import {
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
+import { exportData, sendBackupToTelegram, restoreData, cleanupOrphanFiles } from './backup.js';
+import { checkInvoice, checkAllUnpaid, bakongEnabled } from './bakong.js';
 import {
   r2Enabled, googleEnabled, googleExchange, googleEmail, googleCreateFolder, googleUpload, migrateBlobs, storageSummary, seal, unseal, deleteBlob,
 } from './blob.js';
@@ -25,7 +27,10 @@ import { normalizePhone, nowInCambodia, kmDigits, usd as usdFmt } from '../share
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
 app.disable('x-powered-by');
-app.use(express.json({ limit: '2mb' }));
+// Restores carry a whole landlord's data; everything else stays small.
+const jsonSmall = express.json({ limit: '2mb' });
+const jsonLarge = express.json({ limit: '12mb' });
+app.use((req, res, next) => (req.path === '/api/backup/restore' ? jsonLarge : jsonSmall)(req, res, next));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -93,11 +98,13 @@ async function publicSettings() {
       adminChats: telegram.adminChats,
       adminLinkCode: telegram.adminLinkCode,
     },
+    khqr: { ...rest.khqr, bakongToken: undefined, ownBakongToken: !!rest.khqr.bakongToken },
     khqrReady: isBakongId(rest.khqr.accountId),
+    bakong: { enabled: bakongEnabled(), platform: !!process.env.BAKONG_TOKEN, error: rest.khqr.bakongError || '' },
   };
 }
 
-const withQr = (inv) => ({ ...inv, khqr: khqrOf(inv), overdue: isOverdue(inv) });
+const withQr = (inv) => { const khqr = khqrOf(inv); const { khqrStr, khqrSig, khqrExp, ...rest } = inv; return { ...rest, khqr, overdue: isOverdue(inv) }; };
 
 async function accountInfo(req) {
   if (!req?.session) return {};
@@ -354,6 +361,12 @@ app.post('/api/invoices/:id/send', ...owner(async (req) => {
   return adminState(req);
 }));
 
+/** Ask Bakong about unpaid invoices (dashboard load, button). */
+app.post('/api/invoices/check-payments', ...owner(async (req) => {
+  const r = await checkAllUnpaid({ limit: 30, minIntervalMs: req.body?.force ? 0 : 60000 });
+  return { ...(await adminState(req)), result: r };
+}));
+
 app.post('/api/invoices/send-month', ...owner(async (req) => {
   const m = month(req.body?.month) || nowInCambodia().ym;
   const list = db().invoices.filter((i) => i.month === m && i.status !== 'paid' && (req.body?.all || !i.sentAt));
@@ -413,9 +426,9 @@ app.put('/api/settings', ...owner(async (req) => {
       // Uploaded picture of the landlord's own KHQR, decoded in the browser.
       const parsed = parseKhqrUpload(b.khqr.raw);
       if (!parsed) fail('មិនមែនជា KHQR ត្រឹមត្រូវ។ សូមថតរូប QR ពីកម្មវិធីធនាគាររបស់អ្នក (ABA, ACLEDA, Wing…)');
-      s.khqr = parsed;
+      s.khqr = { ...parsed, bakongToken: s.khqr.bakongToken };
     } else {
-      s.khqr = { type: 'individual', accountId: id, merchantName: str(b.khqr.merchantName, 25), city: str(b.khqr.city, 15) || 'Phnom Penh', source: 'manual' };
+      s.khqr = { type: 'individual', accountId: id, merchantName: str(b.khqr.merchantName, 25), city: str(b.khqr.city, 15) || 'Phnom Penh', source: 'manual', bakongToken: s.khqr.bakongToken };
     }
   }
   if (b.auto) {
@@ -470,6 +483,14 @@ app.put('/api/settings', ...owner(async (req) => {
       prepaidMonths: Math.min(12, Math.max(0, Math.round(+b.contract.prepaidMonths || 0))),
       template: str(b.contract.template, 12000) || s.contract.template,
     };
+  }
+  if (typeof b.bakongToken === 'string') {
+    const tok = b.bakongToken.trim();
+    if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
+    s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
+  }
+  if (b.backup) {
+    s.backup = { ...(s.backup || {}), telegramWeekly: !!b.backup.telegramWeekly, includeFiles: !!b.backup.includeFiles };
   }
   if (b.rotateAdminLink) s.telegram.adminLinkCode = uid(6);
   save();
@@ -671,11 +692,31 @@ app.delete('/api/activities/:id', ...owner((req) => {
 // ---------- account: export & delete (the landlord owns their data) ----------
 
 app.get('/api/account/export', ...owner((req, res) => {
-  const { settings, ...rest } = db();
-  const { token, ...telegram } = settings.telegram;
   res.setHeader('Content-Disposition', `attachment; filename="phteah-yeung-${nowInCambodia().ymd}.json"`);
-  res.json({ exportedAt: now(), ...rest, settings: { ...settings, telegram } });
+  res.json(exportData());
 }));
+
+// ---------- one-click backup & restore ----------
+
+app.post('/api/backup/telegram', ...owner(async (req) => {
+  const r = await sendBackupToTelegram({ includeFiles: !!req.body?.includeFiles });
+  if (!r.ok) fail(r.error);
+  return { ...(await adminState(req)), result: r };
+}));
+
+/** The browser finished downloading a backup file. */
+app.post('/api/backup/downloaded', ...owner((req) => {
+  db().settings.backup = { ...(db().settings.backup || {}), lastAt: now(), lastDownloadAt: now() };
+  save();
+  return adminState(req);
+}));
+
+app.post('/api/backup/restore', ...owner(async (req) => {
+  const uploads = await restoreData(req.body?.data);
+  return { ...(await adminState(req)), result: { uploads } };
+}));
+
+app.post('/api/backup/restore/finish', ...owner(async (req) => ({ ...(await adminState(req)), result: await cleanupOrphanFiles() })));
 
 app.post('/api/account/delete', requireOwner, async (req, res) => {
   const { rows } = await q(`SELECT u.pass_hash, o.doc->'settings'->>'propertyName' AS name FROM users u JOIN orgs o ON o.id = u.org_id WHERE u.id = $1`, [req.session.userId]);
@@ -747,6 +788,7 @@ async function portalState(t) {
     lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths } : null,
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
+    autoConfirm: bakongEnabled(),
   };
 }
 
@@ -795,10 +837,18 @@ app.get('/api/portal/:token/files/:slot', ...portal((req, res, t, org) => {
   return sendStored(res, org, t.files?.[req.params.slot]);
 }));
 
+/** Polled by the portal while the KHQR is on screen: confirms automatically once Bakong sees the payment. */
+app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  const r = await checkInvoice(inv, { minIntervalMs: 4000 });
+  return { status: inv.status, bakong: r !== 'skip' };
+}));
+
 app.post('/api/portal/:token/invoices/:id/claim', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
   if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
-  if (inv.status === 'unpaid') await claimPayment(inv, 'portal');
+  if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') await claimPayment(inv, 'portal');
   return portalState(t);
 }));
 

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent } from './db.js';
 import { khqrFor } from './khqr.js';
 import { nowInCambodia, toRiel, monthKm, usd, khr, dateKm, usdInWords, kmDigits } from '../shared/khmer.js';
@@ -70,10 +71,21 @@ export function generateInvoices(month, actor = 'admin') {
   return created;
 }
 
+/**
+ * The invoice's KHQR. Generated once and kept (with its MD5) so a Bakong payment can be
+ * matched back to this invoice; regenerated only if the amount or receiving account changes.
+ */
 export function khqrOf(inv) {
   if (!inv || inv.status === 'paid') return '';
-  const exp = new Date(inv.dueDate + 'T23:59:59+07:00').getTime() + 30 * 86400000;
-  return khqrFor(db().settings, { amount: inv.total, bill: inv.number, expiresAt: exp });
+  const k = db().settings.khqr || {};
+  const sig = `${k.accountId}|${k.type}|${k.merchantId}|${inv.total}`;
+  if (inv.khqrStr && inv.khqrSig === sig && (!inv.khqrExp || inv.khqrExp > Date.now() + 86400000)) return inv.khqrStr;
+  const exp = Math.max(new Date(inv.dueDate + 'T23:59:59+07:00').getTime() + 30 * 86400000, Date.now() + 30 * 86400000);
+  const qr = khqrFor(db().settings, { amount: inv.total, bill: inv.number, expiresAt: exp });
+  if (!qr) return '';
+  Object.assign(inv, { khqrStr: qr, khqrSig: sig, khqrExp: exp, khqrMd5: crypto.createHash('md5').update(qr).digest('hex') });
+  save();
+  return qr;
 }
 
 export function isOverdue(inv, today = nowInCambodia().ymd) {

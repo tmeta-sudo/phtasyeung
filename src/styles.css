@@ -973,3 +973,21 @@ fieldset > :not(legend) { clear: both; }
 .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 640px) { .form-grid, .form-grid.three { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- backup ---------- */
+.backup-status { display: flex; gap: 8px; align-items: center; border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+.backup-status.ok { background: var(--ok-soft); color: var(--ok); }
+.backup-status.warn { background: var(--warn-soft); color: var(--warn); }
+.backup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.backup-btn { display: grid; justify-items: start; gap: 2px; text-align: left; padding: 14px; border-radius: 18px; background: var(--surface); border: 1.5px solid var(--line); }
+.backup-btn svg { color: var(--blue); margin-bottom: 4px; }
+.backup-btn small { color: var(--muted); font-size: 12px; }
+.backup-btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.backup-btn.primary svg, .backup-btn.primary small { color: rgba(255,255,255,.85); }
+.pw-input { height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0 12px; outline: none; }
+@media (max-width: 640px) { .backup-actions { grid-template-columns: 1fr; } }
+.bakong-box { display: flex; gap: 10px; align-items: flex-start; border-radius: 14px; padding: 12px; background: var(--card-2); color: var(--muted); }
+.bakong-box.on { background: var(--ok-soft); color: var(--ok); }
+.bakong-box div { display: grid; }
+.bakong-box b { color: var(--ink); font-size: 13.5px; }
+.bakong-box small { color: var(--ink-2); font-size: 12px; }

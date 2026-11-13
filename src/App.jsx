@@ -165,7 +165,8 @@ function Admin({ onLogout }) {
     try {
       const res = await api(method, url, body);
       if (res.tenants) setState(res);
-      if (success) notify(typeof success === 'function' ? success(res) : success);
+      const msg = success && (typeof success === 'function' ? success(res) : success);
+      if (msg) notify(msg);
       return res;
     } catch (e) {
       if (e.status === 401) onLogout();

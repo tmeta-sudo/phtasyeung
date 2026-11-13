@@ -9,6 +9,8 @@ import { init, q, createOrg, createUser, storeKind, putFile } from './store.js';
 import { migrateDoc } from './db.js';
 import { refreshPolling, registerAllWebhooks, appUrl } from './telegram.js';
 import { runDailyAll } from './scheduler.js';
+import { checkAllUnpaid, bakongEnabled } from './bakong.js';
+import { withOrg, listOrgIds } from './store.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEV = process.argv.includes('--dev');
@@ -60,6 +62,12 @@ host.listen(PORT, '0.0.0.0', async () => {
     if (n) console.log(`  Telegram: polling ${n} bot(s)`);
     setInterval(() => refreshPolling().catch(() => {}), 60 * 1000);
   }
+  // Locally we can afford to ask Bakong about unpaid KHQRs every few minutes.
+  setInterval(async () => {
+    for (const id of await listOrgIds().catch(() => [])) {
+      await withOrg(id, () => (bakongEnabled() ? checkAllUnpaid({ limit: 20, minIntervalMs: 120000 }) : null)).catch(() => {});
+    }
+  }, 3 * 60 * 1000);
   setTimeout(() => runDailyAll({ respectHour: true }).catch((e) => console.error(e)), 10 * 1000);
   setInterval(() => runDailyAll({ respectHour: true }).catch((e) => console.error(e)), 15 * 60 * 1000);
 });

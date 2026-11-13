@@ -6,6 +6,7 @@ import KhqrCard from '../settings/KhqrCard.jsx';
 import LocationCard from '../settings/LocationCard.jsx';
 import { PLACEHOLDERS } from '../contract.js';
 import StorageCard from '../settings/StorageCard.jsx';
+import BackupCard from '../settings/BackupCard.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
 import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.js';
@@ -114,6 +115,8 @@ export default function SettingsPage() {
           <ThemePicker />
           <p className="muted small">«តាមប្រព័ន្ធ» ប្តូរពន្លឺ/ងងឹតតាមការកំណត់ទូរស័ព្ទ ឬកុំព្យូទ័ររបស់អ្នក។</p>
         </div>
+
+        <BackupCard />
 
         <StorageCard />
 
