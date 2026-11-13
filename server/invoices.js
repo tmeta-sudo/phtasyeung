@@ -132,7 +132,53 @@ export function markPaid(inv, via = 'admin') {
   inv.status = 'paid';
   inv.paidAt = now();
   inv.paidVia = via;
+  // A paid move-in invoice means the deposit is now held for this tenant.
+  if (inv.kind === 'movein') {
+    const dep = round2(inv.items.filter((it) => it.key === 'deposit').reduce((s, it) => s + it.amount, 0));
+    const t = db().tenants.find((x) => x.id === inv.tenantId);
+    if (t && dep > 0) {
+      t.deposit = { held: dep, receivedAt: now().slice(0, 10), note: inv.number, source: 'movein' };
+      t.contract = { ...(t.contract || {}), deposit: t.contract?.deposit || dep };
+    }
+  }
   save();
+}
+
+/**
+ * Move-out settlement: deposit − deductions − unpaid balances (paid from the deposit, oldest first).
+ * Returns the settlement; a negative refund means the tenant still owes that much.
+ */
+export function moveOut(t, { date, deductions = [], useDeposit = true }) {
+  const s = db();
+  const deposit = round2(t.deposit?.held || 0);
+  const ded = deductions.map((d) => ({ label: String(d.label || '').trim().slice(0, 80), amount: round2(Math.abs(+d.amount || 0)) })).filter((d) => d.label && d.amount > 0).slice(0, 20);
+  const dedTotal = round2(ded.reduce((a, d) => a + d.amount, 0));
+  const open = s.invoices.filter((i) => i.tenantId === t.id && i.status !== 'paid' && balanceOf(i) > 0).sort((a, b) => a.month.localeCompare(b.month));
+  const unpaid = round2(open.reduce((a, i) => a + balanceOf(i), 0));
+  let available = useDeposit ? Math.max(0, round2(deposit - dedTotal)) : 0;
+  let applied = 0;
+  const settled = [];
+  for (const inv of open) {
+    if (available <= 0) break;
+    const take = Math.min(available, balanceOf(inv));
+    addPayment(inv, { amount: take, via: 'deposit', note: 'កាត់ពីប្រាក់កក់ពេលចាកចេញ', at: `${date}T12:00:00+07:00` });
+    if (balanceOf(inv) <= 0.005) markPaid(inv, 'deposit');
+    available = round2(available - take); applied = round2(applied + take); settled.push(inv.number);
+  }
+  const left = useDeposit ? round2(deposit - dedTotal - applied) : deposit;
+  const stillUnpaid = round2(unpaid - applied);
+  // Refund what is left of the deposit; anything not covered (extra deductions + unpaid bills) is still owed.
+  const refund = Math.max(0, left);
+  const owes = round2(Math.max(0, -left) + stillUnpaid);
+  const result = { date, deposit, deductions: ded, deductionsTotal: dedTotal, unpaid, applied, settled, refund, owes, useDeposit, at: now() };
+  t.moveOut = result;
+  t.status = 'former';
+  t.contract = { ...(t.contract || {}), end: date };
+  t.deposit = { ...(t.deposit || {}), held: 0, settledAt: date };
+  t.updatedAt = now();
+  logEvent('admin', `${t.nameKm || t.nameEn} បានចាកចេញពីបន្ទប់ ${t.roomId} · សងប្រាក់កក់ ${usd(Math.max(0, refund))}`, { tenantId: t.id });
+  save();
+  return result;
 }
 
 /** Plain-text (Telegram HTML) invoice summary in Khmer. Kept under the 1024-char caption limit. */

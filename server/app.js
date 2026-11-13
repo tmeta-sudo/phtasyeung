@@ -12,7 +12,7 @@ setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
-import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried } from './invoices.js';
+import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, configureOwnBot,
@@ -598,6 +598,28 @@ app.put('/api/tenants/:id/contract', ...owner((req) => {
 }));
 
 /** Move-in invoice: booking deposit + prepaid rent, as agreed in the contract. */
+app.put('/api/tenants/:id/deposit', ...owner((req) => {
+  const t = findTenant(req.params.id);
+  if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  t.deposit = { ...(t.deposit || {}), held: money(req.body?.held), receivedAt: date(req.body?.date) || t.deposit?.receivedAt || nowInCambodia().ymd, note: str(req.body?.note, 120), source: 'manual' };
+  save();
+  return adminState(req);
+}));
+
+app.post('/api/tenants/:id/moveout', ...owner(async (req) => {
+  const t = findTenant(req.params.id);
+  if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  if (t.status !== 'active') fail('អតិថិជននេះមិនកំពុងជួលទេ');
+  const result = moveOut(t, { date: date(req.body?.date) || nowInCambodia().ymd, deductions: Array.isArray(req.body?.deductions) ? req.body.deductions : [], useDeposit: req.body?.useDeposit !== false });
+  const lines = [`🏠 <b>ការទូទាត់ពេលចាកចេញ</b> — បន្ទប់ ${t.roomId}`, `ប្រាក់កក់: ${usdFmt(result.deposit)}`];
+  for (const d of result.deductions) lines.push(`− ${d.label}: ${usdFmt(d.amount)}`);
+  if (result.applied) lines.push(`− ទូទាត់វិក្កយបត្រមិនទាន់បង់: ${usdFmt(result.applied)}`);
+  if (result.refund > 0) lines.push(`💵 <b>ប្រាក់សងវិញ: ${usdFmt(result.refund)}</b>`);
+  if (result.owes > 0) lines.push(`⚠️ <b>នៅជំពាក់: ${usdFmt(result.owes)}</b>`);
+  await notifyTenant(t, lines.join('\n'));
+  return { ...(await adminState(req)), result };
+}));
+
 app.post('/api/tenants/:id/movein-invoice', ...owner((req) => {
   const s = db();
   const t = findTenant(req.params.id);
