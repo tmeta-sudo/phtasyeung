@@ -497,7 +497,7 @@ function ownerButtons(t) {
 async function forwardToOwners(t, msg) {
   const html = ticketHtml(t, msg);
   const [pt, ...pb] = htmlToText(html).split('\n');
-  await pushToOrg(orgId(), { title: pt, body: pb.join('\n'), url: '/inbox', tag: 'ticket-' + t.id }).catch(() => {});
+  await pushToOrg(orgId(), { title: pt, body: pb.join('\n'), url: '/inbox', tag: 'ticket-' + t.id, roles: ['owner', 'manager', 'staff'] }).catch(() => {});
   for (const c of db().settings.telegram.adminChats) {
     const sent = msg.photo
       ? await call('sendPhoto', { chat_id: c.chatId, photo: msg.photo, caption: html, parse_mode: 'HTML', reply_markup: ownerButtons(t) }).catch(() => null)

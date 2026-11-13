@@ -50,10 +50,13 @@ export const htmlToText = (html) => String(html).replace(/<br\s*\/?>/g, '\n').re
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 
 /** Send to every device of a landlord. Never throws; drops subscriptions the browser revoked. */
-export async function pushToOrg(orgId, { title, body = '', url = '/', tag } = {}) {
+export async function pushToOrg(orgId, { title, body = '', url = '/', tag, roles = ['owner', 'manager'] } = {}) {
   if (!orgId) return 0;
   let rows;
-  try { rows = (await q('SELECT id, sub FROM push_subs WHERE org_id = $1', [orgId])).rows; } catch { return 0; }
+  try {
+    rows = (await q(`SELECT p.id, p.sub FROM push_subs p LEFT JOIN users u ON u.id = p.user_id
+      WHERE p.org_id = $1 AND COALESCE(u.role, 'owner') = ANY($2::text[])`, [orgId, roles])).rows;
+  } catch { return 0; }
   if (!rows.length) return 0;
   const k = await vapid();
   const payload = JSON.stringify({ title: String(title).slice(0, 120), body: String(body).slice(0, 400), url, tag });

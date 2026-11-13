@@ -1,4 +1,6 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { staffView, MANAGER_SETTINGS } from './roles.js';
+import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
@@ -55,6 +57,7 @@ app.use('/api', (req, res, next) => init().then(() => next(), next));
 if (process.env.VERCEL) app.use('/api', (req, res, next) => { ensurePlatformWebhook().catch(() => {}); next(); });
 
 authRoutes(app, { sendResetCode, botName: () => platformBotName() });
+teamRoutes(app);
 configureTgLogin({ api: tgApi, botName: platformBotName, appUrl, ensureWebhook: () => ensurePlatformWebhook() });
 tgLoginRoutes(app);
 webhookRoute(app);
@@ -118,10 +121,16 @@ async function accountInfo(req) {
     canReset: !!req.session.canReset,
     telegram: u.telegram_id ? { name: u.telegram_name || '' } : null,
     platformLogin: !!process.env.TELEGRAM_BOT_TOKEN,
+    role: req.session.role || 'owner',
   };
 }
 
 async function adminState(req) {
+  const st = await fullState(req);
+  return req?.session?.role === 'staff' ? staffView(st) : st;
+}
+
+async function fullState(req) {
   const s = db();
   return {
     rooms: s.rooms,
@@ -406,6 +415,10 @@ app.delete('/api/telegram/admins/:chatId', ...owner((req) => {
 app.put('/api/settings', ...owner(async (req) => {
   const s = db().settings;
   const b = req.body || {};
+  if (req.session.role !== 'owner') {
+    const blocked = Object.keys(b).filter((k) => !MANAGER_SETTINGS.has(k));
+    if (blocked.length) fail('មានតែម្ចាស់ផ្ទះទេដែលអាចកែការកំណត់នេះ', 403);
+  }
   Object.assign(s, {
     propertyName: str(b.propertyName ?? s.propertyName, 80) || s.propertyName,
     propertyNameEn: str(b.propertyNameEn ?? s.propertyNameEn, 80),
@@ -710,7 +723,7 @@ app.post('/api/push/unsubscribe', requireOwner, async (req, res) => {
 });
 app.get('/api/push/devices', requireOwner, async (req, res) => res.json({ devices: await devices(req.session.orgId) }));
 app.post('/api/push/test', requireOwner, async (req, res) => {
-  const sent = await pushToOrg(req.session.orgId, { title: '🔔 ផ្ទះយើង', body: 'ការជូនដំណឹងដំណើរការល្អ ✅', url: '/', tag: 'test' });
+  const sent = await pushToOrg(req.session.orgId, { title: '🔔 ផ្ទះយើង', body: 'ការជូនដំណឹងដំណើរការល្អ ✅', url: '/', tag: 'test', roles: [req.session.role] });
   res.json({ ok: true, sent });
 });
 

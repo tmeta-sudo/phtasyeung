@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS platform_kv (key text PRIMARY KEY, value text NOT NUL
 CREATE TABLE IF NOT EXISTS push_subs (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, user_id text, sub jsonb NOT NULL,
   ua text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS push_subs_org ON push_subs(org_id);
+CREATE TABLE IF NOT EXISTS invites (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, role text NOT NULL, name text NOT NULL DEFAULT '',
+  created_by text, created_at timestamptz NOT NULL DEFAULT now(), expires timestamptz NOT NULL, used_by text, used_at timestamptz);
+CREATE INDEX IF NOT EXISTS invites_org ON invites(org_id);
 CREATE TABLE IF NOT EXISTS admin_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, action text NOT NULL, target text NOT NULL DEFAULT '', detail text NOT NULL DEFAULT '');
 `;
 
@@ -190,9 +193,9 @@ export async function getUser(id) {
   const { rows } = await q('SELECT * FROM users WHERE id = $1', [id]);
   return rows[0] || null;
 }
-export async function createUser({ email, passHash, orgId }) {
+export async function createUser({ email, passHash, orgId, role = 'owner' }) {
   const id = 'u' + uid(8);
-  await q('INSERT INTO users (id, email, pass_hash, org_id) VALUES ($1, $2, $3, $4)', [id, String(email).trim().toLowerCase(), passHash, orgId]);
+  await q('INSERT INTO users (id, email, pass_hash, org_id, role) VALUES ($1, $2, $3, $4, $5)', [id, String(email).trim().toLowerCase(), passHash, orgId, role]);
   return id;
 }
 export const setPassword = (userId, passHash) => q('UPDATE users SET pass_hash = $2, reset_hash = NULL, reset_expires = NULL WHERE id = $1', [userId, passHash]);
@@ -208,7 +211,7 @@ export async function createSession(userId, orgId, days, { canReset = false } = 
 }
 export async function getSession(token) {
   if (!token) return null;
-  const { rows } = await q('SELECT s.*, u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 AND s.expires > now()', [sha256(token)]);
+  const { rows } = await q('SELECT s.*, u.email, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 AND s.expires > now()', [sha256(token)]);
   return rows[0] || null;
 }
 export const deleteSession = (token) => q('DELETE FROM sessions WHERE id = $1', [sha256(token)]);

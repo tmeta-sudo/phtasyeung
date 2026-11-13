@@ -4,6 +4,7 @@ import {
   rateLimit, clearRateLimit, sha256, q,
 } from './store.js';
 import { newOrgDoc } from './db.js';
+import { requiredRole, atLeast } from './roles.js';
 
 const COOKIE = 'py_session';
 const SESSION_DAYS = 30;
@@ -34,16 +35,19 @@ function setCookie(req, res, token, maxAge) {
   res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`);
 }
 
-async function startSession(req, res, user) {
+export async function startSession(req, res, user) {
   const token = await createSession(user.id, user.org_id, SESSION_DAYS);
   setCookie(req, res, token, SESSION_DAYS * 86400);
 }
 
 /** Attach req.session = { userId, orgId, email } or reply 401. */
-export async function requireOwner(req, res, next) {
+export async function requireOwner(req, res, next) { // = require a signed-in team member with enough role for this route
   const s = await getSession(cookies(req)[COOKIE]).catch(() => null);
   if (!s) return res.status(401).json({ error: 'សូមចូលគណនីជាមុនសិន' });
-  req.session = { userId: s.user_id, orgId: s.org_id, email: s.email, canReset: !!s.can_reset_until && new Date(s.can_reset_until) > new Date() };
+  const role = s.role || 'owner';
+  const need = requiredRole(req.method, req.route?.path);
+  if (!atLeast(role, need)) return res.status(403).json({ error: 'អ្នកមិនមានសិទ្ធិធ្វើការនេះទេ — សូមសួរម្ចាស់ផ្ទះ' });
+  req.session = { userId: s.user_id, orgId: s.org_id, email: s.email, role, canReset: !!s.can_reset_until && new Date(s.can_reset_until) > new Date() };
   // "Active" for platform statistics — at most one write per 10 minutes per landlord.
   q("UPDATE orgs SET last_active = now() WHERE id = $1 AND (last_active IS NULL OR last_active < now() - interval '10 minutes')", [s.org_id]).catch(() => {});
   next();

@@ -62,7 +62,7 @@ export default function Home() {
     {
       const bk = state.settings.backup || {};
       const last = Math.max(+new Date(bk.lastAt || 0) || 0, +new Date(bk.lastTelegramAt || 0) || 0);
-      if (state.tenants.length && Date.now() - last > 30 * 86400000) needs.push({ key: 'backup', name: 'បម្រុងទុកទិន្នន័យ', sub: last ? `ចុងក្រោយ ${new Date(last).toLocaleDateString('km-KH')}` : 'មិនទាន់ធ្លាប់បម្រុងទុក · ចុចម្តងគត់', pill: 'បម្រុង', tone: 'blue', go: () => navigate('/settings#backup') });
+      if (state.account.role === 'owner' && state.tenants.length && Date.now() - last > 30 * 86400000) needs.push({ key: 'backup', name: 'បម្រុងទុកទិន្នន័យ', sub: last ? `ចុងក្រោយ ${new Date(last).toLocaleDateString('km-KH')}` : 'មិនទាន់ធ្លាប់បម្រុងទុក · ចុចម្តងគត់', pill: 'បម្រុង', tone: 'blue', go: () => navigate('/settings#backup') });
     }
     for (const t of active.filter((x) => !x.telegram?.chatId).slice(0, 3)) needs.push({ key: 'tg' + t.id, name: t.nameKm || t.nameEn, sub: `មិនទាន់ភ្ជាប់ Telegram · ${t.roomId || '—'}`, pill: 'ភ្ជាប់', tone: 'light', photo: tenantPhoto(t), go: () => navigate('/customers/' + t.id) });
     const unsent = inv.filter((i) => !i.sentAt && i.status !== 'paid');
