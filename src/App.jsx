@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Home as HomeIcon, UsersRound, DoorOpen, ReceiptText, Gauge, QrCode, Send, Settings, Wrench, Search, Bell, ScanLine,
   LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download,
@@ -32,18 +32,27 @@ const NAV = [
   ['/telegram', 'Telegram', Send],
 ];
 
+const Landing = lazy(() => import('./landing/Landing.jsx'));
+const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1'); else localStorage.removeItem('py-authed'); } catch { /* ignore */ } };
+
 export default function App() {
   const [auth, setAuth] = useState(null);
-  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then(setAuth).catch(() => setAuth({ error: true })), []);
+  const path = usePath();
+  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then((a) => { setAuthHint(a.authed); setAuth(a); }).catch(() => setAuth({ error: true })), []);
   useEffect(() => { refreshAuth(); }, [refreshAuth]);
+  // After signing in from /login or /signup, land on the dashboard.
+  useEffect(() => { if (auth?.authed && /^\/(login|signup)$/.test(path)) navigate('/', { replace: true }); }, [auth, path]);
   if (!auth) return <div className="boot"><span className="spinner" /></div>;
-  if (!auth.authed) return <Login onDone={refreshAuth} bot={auth.bot} />;
-  return <Admin onLogout={refreshAuth} />;
+  if (!auth.authed) {
+    if (path === '/') return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><Landing /></Suspense>;
+    return <Login onDone={refreshAuth} bot={auth.bot} />;
+  }
+  return <Admin onLogout={async () => { setAuthHint(false); await refreshAuth(); navigate('/'); }} />;
 }
 
 function Login({ onDone, bot }) {
-  const [mode, setMode] = useState('login'); // login | signup | forgot | reset
-  const [viaTelegram, setViaTelegram] = useState(null); // null | 'login' | 'signup'
+  const [mode, setMode] = useState(() => (location.pathname === '/signup' ? 'signup' : 'login')); // login | signup | forgot | reset
+  const [viaTelegram, setViaTelegram] = useState(() => (bot && new URLSearchParams(location.search).get('telegram') ? 'login' : null)); // null | 'login' | 'signup'
   const [f, setF] = useState({ email: '', password: '', password2: '', propertyName: '', phone: '', code: '' });
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -82,7 +91,7 @@ function Login({ onDone, bot }) {
         </div>
       </div>
       <div className="login-card">
-        <div className="login-top"><span className="logo lg">ផ</span><ThemeToggle /></div>
+        <div className="login-top"><button type="button" className="logo-link" onClick={() => navigate('/')} aria-label="ទំព័រដើម"><img src="/icons/icon-192.png" alt="" width="52" height="52" /></button><ThemeToggle /></div>
         {(m === 'login' || m === 'signup') && (
           <div className="seg">
             <button type="button" className={m === 'login' ? 'on' : ''} onClick={() => go('login')}>ចូលគណនី</button>
