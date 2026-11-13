@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Home as HomeIcon, UsersRound, DoorOpen, ReceiptText, Gauge, QrCode, Send, Settings, Wrench, Search, Bell, ScanLine,
-  LogOut, ChevronRight, ChevronDown, Menu, X,
+  LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download,
 } from 'lucide-react';
 import { api } from './api.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
@@ -15,6 +15,12 @@ import QrCenter, { ScannerModal } from './pages/QrCenter.jsx';
 import TelegramPage from './pages/Telegram.jsx';
 import SettingsPage from './pages/Settings.jsx';
 import Tasks from './pages/Tasks.jsx';
+import Feedback, { News, useNewsUnread } from './pages/Feedback.jsx';
+import Super from './pages/Super.jsx';
+import TelegramLogin from './TelegramLogin.jsx';
+import PwaBar from './PwaBar.jsx';
+import { ThemeToggle } from './theme.jsx';
+import { usePwa } from './pwa.js';
 
 const NAV = [
   ['/', 'ទំព័រដើម', HomeIcon],
@@ -31,19 +37,20 @@ export default function App() {
   const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then(setAuth).catch(() => setAuth({ error: true })), []);
   useEffect(() => { refreshAuth(); }, [refreshAuth]);
   if (!auth) return <div className="boot"><span className="spinner" /></div>;
-  if (!auth.authed) return <Login onDone={refreshAuth} />;
+  if (!auth.authed) return <Login onDone={refreshAuth} bot={auth.bot} />;
   return <Admin onLogout={refreshAuth} />;
 }
 
-function Login({ onDone }) {
+function Login({ onDone, bot }) {
   const [mode, setMode] = useState('login'); // login | signup | forgot | reset
+  const [viaTelegram, setViaTelegram] = useState(null); // null | 'login' | 'signup'
   const [f, setF] = useState({ email: '', password: '', password2: '', propertyName: '', phone: '', code: '' });
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
   const m = mode;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const go = (next) => { setMode(next); setError(''); setInfo(''); };
+  const go = (next) => { setMode(next); setError(''); setInfo(''); setViaTelegram(null); };
   async function submit(e) {
     e.preventDefault();
     setError('');
@@ -57,13 +64,14 @@ function Login({ onDone }) {
       onDone();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
-  const titles = { login: 'ចូលគណនីម្ចាស់ផ្ទះ', signup: 'បង្កើតគណនីឥតគិតថ្លៃ', forgot: 'ភ្លេចពាក្យសម្ងាត់', reset: 'កំណត់ពាក្យសម្ងាត់ថ្មី' };
+  const titles = { login: 'ចូលគណនីម្ចាស់ផ្ទះ', signup: 'បង្កើតគណនីឥតគិតថ្លៃ', forgot: 'ស្តារគណនី', reset: 'កំណត់ពាក្យសម្ងាត់ថ្មី' };
   const subs = {
     login: 'គ្រប់គ្រងបន្ទប់ជួល វិក្កយបត្រ និងអតិថិជនរបស់អ្នក។',
     signup: 'ឥតគិតថ្លៃសម្រាប់ម្ចាស់ផ្ទះជួលខ្មែរ — មិនត្រូវការកាតឥណទាន។',
-    forgot: 'យើងនឹងផ្ញើលេខកូដ ៦ ខ្ទង់ទៅ Telegram ម្ចាស់ផ្ទះដែលអ្នកបានភ្ជាប់។',
+    forgot: 'វិធីងាយបំផុត៖ ផ្ញើ /recover ទៅ bot Telegram របស់យើង ដើម្បីទទួលតំណចូលគណនី។',
     reset: 'បញ្ចូលលេខកូដពី Telegram និងពាក្យសម្ងាត់ថ្មី។',
   };
+  const tgButton = (label, onClick, disabled) => bot && <button type="button" className="btn tg block" onClick={onClick} disabled={disabled}><Send size={17} /> {label}</button>;
   return (
     <div className="login">
       <div className="login-photo">
@@ -73,8 +81,8 @@ function Login({ onDone }) {
           <ul className="login-points"><li>✓ ឥតគិតថ្លៃ</li><li>✓ ភាសាខ្មែរពេញលេញ</li><li>✓ ទិន្នន័យឯកជន និងសុវត្ថិភាព</li></ul>
         </div>
       </div>
-      <form className="login-card" onSubmit={submit}>
-        <span className="logo lg">ផ</span>
+      <div className="login-card">
+        <div className="login-top"><span className="logo lg">ផ</span><ThemeToggle /></div>
         {(m === 'login' || m === 'signup') && (
           <div className="seg">
             <button type="button" className={m === 'login' ? 'on' : ''} onClick={() => go('login')}>ចូលគណនី</button>
@@ -83,19 +91,34 @@ function Login({ onDone }) {
         )}
         <h1>{titles[m]}</h1>
         <p>{subs[m]}</p>
-        {m === 'signup' && <input autoComplete="organization" placeholder="ឈ្មោះផ្ទះជួល / អគារ (ឧ. ផ្ទះជួលសុខា)" value={f.propertyName} onChange={set('propertyName')} required />}
-        <input type={m === 'login' ? 'text' : 'email'} autoComplete="username" placeholder="អ៊ីមែល" value={f.email} onChange={set('email')} required autoFocus />
-        {m === 'signup' && <input type="tel" autoComplete="tel" placeholder="ទូរស័ព្ទ (មិនចាំបាច់)" value={f.phone} onChange={set('phone')} />}
-        {m === 'reset' && <input inputMode="numeric" autoComplete="one-time-code" placeholder="លេខកូដ ៦ ខ្ទង់" value={f.code} onChange={set('code')} required />}
-        {m !== 'forgot' && <input type="password" autoComplete={m === 'login' ? 'current-password' : 'new-password'} placeholder={m === 'login' ? 'ពាក្យសម្ងាត់' : 'ពាក្យសម្ងាត់ (≥ ៨ តួ)'} value={f.password} onChange={set('password')} required minLength={m === 'login' ? 1 : 8} />}
-        {(m === 'signup' || m === 'reset') && <input type="password" autoComplete="new-password" placeholder="បញ្ជាក់ពាក្យសម្ងាត់" value={f.password2} onChange={set('password2')} required />}
-        {info && <p className="form-warn">{info}</p>}
-        {error && <p className="form-error">{error}</p>}
-        <button className="btn primary block" disabled={busy}>{busy ? '…' : { login: 'ចូល', signup: 'បង្កើតគណនី', forgot: 'ផ្ញើលេខកូដ', reset: 'ប្តូរពាក្យសម្ងាត់' }[m]}</button>
-        {m === 'login' && <button type="button" className="link-btn center" onClick={() => go('forgot')}>ភ្លេចពាក្យសម្ងាត់?</button>}
-        {(m === 'forgot' || m === 'reset') && <button type="button" className="link-btn center" onClick={() => go('login')}>← ត្រឡប់ទៅចូលគណនី</button>}
-        {m === 'signup' && <small className="muted center">ដោយបង្កើតគណនី អ្នកយល់ព្រមរក្សាព័ត៌មានអតិថិជនដោយទំនួលខុសត្រូវ។ អ្នកអាចនាំចេញ ឬលុបទិន្នន័យទាំងអស់បានគ្រប់ពេល។</small>}
-      </form>
+        {viaTelegram ? (
+          <TelegramLogin mode={viaTelegram} extra={viaTelegram === 'signup' ? { propertyName: f.propertyName, phone: f.phone } : {}} onDone={onDone} onCancel={() => setViaTelegram(null)} />
+        ) : (
+          <form className="login-form" onSubmit={submit}>
+            {m === 'login' && tgButton('ចូលតាម Telegram', () => setViaTelegram('login'))}
+            {m === 'signup' && <input autoComplete="organization" placeholder="ឈ្មោះផ្ទះជួល / អគារ (ឧ. ផ្ទះជួលសុខា)" value={f.propertyName} onChange={set('propertyName')} required />}
+            {m === 'signup' && tgButton('បង្កើតគណនីតាម Telegram', () => (f.propertyName.trim() ? setViaTelegram('signup') : setError('សូមបញ្ចូលឈ្មោះផ្ទះជួលជាមុនសិន')))}
+            {m === 'forgot' && bot && (
+              <>
+                <a className="btn tg block" href={`https://t.me/${bot}?start=recover`} target="_blank" rel="noreferrer"><Send size={17} /> ស្តារតាម Telegram (/recover)</a>
+                {tgButton('ចូលតាម Telegram', () => setViaTelegram('login'))}
+              </>
+            )}
+            {bot && m !== 'reset' && <div className="or"><span>ឬប្រើអ៊ីមែល</span></div>}
+            <input type={m === 'login' ? 'text' : 'email'} autoComplete="username" placeholder="អ៊ីមែល" value={f.email} onChange={set('email')} required={m !== 'signup' || !viaTelegram} />
+            {m === 'signup' && <input type="tel" autoComplete="tel" placeholder="ទូរស័ព្ទ (មិនចាំបាច់)" value={f.phone} onChange={set('phone')} />}
+            {m === 'reset' && <input inputMode="numeric" autoComplete="one-time-code" placeholder="លេខកូដ ៦ ខ្ទង់" value={f.code} onChange={set('code')} required />}
+            {m !== 'forgot' && <input type="password" autoComplete={m === 'login' ? 'current-password' : 'new-password'} placeholder={m === 'login' ? 'ពាក្យសម្ងាត់' : 'ពាក្យសម្ងាត់ (≥ ៨ តួ)'} value={f.password} onChange={set('password')} required minLength={m === 'login' ? 1 : 8} />}
+            {(m === 'signup' || m === 'reset') && <input type="password" autoComplete="new-password" placeholder="បញ្ជាក់ពាក្យសម្ងាត់" value={f.password2} onChange={set('password2')} required />}
+            {info && <p className="form-warn">{info}</p>}
+            {error && <p className="form-error">{error}</p>}
+            <button className={'btn block ' + (bot ? 'ghost' : 'primary')} disabled={busy}>{busy ? '…' : { login: 'ចូលដោយអ៊ីមែល', signup: 'បង្កើតដោយអ៊ីមែល', forgot: 'ផ្ញើលេខកូដទៅ Telegram ម្ចាស់ផ្ទះ', reset: 'ប្តូរពាក្យសម្ងាត់' }[m]}</button>
+            {m === 'login' && <button type="button" className="link-btn center" onClick={() => go('forgot')}>ភ្លេចពាក្យសម្ងាត់ ឬចូលមិនបាន?</button>}
+            {(m === 'forgot' || m === 'reset') && <button type="button" className="link-btn center" onClick={() => go('login')}>← ត្រឡប់ទៅចូលគណនី</button>}
+            {m === 'signup' && <small className="muted center">ដោយបង្កើតគណនី អ្នកយល់ព្រមរក្សាព័ត៌មានអតិថិជនដោយទំនួលខុសត្រូវ។ អ្នកអាចនាំចេញ ឬលុបទិន្នន័យទាំងអស់បានគ្រប់ពេល។</small>}
+          </form>
+        )}
+      </div>
     </div>
   );
 }
@@ -108,6 +131,7 @@ function Admin({ onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const path = usePath();
   const toastTimer = useRef();
+  useEffect(() => { if (!/^\/(feedback|news)/.test(path)) { try { sessionStorage.setItem('py-last-page', path); } catch { /* ignore */ } } }, [path]);
 
   const notify = useCallback((text, error = false) => {
     clearTimeout(toastTimer.current);
@@ -173,7 +197,8 @@ function Admin({ onLogout }) {
   const missingId = state.tenants.filter((t) => t.status === 'active' && !t.files?.idFront).length;
   const badges = { '/invoices': claimed, '/customers': missingId };
   const section = '/' + (path.split('/')[1] || '');
-  const current = NAV.find(([p]) => p === section) || (section === '/settings' ? ['/settings', 'ការកំណត់'] : section === '/tasks' ? ['/tasks', 'ការងារ'] : NAV[0]);
+  const EXTRA = { '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
+  const current = NAV.find(([p]) => p === section) || (EXTRA[section] ? [section, EXTRA[section]] : NAV[0]);
 
   let page;
   const customerMatch = path.match(/^\/customers\/(.+)$/);
@@ -186,6 +211,9 @@ function Admin({ onLogout }) {
   else if (section === '/telegram') page = <TelegramPage />;
   else if (section === '/settings') page = <SettingsPage />;
   else if (section === '/tasks') page = <Tasks />;
+  else if (section === '/news') page = <News />;
+  else if (section === '/feedback') page = <Feedback />;
+  else if (section === '/super') page = <Super />;
   else page = <Home />;
 
   return (
@@ -205,15 +233,19 @@ function Admin({ onLogout }) {
             ))}
             <button className={'nav-extra ' + (section === '/tasks' ? 'active' : '')} onClick={() => navigate('/tasks')}><Wrench size={16} /> <span>ការងារ</span></button>
             <button className={'nav-extra ' + (section === '/settings' ? 'active' : '')} onClick={() => navigate('/settings')}><Settings size={16} /> <span>ការកំណត់</span></button>
+            <button className={'nav-extra ' + (section === '/feedback' ? 'active' : '')} onClick={() => navigate('/feedback')}><Lightbulb size={16} /> <span>មតិ និងសំណើ</span></button>
           </nav>
           <div className="topbar-right">
             <GlobalSearch />
             <button className="icon-btn" onClick={ctx.openScanner} aria-label="ស្កេន QR" title="ស្កេន QR"><ScanLine size={18} /></button>
+            <NewsButton path={path} />
+            {state.account.super && <button className={'super-pill ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')} title="អ្នកគ្រប់គ្រងប្រព័ន្ធ"><Shield size={16} /> <span>Super</span></button>}
             <Notifications />
             <ProfileMenu onLogout={async () => { await api('POST', '/api/auth/logout'); onLogout(); }} />
             <button className="icon-btn burger" onClick={() => setMenuOpen((v) => !v)} aria-label="ម៉ឺនុយ">{menuOpen ? <X size={18} /> : <Menu size={18} />}</button>
           </div>
         </header>
+        <PwaBar />
         <div className="crumbs">{state.settings.propertyName} <ChevronRight size={13} /> <b>{current[1]}</b></div>
         <main key={section}>{page}</main>
       </div>
@@ -295,8 +327,18 @@ function Notifications() {
   );
 }
 
+function NewsButton({ path }) {
+  const unread = useNewsUnread(path);
+  return (
+    <button className="icon-btn" onClick={() => navigate('/news')} aria-label="មានអ្វីថ្មី" title="មានអ្វីថ្មី">
+      <Sparkles size={18} />{unread > 0 && <em className="badge">{unread}</em>}
+    </button>
+  );
+}
+
 function ProfileMenu({ onLogout }) {
   const { state } = useApp();
+  const pwa = usePwa();
   const [open, setOpen] = useState(false);
   return (
     <div className="pop-wrap">
@@ -305,8 +347,14 @@ function ProfileMenu({ onLogout }) {
       </button>
       {open && (
         <div className="dropdown right" onMouseLeave={() => setOpen(false)}>
-          <p className="pad"><b>{greetingKm(state.today.hour)}!</b><br /><small className="muted">{state.account.email} · {state.settings.propertyName}</small></p>
+          <p className="pad"><b>{greetingKm(state.today.hour)}!</b><br /><small className="muted">{state.account.email || (state.account.telegram ? `Telegram · ${state.account.telegram.name}` : '')} · {state.settings.propertyName}</small></p>
           <button onClick={() => { setOpen(false); navigate('/settings'); }}><Settings size={16} /> ការកំណត់</button>
+          <button onClick={() => { setOpen(false); navigate('/news'); }}><Sparkles size={16} /> មានអ្វីថ្មី</button>
+          <button onClick={() => { setOpen(false); navigate('/feedback?tab=new'); }}><Lightbulb size={16} /> ស្នើមុខងារ</button>
+          <button onClick={() => { setOpen(false); navigate('/feedback?tab=new&kind=issue'); }}><Bug size={16} /> រាយការណ៍បញ្ហា</button>
+          {pwa.canInstall && <button onClick={() => { setOpen(false); pwa.install(); }}><Download size={16} /> ដំឡើងកម្មវិធី</button>}
+          <ThemeToggle withLabel className="menu-item" />
+          {state.account.super && <button onClick={() => { setOpen(false); navigate('/super'); }}><Shield size={16} /> អ្នកគ្រប់គ្រងប្រព័ន្ធ</button>}
           <button onClick={onLogout}><LogOut size={16} /> ចាកចេញ</button>
         </div>
       )}

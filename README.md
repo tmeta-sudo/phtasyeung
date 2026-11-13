@@ -33,6 +33,33 @@ Telegram works without any setup. All landlords share one platform bot, and each
 
 Forgot your password? A 6-digit reset code is sent to the owner Telegram you linked, so no email service is needed.
 
+## Sign in with Telegram
+
+- **Sign in:** tap **ចូលតាម Telegram**. The bot shows the device, IP and time, then asks you to approve. The page signs you in once you do. On a phone this opens Telegram directly; on a computer you scan a QR instead.
+- **Sign up:** on the create-account tab, enter your property name and tap **បង្កើតគណនីតាម Telegram**. No email or password is needed, and owner alerts are connected automatically.
+- **Recovery:** send `/recover` (or tap 🔑 ចូលគណនី) to the bot. You get a one-time sign-in link for each linked account, valid for 15 minutes. After you open it, you can set a new password without the old one.
+- Accounts made with email can link Telegram in **ការកំណត់**. Scanning the owner QR also links it.
+
+## Super admin (platform owner)
+
+Set `SUPER_ADMIN_EMAILS` and/or `SUPER_ADMIN_TELEGRAM_IDS`. Those accounts get a **Super** console with:
+
+- platform statistics: landlords, sign-ups, active users, rooms/customers, invoice volume, feature adoption, storage
+- a landlord list with **suspend / restore**
+- **announcements** ("what's new"), shown in every landlord's app and optionally broadcast to their owner Telegram
+- a **feature request board** (landlords vote) and **issue reports**, each with a status and reply; the landlord is told on Telegram when you update it
+- an audit log of super-admin actions
+
+The console shows aggregate numbers and account details only. It never shows customers' personal data or ID documents.
+
+## Install as an app (PWA)
+
+The app can be installed on Android, iPhone, Windows and macOS. It has a manifest, icons (including maskable and Apple touch icons), shortcuts, an offline app shell, update prompts and an install banner. Each customer's portal installs as its own app that opens straight to their page. Private data (`/api/*`) is never cached.
+
+## Dark mode
+
+Follows the system setting by default. The ☀️/🌙 toggle in the menu, on the login page, in the portal and in Settings cycles between system, light and dark. QR codes always stay dark-on-white so bank apps can still scan them.
+
 ## Deploy free: Vercel + Neon
 
 1. **Neon**: create a project and copy the **pooled** connection string (`…-pooler…`).
@@ -45,6 +72,7 @@ Forgot your password? A 6-digit reset code is sent to the owner Telegram you lin
    | `TELEGRAM_BOT_TOKEN` | platform bot token |
    | `TELEGRAM_BOT_USERNAME` | platform bot username (without @) |
    | `CRON_SECRET` | any long random string (`openssl rand -hex 32`) |
+   | `SUPER_ADMIN_EMAILS` | your email (and/or `SUPER_ADMIN_TELEGRAM_IDS`) |
    | `APP_URL` | optional: your custom domain, e.g. `https://phteahyeung.com` |
 
 4. Deploy. The database tables are created automatically on the first request.

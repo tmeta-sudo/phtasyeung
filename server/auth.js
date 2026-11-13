@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {
   createOrg, createUser, getUserByEmail, getUser, setPassword, setReset, createSession, getSession, deleteSession, deleteUserSessions,
-  rateLimit, clearRateLimit, sha256,
+  rateLimit, clearRateLimit, sha256, q,
 } from './store.js';
 import { newOrgDoc } from './db.js';
 
@@ -43,7 +43,9 @@ async function startSession(req, res, user) {
 export async function requireOwner(req, res, next) {
   const s = await getSession(cookies(req)[COOKIE]).catch(() => null);
   if (!s) return res.status(401).json({ error: 'សូមចូលគណនីជាមុនសិន' });
-  req.session = { userId: s.user_id, orgId: s.org_id, email: s.email };
+  req.session = { userId: s.user_id, orgId: s.org_id, email: s.email, canReset: !!s.can_reset_until && new Date(s.can_reset_until) > new Date() };
+  // "Active" for platform statistics — at most one write per 10 minutes per landlord.
+  q("UPDATE orgs SET last_active = now() WHERE id = $1 AND (last_active IS NULL OR last_active < now() - interval '10 minutes')", [s.org_id]).catch(() => {});
   next();
 }
 
@@ -51,10 +53,10 @@ export async function requireOwner(req, res, next) {
  * @param sendResetCode async (orgId, code) => boolean — delivers a reset code to the
  *        owner's linked Telegram; provided by the Telegram module to avoid a cycle.
  */
-export function authRoutes(app, { sendResetCode }) {
+export function authRoutes(app, { sendResetCode, botName }) {
   app.get('/api/auth/state', async (req, res) => {
     const s = await getSession(cookies(req)[COOKIE]).catch(() => null);
-    res.json({ authed: !!s, email: s?.email || '' });
+    res.json({ authed: !!s, bot: process.env.TELEGRAM_BOT_TOKEN ? await botName().catch(() => '') : '' });
   });
 
   app.post('/api/auth/signup', async (req, res) => {
@@ -78,6 +80,8 @@ export function authRoutes(app, { sendResetCode }) {
     if (!okIp || !okEmail) throw httpErr(429, 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំ ១០ នាទី។');
     const user = await getUserByEmail(email);
     if (!user || !verifyPassword(req.body?.password, user.pass_hash)) throw httpErr(401, 'អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
+    const { rows } = await q('SELECT suspended FROM orgs WHERE id = $1', [user.org_id]);
+    if (rows[0]?.suspended) throw httpErr(403, 'គណនីនេះត្រូវបានផ្អាក។ សូមទាក់ទងក្រុមការងារផ្ទះយើង។');
     await clearRateLimit(`login:${email}`);
     await startSession(req, res, user);
     res.json({ ok: true });
@@ -92,7 +96,9 @@ export function authRoutes(app, { sendResetCode }) {
 
   app.post('/api/auth/password', requireOwner, async (req, res) => {
     const user = await getUser(req.session.userId);
-    if (!verifyPassword(req.body?.current, user.pass_hash)) throw httpErr(400, 'ពាក្យសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវ');
+    // No current password needed for Telegram-only accounts, or right after a Telegram sign-in / recovery link.
+    const exempt = !user.pass_hash || req.session.canReset;
+    if (!exempt && !verifyPassword(req.body?.current, user.pass_hash)) throw httpErr(400, 'ពាក្យសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវ');
     if (String(req.body?.next || '').length < 8) throw httpErr(400, 'ពាក្យសម្ងាត់ថ្មីត្រូវមានយ៉ាងហោចណាស់ ៨ តួ');
     await setPassword(user.id, hashPassword(req.body.next));
     await deleteUserSessions(user.id);

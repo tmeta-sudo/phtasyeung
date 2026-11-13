@@ -21,6 +21,23 @@ CREATE INDEX IF NOT EXISTS lookups_org ON lookups(org_id);
 CREATE TABLE IF NOT EXISTS files (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, mime text NOT NULL, size int NOT NULL, data bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS files_org ON files(org_id);
 CREATE TABLE IF NOT EXISTS rate_limits (key text PRIMARY KEY, window_start timestamptz NOT NULL, count int NOT NULL);
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS suspended boolean NOT NULL DEFAULT false;
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS last_active timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS seen_news_at timestamptz;
+CREATE TABLE IF NOT EXISTS announcements (id text PRIMARY KEY, kind text NOT NULL DEFAULT 'feature', title text NOT NULL, body text NOT NULL DEFAULT '',
+  link text NOT NULL DEFAULT '', published boolean NOT NULL DEFAULT false, published_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), broadcast_at timestamptz);
+CREATE TABLE IF NOT EXISTS feedback (id text PRIMARY KEY, org_id text REFERENCES orgs(id) ON DELETE SET NULL, user_email text NOT NULL DEFAULT '', kind text NOT NULL,
+  title text NOT NULL, body text NOT NULL DEFAULT '', status text NOT NULL DEFAULT 'new', reply text NOT NULL DEFAULT '', context jsonb NOT NULL DEFAULT '{}'::jsonb,
+  votes int NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS feedback_kind ON feedback(kind, status);
+CREATE TABLE IF NOT EXISTS feedback_votes (feedback_id text NOT NULL REFERENCES feedback(id) ON DELETE CASCADE, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, PRIMARY KEY (feedback_id, org_id));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_name text;
+CREATE INDEX IF NOT EXISTS users_tg ON users(telegram_id);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS can_reset_until timestamptz;
+CREATE TABLE IF NOT EXISTS tg_logins (id text PRIMARY KEY, mode text NOT NULL, payload jsonb NOT NULL DEFAULT '{}'::jsonb, status text NOT NULL DEFAULT 'pending',
+  user_id text, telegram_id text, ip text NOT NULL DEFAULT '', ua text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), expires timestamptz NOT NULL);
+CREATE TABLE IF NOT EXISTS admin_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, action text NOT NULL, target text NOT NULL DEFAULT '', detail text NOT NULL DEFAULT '');
 `;
 
 let driver; // { query(sql, params) -> {rows}, tx(fn(q)) }
@@ -96,7 +113,7 @@ export async function createOrg(doc) {
 }
 
 export async function listOrgIds() {
-  const { rows } = await q('SELECT id FROM orgs ORDER BY created_at');
+  const { rows } = await q('SELECT id FROM orgs WHERE NOT suspended ORDER BY created_at');
   return rows.map((r) => r.id);
 }
 
@@ -108,12 +125,13 @@ export async function withOrg(orgId, fn) {
   await init();
   if (als.getStore()?.orgId === orgId) return fn(); // already inside this org
   return driver.tx(async (tq) => {
-    const { rows } = await tq('SELECT doc FROM orgs WHERE id = $1 FOR UPDATE', [orgId]);
+    const { rows } = await tq('SELECT doc, suspended FROM orgs WHERE id = $1 FOR UPDATE', [orgId]);
     if (!rows.length) { const e = new Error('Org not found'); e.status = 404; throw e; }
+    if (rows[0].suspended) { const e = new Error('គណនីនេះត្រូវបានផ្អាក។ សូមទាក់ទងក្រុមការងារផ្ទះយើង។'); e.status = 403; throw e; }
     const ctx = { orgId, doc: typeof rows[0].doc === 'string' ? JSON.parse(rows[0].doc) : rows[0].doc, dirty: false, q: tq, after: [] };
     const out = await als.run(ctx, fn);
     if (ctx.dirty) {
-      await tq('UPDATE orgs SET doc = $2::jsonb, updated_at = now() WHERE id = $1', [orgId, JSON.stringify(ctx.doc)]);
+      await tq('UPDATE orgs SET doc = $2::jsonb, updated_at = now(), last_active = now() WHERE id = $1', [orgId, JSON.stringify(ctx.doc)]);
       await syncLookups(tq, orgId, ctx.doc);
     }
     return out;
@@ -146,7 +164,7 @@ async function syncLookups(tq, orgId, doc) {
 }
 
 export async function findOrgs(kind, key) {
-  const { rows } = await q('SELECT org_id FROM lookups WHERE kind = $1 AND key = $2', [kind, String(key)]);
+  const { rows } = await q('SELECT l.org_id FROM lookups l JOIN orgs o ON o.id = l.org_id WHERE l.kind = $1 AND l.key = $2 AND NOT o.suspended', [kind, String(key)]);
   return rows.map((r) => r.org_id);
 }
 
@@ -169,10 +187,11 @@ export const setPassword = (userId, passHash) => q('UPDATE users SET pass_hash =
 export const setReset = (userId, hash, expires) => q('UPDATE users SET reset_hash = $2, reset_expires = $3 WHERE id = $1', [userId, hash, expires]);
 export const ownersOf = async (orgId) => (await q('SELECT id, email FROM users WHERE org_id = $1', [orgId])).rows;
 
-export async function createSession(userId, orgId, days) {
+export async function createSession(userId, orgId, days, { canReset = false } = {}) {
   const token = uid(24);
   await q('DELETE FROM sessions WHERE expires < now()');
-  await q('INSERT INTO sessions (id, user_id, org_id, expires) VALUES ($1, $2, $3, $4)', [sha256(token), userId, orgId, new Date(Date.now() + days * 86400000).toISOString()]);
+  await q('INSERT INTO sessions (id, user_id, org_id, expires, can_reset_until) VALUES ($1, $2, $3, $4, $5)',
+    [sha256(token), userId, orgId, new Date(Date.now() + days * 86400000).toISOString(), canReset ? new Date(Date.now() + 30 * 60000).toISOString() : null]);
   return token;
 }
 export async function getSession(token) {

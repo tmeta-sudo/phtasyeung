@@ -13,6 +13,7 @@ import { runDailyAll } from './scheduler.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEV = process.argv.includes('--dev');
 const PORT = +process.env.PORT || 5173;
+process.env.LOCAL_URL ||= `http://localhost:${PORT}`;
 
 await init();
 
