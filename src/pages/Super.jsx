@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Shield, Users, Building2, ReceiptText, Send, HardDrive, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap,
+  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap,
 } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { api } from '../api.js';
@@ -87,6 +87,7 @@ function Overview({ onTab }) {
           <div className="bar-row"><span>Platform bot</span><b>{s.runtime.platformBot ? '✅' : '⚠️ មិនទាន់កំណត់'}</b></div>
         </section>
       </div>
+      <BotHealth />
       <section className="card">
         <h3 className="sec-title"><Users size={17} /> ម្ចាស់ផ្ទះថ្មីៗ</h3>
         <div className="rows">
@@ -96,6 +97,45 @@ function Overview({ onTab }) {
         </div>
       </section>
     </>
+  );
+}
+
+function BotHealth() {
+  const { notify } = useApp();
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => api('GET', '/api/super/telegram').then(setD).catch((e) => setD({ error: e.message })), []);
+  useEffect(() => { load(); }, [load]);
+  async function fix() {
+    setBusy(true);
+    try {
+      const r = await api('POST', '/api/super/telegram/fix');
+      setD(r.diagnostics);
+      notify(r.ok ? (r.previousUrl ? `បានផ្លាស់ webhook ពី ${r.previousUrl}` : 'បានកំណត់ webhook ឡើងវិញ') : r.reason, !r.ok);
+    } catch (e) { notify(e.message, true); } finally { setBusy(false); }
+  }
+  if (!d) return null;
+  const healthy = d.configured && !d.error && d.urlOk && !d.lastError;
+  return (
+    <section className={'card bot-health ' + (healthy ? 'ok' : 'bad')}>
+      <h3 className="sec-title"><Send size={17} /> Telegram bot {d.username && <span className="muted">@{d.username}</span>}</h3>
+      {!d.configured && <p className="form-warn">TELEGRAM_BOT_TOKEN មិនទាន់កំណត់ក្នុង Vercel។</p>}
+      {d.error && <p className="form-error">Telegram: {d.error}</p>}
+      {d.configured && !d.error && (
+        <div className="bh-grid">
+          <span>របៀប</span><b>{d.mode === 'webhook' ? 'Webhook' : 'Polling (local)'}</b>
+          <span>Webhook</span><b className={d.urlOk ? 'ok-text' : 'danger-text'}>{d.url || 'មិនទាន់កំណត់'}</b>
+          {!d.urlOk && <><span>គួរតែជា</span><b>{d.expectedUrl}</b></>}
+          <span>Updates រង់ចាំ</span><b>{d.pending}</b>
+          {d.lastError && <><span>កំហុសចុងក្រោយ</span><b className="danger-text">{d.lastError} <small className="muted">{fmtDate(d.lastErrorAt)}</small></b></>}
+        </div>
+      )}
+      {d.url && !d.urlOk && <p className="tip">⚠️ Bot នេះកំពុងផ្ញើទៅកម្មវិធីផ្សេង។ បើ token ប្រើរួមជាមួយគម្រោងផ្សេង (ឧ. QRSafe) សូមបង្កើត bot ថ្មីសម្រាប់ផ្ទះយើង — bot មួយមាន webhook បានតែមួយ។</p>}
+      <div className="row-btns">
+        <button className="btn primary sm" onClick={fix} disabled={busy || !d.configured}><RefreshCw size={14} /> {busy ? '…' : 'ជួសជុល / កំណត់ webhook ឡើងវិញ'}</button>
+        <button className="btn ghost sm" onClick={load}>ពិនិត្យម្តងទៀត</button>
+      </div>
+    </section>
   );
 }
 

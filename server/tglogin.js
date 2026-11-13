@@ -18,7 +18,7 @@ const fail = (error, status = 400) => { throw Object.assign(new Error(error), { 
 const SESSION_DAYS = 30;
 
 // Injected by app.js to avoid an import cycle with telegram.js.
-let tg = { api: null, botName: async () => '', appUrl: () => '' };
+let tg = { api: null, botName: async () => '', appUrl: () => '', ensureWebhook: async () => ({}) };
 export const configureTgLogin = (deps) => { tg = { ...tg, ...deps }; };
 
 function device(ua = '') {
@@ -58,12 +58,13 @@ export function tgLoginRoutes(app) {
       if (!s) fail('សូមចូលគណនីជាមុនសិន', 401);
       payload.userId = s.user_id;
     }
+    await tg.ensureWebhook(); // the bot must be reachable before we send the user to it
     const token = crypto.randomBytes(18).toString('base64url');
     await q("DELETE FROM tg_logins WHERE expires < now() - interval '1 day'");
     await q('INSERT INTO tg_logins (id, mode, payload, ip, ua, expires) VALUES ($1, $2, $3::jsonb, $4, $5, $6)',
       [token, mode, JSON.stringify(payload), String(req.ip || '').slice(0, 64), String(req.headers['user-agent'] || '').slice(0, 300), new Date(Date.now() + TTL_MIN * 60000).toISOString()]);
     const bot = await tg.botName();
-    res.json({ token, bot, link: `https://t.me/${bot}?start=login-${token}`, expiresIn: TTL_MIN * 60 });
+    res.json({ token, bot, code: `login-${token}`, link: `https://t.me/${bot}?start=login-${token}`, expiresIn: TTL_MIN * 60 });
   });
 
   app.get('/api/auth/telegram/poll', async (req, res) => {

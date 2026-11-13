@@ -273,7 +273,8 @@ export async function handleUpdate(botKey, token, u) {
   const chatId = m.chat.id;
   const text = (m.text || '').trim();
   if (botKey === 'platform') {
-    if (text.startsWith('/start login-')) return botLoginStart(m, text.slice('/start login-'.length).trim());
+    const login = text.match(/^(?:\/start\s+)?login-([\w-]{16,})$/);
+    if (login) return botLoginStart(m, login[1]);
     if (['/recover', '/login', '🔑 ចូលគណនី'].includes(text)) return botRecover(m);
   }
   const reply = (html, extra) => api(token, 'sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', ...extra }).catch(() => {});
@@ -444,6 +445,52 @@ export async function registerAllWebhooks() {
   const { rows } = await q("SELECT id, doc->'settings'->'telegram'->>'token' AS token FROM orgs WHERE coalesce(doc->'settings'->'telegram'->>'token', '') <> ''");
   for (const r of rows) out.push(await registerBot(r.token, r.id).then(() => `${r.id}: ok`, (e) => `${r.id}: ${e.message}`));
   return out;
+}
+
+/**
+ * Make sure Telegram delivers the platform bot's updates to this deployment.
+ * Checked once per serverless instance (and before every Telegram sign-in), so the
+ * bot works right after deploying — no need to wait for the daily cron.
+ */
+let webhookCheck = null;
+export function ensurePlatformWebhook({ force = false } = {}) {
+  const base = appUrl();
+  if (!PLATFORM_TOKEN) return Promise.resolve({ ok: false, reason: 'TELEGRAM_BOT_TOKEN មិនទាន់កំណត់' });
+  if (!base.startsWith('https://')) return Promise.resolve({ ok: false, reason: 'polling (local)' });
+  if (webhookCheck && !force) return webhookCheck;
+  webhookCheck = (async () => {
+    const url = `${base}/api/telegram/webhook/platform`;
+    const before = await api(PLATFORM_TOKEN, 'getWebhookInfo');
+    if (force || before.url !== url) {
+      await registerBot(PLATFORM_TOKEN, 'platform');
+      if (before.url && before.url !== url) console.warn(`[telegram] platform bot webhook moved from ${before.url} to ${url}`);
+      return { ok: true, changed: true, previousUrl: before.url || '' };
+    }
+    return { ok: true, changed: false };
+  })().catch((e) => { webhookCheck = null; console.error('[telegram] webhook check failed', e.message); return { ok: false, reason: e.message }; });
+  return webhookCheck;
+}
+
+/** Live diagnostics for the super admin console. */
+export async function platformBotDiagnostics() {
+  if (!PLATFORM_TOKEN) return { configured: false };
+  const expectedUrl = appUrl() ? `${appUrl()}/api/telegram/webhook/platform` : '';
+  try {
+    const [me, info] = await Promise.all([api(PLATFORM_TOKEN, 'getMe'), api(PLATFORM_TOKEN, 'getWebhookInfo')]);
+    return {
+      configured: true,
+      username: me.username,
+      mode: appUrl().startsWith('https://') ? 'webhook' : 'polling',
+      expectedUrl,
+      url: info.url || '',
+      urlOk: !expectedUrl.startsWith('https://') || info.url === expectedUrl,
+      pending: info.pending_update_count || 0,
+      lastError: info.last_error_message || '',
+      lastErrorAt: info.last_error_date ? new Date(info.last_error_date * 1000).toISOString() : '',
+    };
+  } catch (e) {
+    return { configured: true, error: e.message, expectedUrl };
+  }
 }
 
 // ---------- long polling (local development) ----------

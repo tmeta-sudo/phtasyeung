@@ -4,7 +4,7 @@
 // data or ID documents.
 import { q, uid, rateLimit } from './store.js';
 import { requireOwner } from './auth.js';
-import { api as tgApi, appUrl } from './telegram.js';
+import { api as tgApi, appUrl, platformBotDiagnostics, ensurePlatformWebhook } from './telegram.js';
 import { nowInCambodia } from '../shared/khmer.js';
 
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -264,6 +264,14 @@ export function superRoutes(app) {
     await q('DELETE FROM feedback WHERE id = $1', [req.params.id]);
     await audit(req, 'feedback.delete', req.params.id);
     res.json({ ok: true });
+  });
+
+  app.get('/api/super/telegram', requireSuper, async (req, res) => res.json(await platformBotDiagnostics()));
+
+  app.post('/api/super/telegram/fix', requireSuper, async (req, res) => {
+    const r = await ensurePlatformWebhook({ force: true });
+    await audit(req, 'telegram.webhook', 'platform', r.previousUrl ? `from ${r.previousUrl}` : r.reason || 'ok');
+    res.json({ ...r, diagnostics: await platformBotDiagnostics() });
   });
 
   app.get('/api/super/audit', requireSuper, async (req, res) => {

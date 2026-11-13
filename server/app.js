@@ -9,7 +9,7 @@ import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './inv
 import { isBakongId } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, configureOwnBot,
-  webhookRoute, registerAllWebhooks, sendResetCode, appUrl,
+  webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
@@ -40,9 +40,11 @@ app.use('/api', (req, res, next) => {
   next();
 });
 app.use('/api', (req, res, next) => init().then(() => next(), next));
+// Serverless: register the platform bot's webhook on the first request of each instance.
+if (process.env.VERCEL) app.use('/api', (req, res, next) => { ensurePlatformWebhook().catch(() => {}); next(); });
 
 authRoutes(app, { sendResetCode, botName: () => platformBotName() });
-configureTgLogin({ api: tgApi, botName: platformBotName, appUrl });
+configureTgLogin({ api: tgApi, botName: platformBotName, appUrl, ensureWebhook: () => ensurePlatformWebhook() });
 tgLoginRoutes(app);
 webhookRoute(app);
 
