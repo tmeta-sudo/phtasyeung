@@ -47,6 +47,9 @@ CREATE INDEX IF NOT EXISTS push_subs_org ON push_subs(org_id);
 CREATE TABLE IF NOT EXISTS invites (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, role text NOT NULL, name text NOT NULL DEFAULT '',
   created_by text, created_at timestamptz NOT NULL DEFAULT now(), expires timestamptz NOT NULL, used_by text, used_at timestamptz);
 CREATE INDEX IF NOT EXISTS invites_org ON invites(org_id);
+CREATE TABLE IF NOT EXISTS errors (fingerprint text PRIMARY KEY, source text NOT NULL, message text NOT NULL, stack text NOT NULL DEFAULT '',
+  path text NOT NULL DEFAULT '', org_id text, ua text NOT NULL DEFAULT '', count int NOT NULL DEFAULT 1, resolved boolean NOT NULL DEFAULT false,
+  first_at timestamptz NOT NULL DEFAULT now(), last_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS admin_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, action text NOT NULL, target text NOT NULL DEFAULT '', detail text NOT NULL DEFAULT '');
 `;
 

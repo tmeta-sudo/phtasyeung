@@ -2,6 +2,7 @@
 // Super admins are listed in SUPER_ADMIN_EMAILS (comma separated). They see
 // aggregate statistics and account metadata only — never customers' personal
 // data or ID documents.
+import { listErrors, resolveError, resolveAllErrors } from './errors.js';
 import { q, uid, rateLimit } from './store.js';
 import { requireOwner } from './auth.js';
 import { api as tgApi, appUrl, platformBotDiagnostics, ensurePlatformWebhook } from './telegram.js';
@@ -272,6 +273,12 @@ export function superRoutes(app) {
     const r = await ensurePlatformWebhook({ force: true });
     await audit(req, 'telegram.webhook', 'platform', r.previousUrl ? `from ${r.previousUrl}` : r.reason || 'ok');
     res.json({ ...r, diagnostics: await platformBotDiagnostics() });
+  });
+
+  app.get('/api/super/errors', requireSuper, async (req, res) => res.json({ items: await listErrors({ resolved: req.query.resolved === '1' }) }));
+  app.post('/api/super/errors/resolve', requireSuper, async (req, res) => {
+    if (req.body?.all) await resolveAllErrors(); else await resolveError(req.body?.fingerprint);
+    res.json({ items: await listErrors() });
   });
 
   app.get('/api/super/audit', requireSuper, async (req, res) => {

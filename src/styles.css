@@ -1040,3 +1040,16 @@ fieldset > :not(legend) { clear: both; }
 .report-print h2 { font-size: 18px; margin: 0 0 12px; }
 @media (max-width: 720px) { .stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .report-grid { grid-template-columns: minmax(0, 1fr); } }
 .report-tbl td:first-child, .tbl td:last-child { white-space: nowrap; }
+.crash { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--page, var(--card)); }
+.crash-card { max-width: 420px; text-align: center; display: grid; gap: 12px; justify-items: center; background: var(--card); border-radius: 22px; padding: 28px 22px; }
+.crash-icon { font-size: 34px; }
+.crash-card h1 { font-size: 20px; margin: 0; }
+.crash-card p { color: var(--ink-2); margin: 0; font-size: 14px; }
+.err-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.err-row .row { width: 100%; text-align: left; display: flex; gap: 10px; align-items: flex-start; }
+.err-src { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 6px; background: var(--card-2); color: var(--ink-2); flex-shrink: 0; }
+.err-src.server { color: #c2410c; }
+.err-msg { display: grid; min-width: 0; }
+.err-msg b { overflow-wrap: anywhere; font-size: 13.5px; }
+.err-detail { display: grid; gap: 8px; padding: 0 12px 12px; }
+.err-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; background: var(--card-2); border-radius: 10px; padding: 10px; margin: 0; max-height: 280px; overflow: auto; }

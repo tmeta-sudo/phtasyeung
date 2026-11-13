@@ -1,4 +1,6 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { recordError, installProcessHandlers } from './errors.js';
+installProcessHandlers();
 import { staffView, MANAGER_SETTINGS } from './roles.js';
 import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
@@ -7,8 +9,8 @@ import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
 
 setDocMigrator(migrateDoc);
-import { withOrg, findOrgs, q, init, storeKind, setDocMigrator } from './store.js';
-import { authRoutes, requireOwner, verifyPassword } from './auth.js';
+import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
+import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
@@ -710,6 +712,17 @@ app.get('/api/account/export', ...owner((req, res) => {
   res.json(exportData());
 }));
 
+// ---------- browser error reports (no login needed: the portal reports too) ----------
+
+app.post('/api/errors', async (req, res) => {
+  if (!(await rateLimit(`err:${req.ip}`, 20, 600))) return res.json({ ok: true });
+  const b = req.body || {};
+  if (typeof b.message !== 'string' || !b.message.trim()) return res.json({ ok: true });
+  const s = await getSession(cookies(req).py_session).catch(() => null);
+  await recordError({ source: 'browser', message: b.message, stack: b.stack, path: b.path, orgId: s?.org_id || null, ua: req.headers['user-agent'] });
+  res.json({ ok: true });
+});
+
 // ---------- Web Push (landlord devices) ----------
 
 app.get('/api/push/key', requireOwner, async (req, res) => res.json({ key: await publicKey() }));
@@ -909,7 +922,10 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (err?.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'ឯកសារធំពេក (អតិបរមា ៤MB)' });
   const status = err?.status || 500;
-  if (status >= 500) console.error(err);
+  if (status >= 500) {
+    console.error(err);
+    recordError({ source: 'server', message: err?.message, stack: err?.stack, path: `${req.method} ${req.route?.path || req.path}`, orgId: req.session?.orgId, ua: req.headers['user-agent'] });
+  }
   res.status(status).json({ error: status >= 500 ? 'មានបញ្ហាខាងម៉ាស៊ីនមេ' : err.message });
 });
 
