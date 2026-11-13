@@ -28,3 +28,6 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# App data (database, uploaded ID cards) — private, never commit
+data/
