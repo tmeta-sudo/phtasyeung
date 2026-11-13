@@ -1,4 +1,5 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
@@ -383,7 +384,7 @@ app.post('/api/auto/run', ...owner(async (req) => {
 
 app.post('/api/telegram/test', ...owner(async (req) => {
   if (!db().settings.telegram.adminChats.length) fail('សូមភ្ជាប់ Telegram ម្ចាស់ផ្ទះជាមុនសិន');
-  const n = await notifyAdmins('✅ <b>សាកល្បង</b> — Bot ដំណើរការធម្មតា។');
+  const n = await notifyAdmins('✅ <b>សាកល្បង</b> — Bot ដំណើរការធម្មតា។', {}, { push: false });
   if (!n) fail('មិនអាចផ្ញើសារបាន។ សូមពិនិត្យ bot។');
   return adminState(req);
 }));
@@ -695,6 +696,23 @@ app.get('/api/account/export', ...owner((req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="phteah-yeung-${nowInCambodia().ymd}.json"`);
   res.json(exportData());
 }));
+
+// ---------- Web Push (landlord devices) ----------
+
+app.get('/api/push/key', requireOwner, async (req, res) => res.json({ key: await publicKey() }));
+app.post('/api/push/subscribe', requireOwner, async (req, res) => {
+  await subscribe(req.session.orgId, req.session.userId, req.body?.subscription, req.headers['user-agent']);
+  res.json({ ok: true, devices: await devices(req.session.orgId) });
+});
+app.post('/api/push/unsubscribe', requireOwner, async (req, res) => {
+  await unsubscribe(req.session.orgId, req.body?.endpoint);
+  res.json({ ok: true, devices: await devices(req.session.orgId) });
+});
+app.get('/api/push/devices', requireOwner, async (req, res) => res.json({ devices: await devices(req.session.orgId) }));
+app.post('/api/push/test', requireOwner, async (req, res) => {
+  const sent = await pushToOrg(req.session.orgId, { title: '🔔 ផ្ទះយើង', body: 'ការជូនដំណឹងដំណើរការល្អ ✅', url: '/', tag: 'test' });
+  res.json({ ok: true, sent });
+});
 
 // ---------- one-click backup & restore ----------
 

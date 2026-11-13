@@ -109,3 +109,33 @@ export async function landlord(base, { rooms = 1 } = {}) {
   for (let i = 1; i <= rooms; i += 1) st = await c.post('/api/tenants', { nameKm: `អតិថិជន ${i}`, nameEn: `Tenant ${i}`, roomId: `A${i}`, status: 'active' });
   return { c, state: st };
 }
+
+/** Fake browser push service: decrypts what web-push sends using the subscription's own keys. */
+export async function fakePushService() {
+  const crypto = await import('node:crypto');
+  const { default: ece } = await import('http_ece');
+  const received = [];
+  let status = 201;
+  const ecdh = crypto.createECDH('prime256v1'); ecdh.generateKeys();
+  const auth = crypto.randomBytes(16);
+  // Real push services are HTTPS-only, and so is web-push: use a throwaway self-signed cert.
+  const https = await import('node:https');
+  const { execFileSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'py-push-'));
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '1', '-subj', '/CN=127.0.0.1',
+    '-keyout', path.join(dir, 'k.pem'), '-out', path.join(dir, 'c.pem')], { stdio: 'ignore' });
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // test process only: trust the throwaway cert
+  const s = await new Promise((resolve) => {
+    const srv = https.createServer({ key: fs.readFileSync(path.join(dir, 'k.pem')), cert: fs.readFileSync(path.join(dir, 'c.pem')) }, handler);
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, url: `https://127.0.0.1:${srv.address().port}` }));
+  });
+  async function handler(req, res) {
+    const raw = await body(req);
+    let msg = null;
+    try { msg = JSON.parse(ece.decrypt(raw, { version: 'aes128gcm', privateKey: ecdh, authSecret: auth.toString('base64url') }).toString()); } catch (e) { msg = { error: e.message }; }
+    received.push({ path: req.url, vapid: String(req.headers.authorization || ''), msg });
+    res.statusCode = status; res.end();
+  }
+  const sub = (name = 'dev1') => ({ endpoint: `${s.url}/push/${name}`, keys: { p256dh: ecdh.getPublicKey().toString('base64url'), auth: auth.toString('base64url') } });
+  return { ...s, received, sub, setStatus: (n) => { status = n; } };
+}

@@ -991,3 +991,6 @@ fieldset > :not(legend) { clear: both; }
 .bakong-box div { display: grid; }
 .bakong-box b { color: var(--ink); font-size: 13.5px; }
 .bakong-box small { color: var(--ink-2); font-size: 12px; }
+.notify-card { display: grid; gap: 10px; }
+.notify-card .btn { justify-self: start; }
+.notify-hint { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; background: var(--card-2); border-radius: 12px; padding: 10px 12px; color: var(--ink-2); }

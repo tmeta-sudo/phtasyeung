@@ -157,7 +157,10 @@ function Admin({ onLogout }) {
     const t = setInterval(() => document.visibilityState === 'visible' && load(), 20000);
     const onFocus = () => document.visibilityState === 'visible' && load();
     document.addEventListener('visibilitychange', onFocus);
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onFocus); };
+    // A push notification arrived: refresh at once instead of waiting for the next poll.
+    const onSw = (e) => e.data?.type === 'refresh' && load();
+    navigator.serviceWorker?.addEventListener('message', onSw);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onFocus); navigator.serviceWorker?.removeEventListener('message', onSw); };
   }, [load]);
 
   /** Call an endpoint that returns the full admin state. Returns the response or null. */

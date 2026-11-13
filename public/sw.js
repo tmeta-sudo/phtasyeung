@@ -1,6 +1,6 @@
 // ផ្ទះយើង service worker — app shell offline, cache-first for hashed assets,
 // never caches /api (private data stays on the server).
-const VERSION = 'py-v3';
+const VERSION = 'py-v4';
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/portal-192.png'];
 
 self.addEventListener('install', (event) => {
@@ -63,4 +63,29 @@ async function staleWhileRevalidate(req) {
 
 self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') self.skipWaiting();
+});
+
+// ---------- Web Push ----------
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch { d = { title: 'ផ្ទះយើង', body: event.data?.text() || '' }; }
+  event.waitUntil((async () => {
+    // Tell open tabs to refresh their data right away.
+    for (const c of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) c.postMessage({ type: 'refresh' });
+    await self.registration.showNotification(d.title || 'ផ្ទះយើង', {
+      body: d.body || '', tag: d.tag, renotify: !!d.tag, icon: '/icons/icon-192.png', badge: '/icons/badge-96.png',
+      data: { url: d.url || '/' }, lang: 'km',
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const same = wins.find((w) => new URL(w.url).origin === self.location.origin);
+    if (same) { await same.focus(); if ('navigate' in same) await same.navigate(url).catch(() => {}); return; }
+    await self.clients.openWindow(url);
+  })());
 });

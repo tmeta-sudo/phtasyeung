@@ -40,6 +40,10 @@ CREATE INDEX IF NOT EXISTS users_tg ON users(telegram_id);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS can_reset_until timestamptz;
 CREATE TABLE IF NOT EXISTS tg_logins (id text PRIMARY KEY, mode text NOT NULL, payload jsonb NOT NULL DEFAULT '{}'::jsonb, status text NOT NULL DEFAULT 'pending',
   user_id text, telegram_id text, ip text NOT NULL DEFAULT '', ua text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), expires timestamptz NOT NULL);
+CREATE TABLE IF NOT EXISTS platform_kv (key text PRIMARY KEY, value text NOT NULL);
+CREATE TABLE IF NOT EXISTS push_subs (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, user_id text, sub jsonb NOT NULL,
+  ua text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS push_subs_org ON push_subs(org_id);
 CREATE TABLE IF NOT EXISTS admin_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, action text NOT NULL, target text NOT NULL DEFAULT '', detail text NOT NULL DEFAULT '');
 `;
 
