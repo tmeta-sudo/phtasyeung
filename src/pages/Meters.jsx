@@ -1,0 +1,87 @@
+import React, { useState } from 'react';
+import { Gauge, Droplets, Zap, Trash2, Check } from 'lucide-react';
+import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
+import { monthKm } from '../../shared/khmer.js';
+
+export default function Meters() {
+  const { state, call } = useApp();
+  const { n, k } = useFmt();
+  const [month, setMonth] = useState(state.today.ym);
+  const [rows, setRows] = useState({});
+  const tenantIn = (id) => state.tenants.find((t) => t.roomId === id && t.status === 'active');
+  const done = (id) => state.meters.find((m) => m.roomId === id && m.month === month);
+
+  async function saveRow(r) {
+    const v = rows[r.id] || {};
+    const res = await call('POST', '/api/meters', { roomId: r.id, month, water: v.water, electric: v.electric }, `បានកត់ ${r.id}`);
+    if (res) setRows((x) => ({ ...x, [r.id]: undefined }));
+  }
+
+  return (
+    <>
+      <div className="page-head">
+        <h1>កត់កុងទ័រ</h1>
+        <div className="head-actions"><input className="month-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="ខែ" /></div>
+      </div>
+      <p className="lunar-line">{monthKm(month, k)} · កត់រួច {n(state.rooms.filter((r) => done(r.id)).length)}/{n(state.rooms.length)} · វាយលេខថ្មី ហើយចុច Enter</p>
+      <section className="card">
+        <div className="meter-table">
+          <div className="mt-head"><span>បន្ទប់</span><span><Droplets size={14} /> ទឹក (m³)</span><span><Zap size={14} /> ភ្លើង (kWh)</span><span /></div>
+          {state.rooms.map((r) => {
+            const m = done(r.id);
+            const v = rows[r.id] || {};
+            const set = (key, val) => setRows((x) => ({ ...x, [r.id]: { ...v, [key]: val } }));
+            return (
+              <form key={r.id} className={'mt-row ' + (m ? 'done' : '')} onSubmit={(e) => { e.preventDefault(); saveRow(r); }}>
+                <span><b>{r.id}</b><small className="muted">{tenantIn(r.id)?.nameKm || 'ទំនេរ'}</small></span>
+                {m ? (
+                  <>
+                    <span>{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small></span>
+                    <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small></span>
+                    <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/${m.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="mt-input"><small>ចាស់ {n(r.water)}</small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} required aria-label={`ទឹក ${r.id}`} /></span>
+                    <span className="mt-input"><small>ចាស់ {n(r.electric)}</small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} required aria-label={`ភ្លើង ${r.id}`} /></span>
+                    <button className="icon-btn primary" aria-label="រក្សាទុក"><Check size={16} /></button>
+                  </>
+                )}
+              </form>
+            );
+          })}
+        </div>
+        {!state.rooms.length && <Empty icon={Gauge} title="មិនទាន់មានបន្ទប់" />}
+      </section>
+    </>
+  );
+}
+
+export function MeterModal({ roomId, onClose }) {
+  const { state, call } = useApp();
+  const { n } = useFmt();
+  const [f, setF] = useState({ roomId: roomId || state.rooms[0]?.id || '', month: state.today.ym, water: '', electric: '' });
+  const room = state.rooms.find((r) => r.id === f.roomId);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  async function submit(e) {
+    e.preventDefault();
+    if (await call('POST', '/api/meters', f, 'បានរក្សាទុកលេខកុងទ័រ')) onClose();
+  }
+  return (
+    <Modal title="កត់លេខកុងទ័រ" sub={room ? `បន្ទប់ ${room.id}` : ''} onClose={onClose}>
+      <form onSubmit={submit} className="stack-form">
+        <div className="form-grid">
+          <Field label="បន្ទប់"><select value={f.roomId} onChange={(e) => set('roomId', e.target.value)}>{state.rooms.map((r) => <option key={r.id} value={r.id}>{r.id}</option>)}</select></Field>
+          <Field label="ខែ"><input type="month" value={f.month} onChange={(e) => set('month', e.target.value)} required /></Field>
+          <Field label={`ទឹកថ្មី (ចាស់ ${n(room?.water ?? 0)} m³)`} hint={f.water !== '' ? `ប្រើ ${n(Math.max(0, f.water - (room?.water || 0)))} m³` : ''}>
+            <input type="number" inputMode="decimal" min={room?.water} step="any" value={f.water} onChange={(e) => set('water', e.target.value)} required autoFocus />
+          </Field>
+          <Field label={`ភ្លើងថ្មី (ចាស់ ${n(room?.electric ?? 0)} kWh)`} hint={f.electric !== '' ? `ប្រើ ${n(Math.max(0, f.electric - (room?.electric || 0)))} kWh` : ''}>
+            <input type="number" inputMode="decimal" min={room?.electric} step="any" value={f.electric} onChange={(e) => set('electric', e.target.value)} required />
+          </Field>
+        </div>
+        <div className="form-actions"><button type="button" className="btn ghost" onClick={onClose}>បោះបង់</button><button className="btn primary">រក្សាទុក</button></div>
+      </form>
+    </Modal>
+  );
+}
