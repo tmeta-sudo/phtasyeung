@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { UsersRound, UserPlus, Copy, Trash2, Send, Link2 } from 'lucide-react';
 import { useApp } from '../ui.jsx';
 import { api } from '../api.js';
+import { dateKm, nowInCambodia } from '../../shared/khmer.js';
 
 export const ROLE_KM = { owner: 'ម្ចាស់ផ្ទះ', manager: 'អ្នកគ្រប់គ្រង', staff: 'បុគ្គលិក' };
 const ROLE_HELP = {
@@ -57,7 +58,7 @@ export default function TeamCard() {
           {team.invites.map((i) => (
             <li key={i.id} className="pending">
               <span className="team-avatar"><Link2 size={14} /></span>
-              <span className="team-who"><b>{i.name || 'ការអញ្ជើញ'}</b><small>{ROLE_KM[i.role]} · រង់ចាំ · ផុតកំណត់ {new Date(i.expires).toLocaleDateString('km-KH')}</small></span>
+              <span className="team-who"><b>{i.name || 'ការអញ្ជើញ'}</b><small>{ROLE_KM[i.role]} · រង់ចាំ · ផុតកំណត់ {dateKm(nowInCambodia(new Date(i.expires)).ymd).replace('ថ្ងៃទី', '')}</small></span>
               <button className="icon-btn" title="លុបការអញ្ជើញ" onClick={() => run(() => api('DELETE', `/api/team/invites/${i.id}`))}><Trash2 size={15} /></button>
             </li>
           ))}

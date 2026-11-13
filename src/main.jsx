@@ -11,6 +11,12 @@ applyTheme();
 setupPwa();
 installErrorReporting();
 
+// App-like feel: no pinch / double-tap zoom (iOS ignores user-scalable=no, so block its gesture events).
+// Maps keep their own pinch-to-zoom.
+const onMap = (e) => e.target?.closest?.('.leaflet-container, .allow-zoom');
+document.addEventListener('gesturestart', (e) => { if (!onMap(e)) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches?.length > 1 && !onMap(e)) e.preventDefault(); }, { passive: false });
+
 const Admin = lazy(() => import('./App.jsx'));
 const Portal = lazy(() => import('./portal/Portal.jsx'));
 const Landing = lazy(() => import('./landing/Landing.jsx'));
@@ -43,6 +49,17 @@ function LandingGate() {
   return authed ? <Admin /> : <Landing />;
 }
 
+/** Tells the user when the phone loses internet (common on mobile data), and when it comes back. */
+function OfflineBar() {
+  const [online, setOnline] = React.useState(() => navigator.onLine !== false);
+  React.useEffect(() => {
+    const up = () => setOnline(true); const down = () => setOnline(false);
+    window.addEventListener('online', up); window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
+  return online ? null : <div className="offline-bar" role="status">📡 គ្មានអ៊ីនធឺណិត — នឹងធ្វើបច្ចុប្បន្នភាពពេលភ្ជាប់វិញ</div>;
+}
+
 /** A crash in one screen shows a friendly message instead of a blank page, and is reported. */
 class Boundary extends React.Component {
   constructor(props) { super(props); this.state = { failed: false }; }
@@ -64,4 +81,4 @@ class Boundary extends React.Component {
   }
 }
 
-createRoot(document.getElementById('root')).render(<Boundary><Root /></Boundary>);
+createRoot(document.getElementById('root')).render(<Boundary><OfflineBar /><Root /></Boundary>);

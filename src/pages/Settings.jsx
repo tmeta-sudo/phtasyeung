@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound, Send, Palette, Unlink, FileText } from 'lucide-react';
+import { AlarmClock, Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound, Send, Palette, Unlink, FileText } from 'lucide-react';
 import TelegramLogin from '../TelegramLogin.jsx';
 import { ThemePicker } from '../theme.jsx';
 import KhqrCard from '../settings/KhqrCard.jsx';
@@ -16,7 +16,7 @@ import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.j
 export default function SettingsPage() {
   const { state, call, notify, reload } = useApp();
   const { $ } = useFmt();
-  const [f, setF] = useState(() => ({ ...state.settings, khqr: { ...state.settings.khqr }, contract: { ...state.settings.contract } }));
+  const [f, setF] = useState(() => ({ ...state.settings, khqr: { ...state.settings.khqr }, contract: { ...state.settings.contract }, lateFee: { enabled: false, amount: 5, afterDays: 5, ...(state.settings.lateFee || {}) } }));
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const [pw, setPw] = useState({ current: '', next: '' });
   const [linking, setLinking] = useState(false);
@@ -56,6 +56,19 @@ export default function SettingsPage() {
             <Field label="អត្រាប្តូរប្រាក់ (៛ / $)" hint={`$100 = ${khr(toRiel(100, f.exchangeRate))}`}><input type="number" min="1" value={f.exchangeRate} onChange={(e) => set('exchangeRate', e.target.value)} /></Field>
             <Field label="ថ្ងៃផុតកំណត់បង់ (ថ្ងៃក្រោយចេញវិក្កយបត្រ)"><input type="number" min="0" max="60" value={f.dueDays} onChange={(e) => set('dueDays', e.target.value)} /></Field>
           </div>
+          <button className="btn primary">រក្សាទុក</button>
+        </form>
+        
+        <form className="card" onSubmit={(e) => save(e, { lateFee: f.lateFee })}>
+          <h3 className="sec-title"><AlarmClock size={17} /> ថ្លៃបង់យឺត (ស្វ័យប្រវត្តិ)</h3>
+          <label className="switch-row"><input type="checkbox" checked={!!f.lateFee?.enabled} onChange={(e) => set('lateFee', { ...f.lateFee, enabled: e.target.checked })} />
+            <span><b>បន្ថែមថ្លៃបង់យឺតដោយស្វ័យប្រវត្តិ</b><small>បន្ថែមម្តងគត់ ទៅវិក្កយបត្រដែលហួសកំណត់ ហើយ KHQR ធ្វើបច្ចុប្បន្នភាពតាមចំនួនថ្មី។</small></span></label>
+          {f.lateFee?.enabled && (
+            <div className="form-grid">
+              <Field label="ចំនួន ($)"><input type="number" min="0" step="0.5" value={f.lateFee.amount} onChange={(e) => set('lateFee', { ...f.lateFee, amount: e.target.value })} /></Field>
+              <Field label="បន្ទាប់ពីហួសកំណត់ (ថ្ងៃ)"><input type="number" min="0" max="60" value={f.lateFee.afterDays} onChange={(e) => set('lateFee', { ...f.lateFee, afterDays: e.target.value })} /></Field>
+            </div>
+          )}
           <button className="btn primary">រក្សាទុក</button>
         </form>
         </>)}

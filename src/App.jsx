@@ -313,12 +313,15 @@ function Admin({ onLogout }) {
             <button className={'nav-extra ' + (section === '/tasks' ? 'active' : '')} onClick={() => navigate('/tasks')}><Wrench size={16} /> <span>ការងារ</span></button>
             <button className={'nav-extra ' + (section === '/settings' ? 'active' : '')} onClick={() => navigate('/settings')}><Settings size={16} /> <span>ការកំណត់</span></button>
             <button className={'nav-extra ' + (section === '/feedback' ? 'active' : '')} onClick={() => navigate('/feedback')}><Lightbulb size={16} /> <span>មតិ និងសំណើ</span></button>
+            <button className={'nav-extra ' + (section === '/news' ? 'active' : '')} onClick={() => navigate('/news')}><Sparkles size={16} /> <span>មានអ្វីថ្មី</span></button>
+            {state.account.super && <button className={'nav-extra ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')}><Shield size={16} /> <span>អ្នកគ្រប់គ្រងប្រព័ន្ធ</span></button>}
           </nav>
+          {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
           <div className="topbar-right">
             <GlobalSearch />
-            <button className="icon-btn" onClick={ctx.openScanner} aria-label="ស្កេន QR" title="ស្កេន QR"><ScanLine size={18} /></button>
-            <NewsButton path={path} />
-            {state.account.super && <button className={'super-pill ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')} title="អ្នកគ្រប់គ្រងប្រព័ន្ធ"><Shield size={16} /> <span>Super</span></button>}
+            <button className="icon-btn hide-m" onClick={ctx.openScanner} aria-label="ស្កេន QR" title="ស្កេន QR"><ScanLine size={18} /></button>
+            <span className="hide-m"><NewsButton path={path} /></span>
+            {state.account.super && <button className={'hide-m super-pill ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')} title="អ្នកគ្រប់គ្រងប្រព័ន្ធ"><Shield size={16} /> <span>Super</span></button>}
             <Notifications />
             <ProfileMenu onLogout={async () => { await api('POST', '/api/auth/logout'); onLogout(); }} />
             <button className="icon-btn burger" onClick={() => setMenuOpen((v) => !v)} aria-label="ម៉ឺនុយ">{menuOpen ? <X size={18} /> : <Menu size={18} />}</button>
@@ -328,6 +331,7 @@ function Admin({ onLogout }) {
         <div className="crumbs">{state.settings.propertyName} <ChevronRight size={13} /> <b>{current[1]}</b></div>
         <main key={section}>{page}</main>
       </div>
+      <TabBar role={role} section={section} badges={badges} menuOpen={menuOpen} onMenu={() => setMenuOpen((v) => !v)} onScan={ctx.openScanner} k={state.settings.khmerNumerals} />
       {modal?.type === 'customer' && <CustomerForm tenant={modal.tenant} preset={modal.preset} onClose={() => setModal(null)} />}
       {modal?.type === 'meter' && <MeterModal roomId={modal.roomId} onClose={() => setModal(null)} />}
       {modal?.type === 'invoice' && <InvoiceModal id={modal.id} onClose={() => setModal(null)} />}
@@ -335,6 +339,27 @@ function Admin({ onLogout }) {
       {printing && <PrintPortal>{printing}</PrintPortal>}
       <Toast toast={toast} />
     </AppCtx.Provider>
+  );
+}
+
+/** Phone-only bottom tab bar: the four most used pages, a big scan button, and "more". */
+function TabBar({ role, section, badges, menuOpen, onMenu, onScan, k }) {
+  const tabs = role === 'staff'
+    ? [['/meters', 'កុងទ័រ', Gauge], ['/inbox', 'សារ', MessageSquare], null, ['/rooms', 'បន្ទប់', DoorOpen]]
+    : [['/', 'ដើម', HomeIcon], ['/customers', 'អតិថិជន', UsersRound], null, ['/invoices', 'វិក្កយបត្រ', ReceiptText]];
+  const current = role === 'staff' && section === '/' ? '/meters' : section;
+  return (
+    <nav className="tabbar" aria-label="ម៉ឺនុយខាងក្រោម">
+      {tabs.map((t) => (t ? (() => { const Icon = t[2]; return (
+        <button key={t[0]} className={!menuOpen && current === t[0] ? 'on' : ''} onClick={() => { if (menuOpen) onMenu(); navigate(t[0]); }}>
+          <Icon size={22} strokeWidth={current === t[0] ? 2.3 : 1.8} /><span>{t[1]}</span>
+          {!!badges[t[0]] && <em className="count">{num(badges[t[0]], k)}</em>}
+        </button>
+      ); })() : (
+        <button key="scan" className="tab-scan" onClick={onScan} aria-label="ស្កេន QR"><ScanLine size={24} /></button>
+      )))}
+      <button className={menuOpen ? 'on' : ''} onClick={onMenu} aria-expanded={menuOpen}>{menuOpen ? <X size={22} /> : <Menu size={22} />}<span>ច្រើនទៀត</span></button>
+    </nav>
   );
 }
 

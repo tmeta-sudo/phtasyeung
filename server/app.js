@@ -15,7 +15,7 @@ import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
-  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, configureOwnBot,
+  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, configureOwnBot,
   webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
@@ -141,6 +141,7 @@ async function fullState(req) {
     invoices: s.invoices.map(withQr),
     activities: s.activities,
     tickets: (s.tickets || []).slice(-300),
+    notices: (s.notices || []).slice(0, 30),
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
@@ -505,6 +506,13 @@ app.put('/api/settings', ...owner(async (req) => {
     if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
+  if (b.lateFee) {
+    s.lateFee = {
+      enabled: !!b.lateFee.enabled,
+      amount: Math.min(1000, money(b.lateFee.amount)),
+      afterDays: Math.min(60, Math.max(0, Math.round(+b.lateFee.afterDays || 0))),
+    };
+  }
   if (b.backup) {
     s.backup = { ...(s.backup || {}), telegramWeekly: !!b.backup.telegramWeekly, includeFiles: !!b.backup.includeFiles };
   }
@@ -712,6 +720,43 @@ app.get('/api/account/export', ...owner((req, res) => {
   res.json(exportData());
 }));
 
+// ---------- announcements to tenants (Telegram + portal) ----------
+
+const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function noticeTargets(target) {
+  const s = db();
+  const active = s.tenants.filter((t) => t.status === 'active' && t.roomId);
+  if (target?.type === 'building') return active.filter((t) => (s.rooms.find((r) => r.id === t.roomId)?.building || '') === String(target.value || ''));
+  if (target?.type === 'rooms') { const set = new Set((target.value || []).map(String)); return active.filter((t) => set.has(t.roomId)); }
+  return active;
+}
+
+app.post('/api/notices', ...owner(async (req) => {
+  const text = str(req.body?.text, 1000);
+  if (!text) fail('សូមសរសេរសេចក្តីជូនដំណឹង');
+  const target = ['all', 'building', 'rooms'].includes(req.body?.target?.type) ? req.body.target : { type: 'all' };
+  const people = noticeTargets(target);
+  if (!people.length) fail('មិនមានអតិថិជនក្នុងក្រុមនេះទេ');
+  const s = db();
+  const notice = { id: uid(), at: now(), text, target: { type: target.type, value: target.type === 'rooms' ? (target.value || []).slice(0, 500).map(String) : str(target.value, 60) }, rooms: people.map((t) => t.roomId), sent: 0, unlinked: 0 };
+  const html = `📢 <b>សេចក្តីជូនដំណឹង</b> — ${esc(s.settings.propertyName)}\n\n${esc(text)}`;
+  for (const t of people) {
+    if (!t.telegram?.chatId) { notice.unlinked += 1; continue; }
+    await notifyTenant(t, html);
+    notice.sent += 1;
+  }
+  s.notices = [notice, ...(s.notices || [])].slice(0, 50);
+  logEvent('admin', `បានផ្ញើសេចក្តីជូនដំណឹងទៅ ${people.length} នាក់`);
+  return { ...(await adminState(req)), result: { sent: notice.sent, unlinked: notice.unlinked, total: people.length } };
+}));
+
+app.delete('/api/notices/:id', ...owner(async (req) => {
+  db().notices = (db().notices || []).filter((n) => n.id !== req.params.id);
+  save();
+  return adminState(req);
+}));
+
 // ---------- browser error reports (no login needed: the portal reports too) ----------
 
 app.post('/api/errors', async (req, res) => {
@@ -833,6 +878,7 @@ async function portalState(t) {
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
     autoConfirm: bakongEnabled(),
+    notices: (s.notices || []).filter((n) => n.rooms?.includes(t.roomId) && Date.now() - new Date(n.at).getTime() < 60 * 86400000).slice(0, 5).map(({ id, at, text }) => ({ id, at, text })),
   };
 }
 

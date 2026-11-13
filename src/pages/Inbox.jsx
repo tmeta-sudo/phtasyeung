@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, Wrench, Send, Check, Loader, Inbox as InboxIcon, ArrowLeft } from 'lucide-react';
+import { MessageSquare, Wrench, Send, Check, Loader, Inbox as InboxIcon, ArrowLeft, Megaphone } from 'lucide-react';
+import NoticeModal from '../NoticeModal.jsx';
 import { useApp, useFmt, Avatar, tenantPhoto, Empty, navigate } from '../ui.jsx';
 
 const STATUS = { open: ['ថ្មី', 'warn'], progress: ['កំពុងដោះស្រាយ', 'muted'], done: ['រួចរាល់', 'ok'] };
@@ -10,6 +11,7 @@ export default function Inbox() {
   const { state, call } = useApp();
   const { n } = useFmt();
   const [filter, setFilter] = useState('open');
+  const [noticeOpen, setNoticeOpen] = useState(false);
   const [sel, setSel] = useState(() => new URLSearchParams(location.search).get('t') || '');
   const tickets = useMemo(() => [...(state.tickets || [])]
     .filter((t) => filter === 'all' || (filter === 'open' ? t.status !== 'done' : t.status === 'done'))
@@ -20,7 +22,8 @@ export default function Inbox() {
 
   return (
     <>
-      <div className="page-head"><h1>សារពីអតិថិជន</h1></div>
+      <div className="page-head"><h1>សារពីអតិថិជន</h1>{state.account.role !== 'staff' && <button className="btn primary" onClick={() => setNoticeOpen(true)}><Megaphone size={16} /> ផ្ញើសេចក្តីជូនដំណឹង</button>}</div>
+      {noticeOpen && <NoticeModal onClose={() => setNoticeOpen(false)} />}
       <p className="lunar-line">អតិថិជនផ្ញើតាម Telegram bot (🔧 ជួសជុល · 💬 សារ) — អ្នកឆ្លើយពីទីនេះ ឬពី Telegram ផ្ទាល់ (reply លើសារ)។</p>
       <div className={'inbox ' + (current ? 'has-sel' : '')}>
         <section className="card inbox-list">

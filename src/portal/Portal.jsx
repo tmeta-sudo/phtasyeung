@@ -86,6 +86,9 @@ export default function Portal({ token }) {
               <button onClick={() => setTab('bills')}><span><ReceiptText size={15} /></span>វិក្កយបត្រ</button>
               <button onClick={() => setTab('me')}><span><UserRound size={15} /></span>ខ្ញុំ</button>
             </div>
+            {data.notices?.length > 0 && (
+              <div className="pt-notices">{data.notices.map((x) => <div key={x.id} className="pt-notice"><span>📢</span><p>{x.text}<small>{dateKm(nowInCambodia(new Date(x.at)).ymd, k).replace('ថ្ងៃទី', '')}</small></p></div>)}</div>
+            )}
             <div className="pt-section-head"><b>បន្ទប់របស់ខ្ញុំ</b>{data.room && <small>{data.room.building}</small>}</div>
             <div className="pt-hero" style={cover}>
               <div className="pt-hero-in">
