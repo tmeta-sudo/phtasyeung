@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap,
+  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap, AlertOctagon,
 } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { api } from '../api.js';
 import { StatusTag, FB_STATUS, NEWS_KIND } from './Feedback.jsx';
 import { usd } from '../../shared/khmer.js';
 
-const TABS = [['overview', 'ទិដ្ឋភាពទូទៅ', Shield], ['landlords', 'ម្ចាស់ផ្ទះ', Users], ['news', 'ដំណឹង / មុខងារថ្មី', Megaphone], ['feedback', 'សំណើ & បញ្ហា', Lightbulb], ['audit', 'កំណត់ហេតុ', History]];
+const TABS = [['overview', 'ទិដ្ឋភាពទូទៅ', Shield], ['landlords', 'ម្ចាស់ផ្ទះ', Users], ['news', 'ដំណឹង / មុខងារថ្មី', Megaphone], ['feedback', 'សំណើ & បញ្ហា', Lightbulb], ['errors', 'កំហុសប្រព័ន្ធ', AlertOctagon], ['audit', 'កំណត់ហេតុ', History]];
 const bytes = (b) => (b > 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB');
 const ago = (d) => {
   if (!d) return 'មិនធ្លាប់';
@@ -32,6 +32,7 @@ export default function Super() {
       {tab === 'landlords' && <Landlords />}
       {tab === 'news' && <NewsAdmin />}
       {tab === 'feedback' && <FeedbackAdmin />}
+      {tab === 'errors' && <Errors />}
       {tab === 'audit' && <Audit />}
     </>
   );
@@ -297,6 +298,40 @@ function FeedbackAdmin() {
         </Modal>
       )}
     </>
+  );
+}
+
+function Errors() {
+  const { notify } = useApp();
+  const { n } = useFmt();
+  const [data, setData] = useLoad('/api/super/errors');
+  const [open, setOpen] = useState(null);
+  const resolve = (body) => api('POST', '/api/super/errors/resolve', body).then(() => setData()).catch((e) => notify(e.message, true));
+  return (
+    <section className="card">
+      <div className="err-head">
+        <p className="muted small">កំហុសពីម៉ាស៊ីនមេ និង browser របស់អ្នកប្រើ (ដាក់ជាក្រុម)។ មិនរក្សាទុកអ៊ីមែល លេខទូរស័ព្ទ ឬតំណសម្ងាត់ទេ។</p>
+        {data?.items.length > 0 && <button className="btn ghost sm" onClick={() => resolve({ all: true })}><CheckCircle2 size={14} /> ដោះស្រាយទាំងអស់</button>}
+      </div>
+      <div className="rows">
+        {data?.items.map((e) => (
+          <div key={e.fingerprint} className="err-row">
+            <button className="row" onClick={() => setOpen(open === e.fingerprint ? null : e.fingerprint)}>
+              <span className={'err-src ' + e.source}>{e.source === 'browser' ? 'Browser' : 'Server'}</span>
+              <span className="err-msg"><b>{e.message}</b><small className="muted">{e.path || '—'} · {n(e.count)} ដង · ចុងក្រោយ {fmtDate(e.last_at)}</small></span>
+            </button>
+            {open === e.fingerprint && (
+              <div className="err-detail">
+                <pre>{e.stack || '(no stack)'}</pre>
+                <small className="muted">ដំបូង {fmtDate(e.first_at)} · {e.ua}{e.org_id ? ` · org ${e.org_id}` : ''}</small>
+                <button className="btn ghost sm" onClick={() => resolve({ fingerprint: e.fingerprint })}><CheckCircle2 size={14} /> បានដោះស្រាយ</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {data && !data.items.length && <Empty icon={CheckCircle2} title="គ្មានកំហុសទេ 🎉" />}
+    </section>
   );
 }
 

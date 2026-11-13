@@ -9,6 +9,12 @@ const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(
 
 export default function Home() {
   const { state, openInvoice, openScanner, call } = useApp();
+  // Quietly ask Bakong about unpaid KHQRs when the dashboard opens (at most every 2 minutes).
+  React.useEffect(() => {
+    if (!state.settings.bakong?.enabled || !state.invoices.some((i) => i.status !== 'paid')) return;
+    try { if (Date.now() - +(sessionStorage.getItem('py-bakong-check') || 0) < 120000) return; sessionStorage.setItem('py-bakong-check', String(Date.now())); } catch { /* ignore */ }
+    call('POST', '/api/invoices/check-payments', {}, (r) => (r.result.paid ? `🤖 Bakong: បានទទួលប្រាក់ ${r.result.paid} វិក្កយបត្រ` : null));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { n, $, k } = useFmt();
   const { today, settings } = state;
   const ym = today.ym;
@@ -53,6 +59,11 @@ export default function Home() {
     for (const i of state.invoices.filter((x) => x.status === 'claimed')) needs.push({ key: i.id, name: i.name, sub: `${i.roomId} · ${$(i.total)} · ${i.claims?.at(-1)?.source === 'portal' ? 'គេហទំព័រ' : 'Telegram'}`, pill: 'បញ្ជាក់', tone: 'blue', photo: tenantPhoto(state.tenants.find((t) => t.id === i.tenantId)), go: () => openInvoice(i.id) });
     for (const i of state.invoices.filter((x) => x.overdue && x.status === 'unpaid').slice(0, 4)) needs.push({ key: 'o' + i.id, name: i.name, sub: `ហួសកំណត់ · ${i.roomId} · ${$(i.total)}`, pill: 'រំលឹក', tone: 'dark', go: () => openInvoice(i.id) });
     for (const t of active.filter((x) => !x.files?.idFront).slice(0, 4)) needs.push({ key: 'id' + t.id, name: t.nameKm || t.nameEn, sub: `ខ្វះរូបអត្តសញ្ញាណប័ណ្ណ · ${t.roomId || '—'}`, pill: 'ពិនិត្យ', tone: 'light', photo: tenantPhoto(t), go: () => navigate('/customers/' + t.id) });
+    {
+      const bk = state.settings.backup || {};
+      const last = Math.max(+new Date(bk.lastAt || 0) || 0, +new Date(bk.lastTelegramAt || 0) || 0);
+      if (state.account.role === 'owner' && state.tenants.length && Date.now() - last > 30 * 86400000) needs.push({ key: 'backup', name: 'បម្រុងទុកទិន្នន័យ', sub: last ? `ចុងក្រោយ ${new Date(last).toLocaleDateString('km-KH')}` : 'មិនទាន់ធ្លាប់បម្រុងទុក · ចុចម្តងគត់', pill: 'បម្រុង', tone: 'blue', go: () => navigate('/settings#backup') });
+    }
     for (const t of active.filter((x) => !x.telegram?.chatId).slice(0, 3)) needs.push({ key: 'tg' + t.id, name: t.nameKm || t.nameEn, sub: `មិនទាន់ភ្ជាប់ Telegram · ${t.roomId || '—'}`, pill: 'ភ្ជាប់', tone: 'light', photo: tenantPhoto(t), go: () => navigate('/customers/' + t.id) });
     const unsent = inv.filter((i) => !i.sentAt && i.status !== 'paid');
     const roomsWithoutInvoice = active.filter((t) => t.roomId && !inv.some((i) => i.roomId === t.roomId));

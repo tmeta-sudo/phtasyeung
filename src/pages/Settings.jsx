@@ -6,6 +6,9 @@ import KhqrCard from '../settings/KhqrCard.jsx';
 import LocationCard from '../settings/LocationCard.jsx';
 import { PLACEHOLDERS } from '../contract.js';
 import StorageCard from '../settings/StorageCard.jsx';
+import BackupCard from '../settings/BackupCard.jsx';
+import NotifyCard from '../settings/NotifyCard.jsx';
+import TeamCard from '../settings/TeamCard.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
 import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.js';
@@ -18,6 +21,8 @@ export default function SettingsPage() {
   const [pw, setPw] = useState({ current: '', next: '' });
   const [linking, setLinking] = useState(false);
   const acct = state.account;
+  const role = acct.role || 'owner';
+  const isOwner = role === 'owner';
   const recovered = new URLSearchParams(location.search).has('recovered');
   const needCurrent = acct.hasPassword && !acct.canReset;
   const save = (e, part) => { e?.preventDefault(); call('PUT', '/api/settings', part, 'បានរក្សាទុកការកំណត់'); };
@@ -28,6 +33,7 @@ export default function SettingsPage() {
     <>
       <div className="page-head"><h1>ការកំណត់</h1></div>
       <div className="settings-grid">
+        {isOwner && (<>
         <form className="card" onSubmit={(e) => save(e, { propertyName: f.propertyName, propertyNameEn: f.propertyNameEn, address: f.address, phone: f.phone, coverUrl: f.coverUrl })}>
           <h3 className="sec-title"><Building2 size={17} /> អចលនទ្រព្យ</h3>
           <div className="form-grid">
@@ -39,7 +45,9 @@ export default function SettingsPage() {
           </div>
           <button className="btn primary">រក្សាទុក</button>
         </form>
+        </>)}
 
+        {role !== 'staff' && (<>
         <form className="card" onSubmit={(e) => save(e, { waterRate: f.waterRate, electricRate: f.electricRate, exchangeRate: f.exchangeRate, dueDays: f.dueDays })}>
           <h3 className="sec-title"><Droplets size={17} /> តម្លៃ និងអត្រាប្តូរប្រាក់</h3>
           <div className="form-grid">
@@ -50,7 +58,9 @@ export default function SettingsPage() {
           </div>
           <button className="btn primary">រក្សាទុក</button>
         </form>
+        </>)}
 
+        {isOwner && (<>
         <LocationCard />
 
         <KhqrCard />
@@ -77,6 +87,7 @@ export default function SettingsPage() {
           </Field>
           <button className="btn primary">រក្សាទុក</button>
         </form>
+        </>)}
 
         <form className={'card ' + (recovered ? 'highlight' : '')} id="password" onSubmit={async (e) => { e.preventDefault(); try { await api('POST', '/api/auth/password', pw); setPw({ current: '', next: '' }); notify('បានរក្សាទុកពាក្យសម្ងាត់'); reload(); } catch (err) { notify(err.message, true); } }}>
           <h3 className="sec-title"><Lock size={17} /> ពាក្យសម្ងាត់</h3>
@@ -115,6 +126,11 @@ export default function SettingsPage() {
           <p className="muted small">«តាមប្រព័ន្ធ» ប្តូរពន្លឺ/ងងឹតតាមការកំណត់ទូរស័ព្ទ ឬកុំព្យូទ័ររបស់អ្នក។</p>
         </div>
 
+        <NotifyCard />
+        {isOwner && (<>
+        <TeamCard />
+        <BackupCard />
+
         <StorageCard />
 
         <div className="card">
@@ -146,6 +162,7 @@ export default function SettingsPage() {
             <button className="btn primary" onClick={() => call('POST', '/api/import-legacy', legacy, (r) => `បាននាំចូល ${r.result.rooms} បន្ទប់ · ${r.result.tenants} អតិថិជន · ${r.result.invoices} វិក្កយបត្រ`)}>នាំចូល</button>
           </div>
         )}
+        </>)}
       </div>
     </>
   );

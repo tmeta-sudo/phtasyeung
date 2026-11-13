@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Send, Download, Printer, Check, Trash2, BellRing, ReceiptText, Undo2, Pencil, Palette, Image as ImageIcon } from 'lucide-react';
+import { Plus, Send, Download, Printer, Check, Trash2, BellRing, ReceiptText, Undo2, Pencil, Palette, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { navigate } from '../ui.jsx';
 import { useApp, useFmt, Modal, StatusPill, Empty, invStatus } from '../ui.jsx';
 import InvoiceDoc, { invoiceProperty } from '../InvoiceDoc.jsx';
@@ -44,6 +44,7 @@ export default function Invoices() {
         <div className="head-actions">
           <input className="month-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="ខែ" />
           <button className="btn ghost" onClick={() => navigate('/invoices/design')}><Palette size={16} /> រចនា</button>
+          {state.settings.bakong?.enabled && <button className="btn ghost" onClick={() => call('POST', '/api/invoices/check-payments', { force: true }, (r) => `Bakong: ពិនិត្យ ${n(r.result.checked)} · បានបង់ ${n(r.result.paid)}`)}><RefreshCw size={16} /> Bakong</button>}
           <button className="btn ghost" onClick={exportCSV} disabled={!all.length}><Download size={16} /> Excel</button>
           <button className="btn ghost" onClick={() => print(<div className="print-stack">{all.map((i) => <InvoiceDoc key={i.id} inv={i} property={property} khmer={k} design={design} />)}</div>)} disabled={!all.length}><Printer size={16} /> បោះពុម្ពទាំងអស់</button>
           <button className="btn primary" onClick={() => call('POST', '/api/invoices/generate', { month, send: botOk }, (r) => `បានបង្កើត ${n(r.result.created)}${r.result.sent ? ` · ផ្ញើ Telegram ${n(r.result.sent.ok)}` : ''}`)}>

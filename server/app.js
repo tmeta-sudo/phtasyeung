@@ -1,11 +1,16 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { recordError, installProcessHandlers } from './errors.js';
+installProcessHandlers();
+import { staffView, MANAGER_SETTINGS } from './roles.js';
+import { teamRoutes } from './team.js';
+import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
 
 setDocMigrator(migrateDoc);
-import { withOrg, findOrgs, q, init, storeKind, setDocMigrator } from './store.js';
-import { authRoutes, requireOwner, verifyPassword } from './auth.js';
+import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
+import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
@@ -15,6 +20,8 @@ import {
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
+import { exportData, sendBackupToTelegram, restoreData, cleanupOrphanFiles } from './backup.js';
+import { checkInvoice, checkAllUnpaid, bakongEnabled } from './bakong.js';
 import {
   r2Enabled, googleEnabled, googleExchange, googleEmail, googleCreateFolder, googleUpload, migrateBlobs, storageSummary, seal, unseal, deleteBlob,
 } from './blob.js';
@@ -25,7 +32,10 @@ import { normalizePhone, nowInCambodia, kmDigits, usd as usdFmt } from '../share
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
 app.disable('x-powered-by');
-app.use(express.json({ limit: '2mb' }));
+// Restores carry a whole landlord's data; everything else stays small.
+const jsonSmall = express.json({ limit: '2mb' });
+const jsonLarge = express.json({ limit: '12mb' });
+app.use((req, res, next) => (req.path === '/api/backup/restore' ? jsonLarge : jsonSmall)(req, res, next));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
@@ -49,6 +59,7 @@ app.use('/api', (req, res, next) => init().then(() => next(), next));
 if (process.env.VERCEL) app.use('/api', (req, res, next) => { ensurePlatformWebhook().catch(() => {}); next(); });
 
 authRoutes(app, { sendResetCode, botName: () => platformBotName() });
+teamRoutes(app);
 configureTgLogin({ api: tgApi, botName: platformBotName, appUrl, ensureWebhook: () => ensurePlatformWebhook() });
 tgLoginRoutes(app);
 webhookRoute(app);
@@ -93,11 +104,13 @@ async function publicSettings() {
       adminChats: telegram.adminChats,
       adminLinkCode: telegram.adminLinkCode,
     },
+    khqr: { ...rest.khqr, bakongToken: undefined, ownBakongToken: !!rest.khqr.bakongToken },
     khqrReady: isBakongId(rest.khqr.accountId),
+    bakong: { enabled: bakongEnabled(), platform: !!process.env.BAKONG_TOKEN, error: rest.khqr.bakongError || '' },
   };
 }
 
-const withQr = (inv) => ({ ...inv, khqr: khqrOf(inv), overdue: isOverdue(inv) });
+const withQr = (inv) => { const khqr = khqrOf(inv); const { khqrStr, khqrSig, khqrExp, ...rest } = inv; return { ...rest, khqr, overdue: isOverdue(inv) }; };
 
 async function accountInfo(req) {
   if (!req?.session) return {};
@@ -110,10 +123,16 @@ async function accountInfo(req) {
     canReset: !!req.session.canReset,
     telegram: u.telegram_id ? { name: u.telegram_name || '' } : null,
     platformLogin: !!process.env.TELEGRAM_BOT_TOKEN,
+    role: req.session.role || 'owner',
   };
 }
 
 async function adminState(req) {
+  const st = await fullState(req);
+  return req?.session?.role === 'staff' ? staffView(st) : st;
+}
+
+async function fullState(req) {
   const s = db();
   return {
     rooms: s.rooms,
@@ -354,6 +373,12 @@ app.post('/api/invoices/:id/send', ...owner(async (req) => {
   return adminState(req);
 }));
 
+/** Ask Bakong about unpaid invoices (dashboard load, button). */
+app.post('/api/invoices/check-payments', ...owner(async (req) => {
+  const r = await checkAllUnpaid({ limit: 30, minIntervalMs: req.body?.force ? 0 : 60000 });
+  return { ...(await adminState(req)), result: r };
+}));
+
 app.post('/api/invoices/send-month', ...owner(async (req) => {
   const m = month(req.body?.month) || nowInCambodia().ym;
   const list = db().invoices.filter((i) => i.month === m && i.status !== 'paid' && (req.body?.all || !i.sentAt));
@@ -370,7 +395,7 @@ app.post('/api/auto/run', ...owner(async (req) => {
 
 app.post('/api/telegram/test', ...owner(async (req) => {
   if (!db().settings.telegram.adminChats.length) fail('សូមភ្ជាប់ Telegram ម្ចាស់ផ្ទះជាមុនសិន');
-  const n = await notifyAdmins('✅ <b>សាកល្បង</b> — Bot ដំណើរការធម្មតា។');
+  const n = await notifyAdmins('✅ <b>សាកល្បង</b> — Bot ដំណើរការធម្មតា។', {}, { push: false });
   if (!n) fail('មិនអាចផ្ញើសារបាន។ សូមពិនិត្យ bot។');
   return adminState(req);
 }));
@@ -392,6 +417,10 @@ app.delete('/api/telegram/admins/:chatId', ...owner((req) => {
 app.put('/api/settings', ...owner(async (req) => {
   const s = db().settings;
   const b = req.body || {};
+  if (req.session.role !== 'owner') {
+    const blocked = Object.keys(b).filter((k) => !MANAGER_SETTINGS.has(k));
+    if (blocked.length) fail('មានតែម្ចាស់ផ្ទះទេដែលអាចកែការកំណត់នេះ', 403);
+  }
   Object.assign(s, {
     propertyName: str(b.propertyName ?? s.propertyName, 80) || s.propertyName,
     propertyNameEn: str(b.propertyNameEn ?? s.propertyNameEn, 80),
@@ -413,9 +442,9 @@ app.put('/api/settings', ...owner(async (req) => {
       // Uploaded picture of the landlord's own KHQR, decoded in the browser.
       const parsed = parseKhqrUpload(b.khqr.raw);
       if (!parsed) fail('មិនមែនជា KHQR ត្រឹមត្រូវ។ សូមថតរូប QR ពីកម្មវិធីធនាគាររបស់អ្នក (ABA, ACLEDA, Wing…)');
-      s.khqr = parsed;
+      s.khqr = { ...parsed, bakongToken: s.khqr.bakongToken };
     } else {
-      s.khqr = { type: 'individual', accountId: id, merchantName: str(b.khqr.merchantName, 25), city: str(b.khqr.city, 15) || 'Phnom Penh', source: 'manual' };
+      s.khqr = { type: 'individual', accountId: id, merchantName: str(b.khqr.merchantName, 25), city: str(b.khqr.city, 15) || 'Phnom Penh', source: 'manual', bakongToken: s.khqr.bakongToken };
     }
   }
   if (b.auto) {
@@ -470,6 +499,14 @@ app.put('/api/settings', ...owner(async (req) => {
       prepaidMonths: Math.min(12, Math.max(0, Math.round(+b.contract.prepaidMonths || 0))),
       template: str(b.contract.template, 12000) || s.contract.template,
     };
+  }
+  if (typeof b.bakongToken === 'string') {
+    const tok = b.bakongToken.trim();
+    if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
+    s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
+  }
+  if (b.backup) {
+    s.backup = { ...(s.backup || {}), telegramWeekly: !!b.backup.telegramWeekly, includeFiles: !!b.backup.includeFiles };
   }
   if (b.rotateAdminLink) s.telegram.adminLinkCode = uid(6);
   save();
@@ -671,11 +708,59 @@ app.delete('/api/activities/:id', ...owner((req) => {
 // ---------- account: export & delete (the landlord owns their data) ----------
 
 app.get('/api/account/export', ...owner((req, res) => {
-  const { settings, ...rest } = db();
-  const { token, ...telegram } = settings.telegram;
   res.setHeader('Content-Disposition', `attachment; filename="phteah-yeung-${nowInCambodia().ymd}.json"`);
-  res.json({ exportedAt: now(), ...rest, settings: { ...settings, telegram } });
+  res.json(exportData());
 }));
+
+// ---------- browser error reports (no login needed: the portal reports too) ----------
+
+app.post('/api/errors', async (req, res) => {
+  if (!(await rateLimit(`err:${req.ip}`, 20, 600))) return res.json({ ok: true });
+  const b = req.body || {};
+  if (typeof b.message !== 'string' || !b.message.trim()) return res.json({ ok: true });
+  const s = await getSession(cookies(req).py_session).catch(() => null);
+  await recordError({ source: 'browser', message: b.message, stack: b.stack, path: b.path, orgId: s?.org_id || null, ua: req.headers['user-agent'] });
+  res.json({ ok: true });
+});
+
+// ---------- Web Push (landlord devices) ----------
+
+app.get('/api/push/key', requireOwner, async (req, res) => res.json({ key: await publicKey() }));
+app.post('/api/push/subscribe', requireOwner, async (req, res) => {
+  await subscribe(req.session.orgId, req.session.userId, req.body?.subscription, req.headers['user-agent']);
+  res.json({ ok: true, devices: await devices(req.session.orgId) });
+});
+app.post('/api/push/unsubscribe', requireOwner, async (req, res) => {
+  await unsubscribe(req.session.orgId, req.body?.endpoint);
+  res.json({ ok: true, devices: await devices(req.session.orgId) });
+});
+app.get('/api/push/devices', requireOwner, async (req, res) => res.json({ devices: await devices(req.session.orgId) }));
+app.post('/api/push/test', requireOwner, async (req, res) => {
+  const sent = await pushToOrg(req.session.orgId, { title: '🔔 ផ្ទះយើង', body: 'ការជូនដំណឹងដំណើរការល្អ ✅', url: '/', tag: 'test', roles: [req.session.role] });
+  res.json({ ok: true, sent });
+});
+
+// ---------- one-click backup & restore ----------
+
+app.post('/api/backup/telegram', ...owner(async (req) => {
+  const r = await sendBackupToTelegram({ includeFiles: !!req.body?.includeFiles });
+  if (!r.ok) fail(r.error);
+  return { ...(await adminState(req)), result: r };
+}));
+
+/** The browser finished downloading a backup file. */
+app.post('/api/backup/downloaded', ...owner((req) => {
+  db().settings.backup = { ...(db().settings.backup || {}), lastAt: now(), lastDownloadAt: now() };
+  save();
+  return adminState(req);
+}));
+
+app.post('/api/backup/restore', ...owner(async (req) => {
+  const uploads = await restoreData(req.body?.data);
+  return { ...(await adminState(req)), result: { uploads } };
+}));
+
+app.post('/api/backup/restore/finish', ...owner(async (req) => ({ ...(await adminState(req)), result: await cleanupOrphanFiles() })));
 
 app.post('/api/account/delete', requireOwner, async (req, res) => {
   const { rows } = await q(`SELECT u.pass_hash, o.doc->'settings'->>'propertyName' AS name FROM users u JOIN orgs o ON o.id = u.org_id WHERE u.id = $1`, [req.session.userId]);
@@ -747,6 +832,7 @@ async function portalState(t) {
     lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths } : null,
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
+    autoConfirm: bakongEnabled(),
   };
 }
 
@@ -795,10 +881,18 @@ app.get('/api/portal/:token/files/:slot', ...portal((req, res, t, org) => {
   return sendStored(res, org, t.files?.[req.params.slot]);
 }));
 
+/** Polled by the portal while the KHQR is on screen: confirms automatically once Bakong sees the payment. */
+app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  const r = await checkInvoice(inv, { minIntervalMs: 4000 });
+  return { status: inv.status, bakong: r !== 'skip' };
+}));
+
 app.post('/api/portal/:token/invoices/:id/claim', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
   if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
-  if (inv.status === 'unpaid') await claimPayment(inv, 'portal');
+  if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') await claimPayment(inv, 'portal');
   return portalState(t);
 }));
 
@@ -828,7 +922,10 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (err?.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'ឯកសារធំពេក (អតិបរមា ៤MB)' });
   const status = err?.status || 500;
-  if (status >= 500) console.error(err);
+  if (status >= 500) {
+    console.error(err);
+    recordError({ source: 'server', message: err?.message, stack: err?.stack, path: `${req.method} ${req.route?.path || req.path}`, orgId: req.session?.orgId, ua: req.headers['user-agent'] });
+  }
   res.status(status).json({ error: status >= 500 ? 'មានបញ្ហាខាងម៉ាស៊ីនមេ' : err.message });
 });
 

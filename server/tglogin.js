@@ -218,7 +218,7 @@ export async function botRecover(m) {
 /** Link the Telegram user to the owner account(s) of an org (called when the owner scans their owner QR). */
 export async function linkTelegramToOrgOwners(orgId, tgUser) {
   const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || '';
-  await q('UPDATE users SET telegram_id = $2, telegram_name = $3 WHERE org_id = $1 AND telegram_id IS NULL', [orgId, String(tgUser.id), name]);
+  await q("UPDATE users SET telegram_id = $2, telegram_name = $3 WHERE org_id = $1 AND role = 'owner' AND telegram_id IS NULL", [orgId, String(tgUser.id), name]);
 }
 
 export { uid };

@@ -49,6 +49,7 @@ export function defaultSettings(name = 'ផ្ទះរបស់ខ្ញុំ'
     ownerName: '',
     buildings: [],
     storage: { mode: 'database' },
+    backup: { telegramWeekly: true, includeFiles: false, lastAt: '', lastTelegramAt: '' },
   };
 }
 
@@ -114,7 +115,7 @@ export function migrateDoc(doc) {
   const base = newOrgDoc({ name: doc.settings?.propertyName || 'ផ្ទះរបស់ខ្ញុំ' });
   for (const k of Object.keys(base)) if (doc[k] === undefined) doc[k] = base[k];
   doc.settings = { ...base.settings, ...doc.settings };
-  for (const k of ['khqr', 'telegram', 'auto', 'location', 'invoiceDesign', 'contract', 'storage']) doc.settings[k] = { ...base.settings[k], ...(doc.settings[k] || {}) };
+  for (const k of ['khqr', 'telegram', 'auto', 'location', 'invoiceDesign', 'contract', 'storage', 'backup']) doc.settings[k] = { ...base.settings[k], ...(doc.settings[k] || {}) };
   doc.counters = { ...base.counters, ...doc.counters };
   delete doc.auth;
   doc.version = 5;

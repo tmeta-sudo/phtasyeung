@@ -26,7 +26,7 @@ const yymmdd = (s, future) => {
 
 /** TD1 MRZ (3 × 30) as printed on the back of the Khmer ID card. */
 export function parseMrz(lines) {
-  const cand = lines.map((l) => mrzClean(l.text || l)).filter((l) => MRZ_CHARS.test(l) && (l.match(/</g) || []).length >= 2);
+  const cand = lines.map((l) => mrzClean(String(typeof l === "string" ? l : l.text ?? ""))).filter((l) => MRZ_CHARS.test(l) && (l.match(/</g) || []).length >= 2);
   if (cand.length < 2) return null;
   const l1 = cand.find((l) => /^I[A-Z<]KHM/.test(l)) || cand[0];
   const l2 = cand.find((l) => /^\d{7}[MF<]\d{7}/.test(l)) || cand.find((l) => /\d{6}.[MF]\d{6}/.test(l));
@@ -63,7 +63,7 @@ const toDate = (d, m, y) => `${y}-${String(m).padStart(2, '0')}-${String(d).padS
 
 /** Front side (Khmer): name, Latin name, ID number, dates, sex, address. */
 export function parseFront(lines) {
-  const texts = lines.map((l) => (l.text || l).trim()).filter(Boolean);
+  const texts = lines.map((l) => String(typeof l === "string" ? l : l.text ?? "").trim()).filter(Boolean);
   const out = {};
   const all = texts.map((t) => asciiDigits(t));
   // ID number: 9 digits (sometimes printed with spaces)

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Wallet, Upload, CheckCircle2, Building2, User } from 'lucide-react';
+import { Wallet, Upload, CheckCircle2, Building2, User, Zap, AlertTriangle } from 'lucide-react';
 import { useApp, Field, QR } from '../ui.jsx';
 import { decodeQrFromFile } from '../qrdecode.js';
 
@@ -49,6 +49,22 @@ export default function KhqrCard() {
         <small>រូបថត ឬ screenshot · អានក្នុងឧបករណ៍របស់អ្នក</small>
       </button>
       <input ref={input} type="file" accept="image/*" hidden onChange={onFile} />
+      <div className={'bakong-box ' + (state.settings.bakong?.enabled ? 'on' : '')}>
+        {state.settings.bakong?.error ? <AlertTriangle size={18} /> : <Zap size={18} />}
+        <div>
+          <b>{state.settings.bakong?.enabled ? 'បញ្ជាក់ការបង់ប្រាក់ស្វ័យប្រវត្តិ (Bakong) — បើក' : 'បញ្ជាក់ការបង់ប្រាក់ស្វ័យប្រវត្តិ — បិទ'}</b>
+          <small>{state.settings.bakong?.error || (state.settings.bakong?.enabled ? 'ពេលអតិថិជនស្កេន KHQR បង់ វិក្កយបត្រនឹងសម្គាល់ថា «បានបង់» ដោយខ្លួនឯង ហើយផ្ញើបង្កាន់ដៃភ្លាមៗ។' : 'ត្រូវការ Bakong developer token (ឥតគិតថ្លៃ) ពីធនាគារជាតិ។')}</small>
+        </div>
+      </div>
+      <details className="khqr-manual">
+        <summary>{state.settings.khqr?.ownBakongToken ? 'Bakong token ផ្ទាល់ខ្លួន ✓' : 'ប្រើ Bakong token ផ្ទាល់ខ្លួន'}</summary>
+        <form className="stack-form" onSubmit={(e) => { e.preventDefault(); call('PUT', '/api/settings', { bakongToken: new FormData(e.currentTarget).get('t') || '' }, 'បានរក្សាទុក'); e.currentTarget.reset(); }}>
+          <p className="muted small">ចុះឈ្មោះឥតគិតថ្លៃនៅ <a href="https://api-bakong.nbc.gov.kh/register" target="_blank" rel="noreferrer">api-bakong.nbc.gov.kh</a> ហើយបិទភ្ជាប់ token (មានសុពលភាព ៩០ ថ្ងៃ)។</p>
+          <input name="t" type="password" autoComplete="off" placeholder="eyJhbGciOi…" className="pw-input" />
+          <div className="row-btns"><button className="btn ghost sm">រក្សាទុក</button>
+            {state.settings.khqr?.ownBakongToken && <button type="button" className="btn ghost sm danger" onClick={() => call('PUT', '/api/settings', { bakongToken: '' }, 'បានដក token')}>ដកចេញ</button>}</div>
+        </form>
+      </details>
       <details className="khqr-manual">
         <summary>ឬបញ្ចូល Bakong ID ដោយដៃ</summary>
         <form className="stack-form" onSubmit={(e) => { e.preventDefault(); call('PUT', '/api/settings', { khqr: manual }, 'បានរក្សាទុក'); }}>

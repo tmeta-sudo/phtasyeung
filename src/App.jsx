@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import {
   Home as HomeIcon, UsersRound, DoorOpen, ReceiptText, Gauge, QrCode, Send, Settings, Wrench, Search, Bell, ScanLine,
   LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download, MessageSquare,
+  BarChart3,
 } from 'lucide-react';
 import { api } from './api.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
@@ -19,6 +20,7 @@ import Feedback, { News, useNewsUnread } from './pages/Feedback.jsx';
 import Super from './pages/Super.jsx';
 import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
 import Inbox from './pages/Inbox.jsx';
+import Reports from './pages/Reports.jsx';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
@@ -30,10 +32,18 @@ const NAV = [
   ['/rooms', 'បន្ទប់', DoorOpen],
   ['/invoices', 'វិក្កយបត្រ', ReceiptText],
   ['/meters', 'កុងទ័រ', Gauge],
+  ['/reports', 'របាយការណ៍', BarChart3],
   ['/inbox', 'សារ', MessageSquare],
   ['/qr', 'QR', QrCode],
   ['/telegram', 'Telegram', Send],
 ];
+
+// Which pages each team role sees (the server enforces the same rules).
+const ROLE_PAGES = {
+  manager: ['/', '/customers', '/rooms', '/invoices', '/meters', '/inbox', '/qr', '/reports'],
+  staff: ['/meters', '/inbox', '/rooms'],
+};
+const allowedPage = (role, p) => !ROLE_PAGES[role] || ROLE_PAGES[role].includes(p) || ['/settings', '/tasks', '/news', '/feedback', '/super'].includes(p);
 
 const Landing = lazy(() => import('./landing/Landing.jsx'));
 const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1'); else localStorage.removeItem('py-authed'); } catch { /* ignore */ } };
@@ -46,11 +56,56 @@ export default function App() {
   // After signing in from /login or /signup, land on the dashboard.
   useEffect(() => { if (auth?.authed && /^\/(login|signup)$/.test(path)) navigate('/', { replace: true }); }, [auth, path]);
   if (!auth) return <div className="boot"><span className="spinner" /></div>;
+  if (path.startsWith('/join/')) return <Join token={decodeURIComponent(path.slice(6))} authed={auth.authed} onDone={async () => { await refreshAuth(); navigate('/', { replace: true }); }} />;
   if (!auth.authed) {
     if (path === '/') return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><Landing /></Suspense>;
     return <Login onDone={refreshAuth} bot={auth.bot} />;
   }
   return <Admin onLogout={async () => { setAuthHint(false); await refreshAuth(); navigate('/'); }} />;
+}
+
+/** Accept a team invite: create a personal login for this landlord's team. */
+function Join({ token, authed, onDone }) {
+  const [info, setInfo] = useState(null);
+  const [error, setError] = useState('');
+  const [f, setF] = useState({ email: '', password: '', password2: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api('GET', `/api/join/${encodeURIComponent(token)}`).then(setInfo).catch((e) => setError(e.message)); }, [token]);
+  async function submit(e) {
+    e.preventDefault(); setError('');
+    if (f.password !== f.password2) return setError('ពាក្យសម្ងាត់ទាំងពីរមិនដូចគ្នា');
+    setBusy(true);
+    try {
+      if (authed) await api('POST', '/api/auth/logout');
+      await api('POST', `/api/join/${encodeURIComponent(token)}`, { email: f.email, password: f.password });
+      onDone();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  return (
+    <div className="login">
+      <div className="login-photo"><div className="login-caption"><b>ផ្ទះយើង</b><span>ក្រុមការងារ · គណនីផ្ទាល់ខ្លួនសម្រាប់ម្នាក់ៗ</span></div></div>
+      <div className="login-card">
+        <div className="login-top"><img src="/icons/icon-192.png" alt="" width="52" height="52" /><ThemeToggle /></div>
+        {info ? (
+          <>
+            <h1>ចូលរួមជា{info.roleKm}</h1>
+            <p>អ្នកត្រូវបានអញ្ជើញឱ្យជួយគ្រប់គ្រង <b>{info.property}</b>{info.name ? ` (${info.name})` : ''}។ បង្កើតគណនីរបស់អ្នក៖</p>
+            <form className="login-form" onSubmit={submit}>
+              <input type="email" autoComplete="username" placeholder="អ៊ីមែល" value={f.email} onChange={set('email')} required />
+              <input type="password" autoComplete="new-password" placeholder="ពាក្យសម្ងាត់ (≥ ៨ តួ)" minLength={8} value={f.password} onChange={set('password')} required />
+              <input type="password" autoComplete="new-password" placeholder="បញ្ជាក់ពាក្យសម្ងាត់" value={f.password2} onChange={set('password2')} required />
+              {authed && <p className="form-warn">អ្នកកំពុងចូលគណនីផ្សេង — វានឹងចេញពីគណនីនោះ។</p>}
+              {error && <p className="form-error">{error}</p>}
+              <button className="btn primary block" disabled={busy}>{busy ? '…' : 'ចូលរួម'}</button>
+            </form>
+          </>
+        ) : error ? (
+          <><h1>តំណមិនដំណើរការ</h1><p className="form-error">{error}</p><button className="btn ghost block" onClick={() => navigate('/')}>ទៅទំព័រដើម</button></>
+        ) : <div className="boot"><span className="spinner" /></div>}
+      </div>
+    </div>
+  );
 }
 
 function Login({ onDone, bot }) {
@@ -157,7 +212,10 @@ function Admin({ onLogout }) {
     const t = setInterval(() => document.visibilityState === 'visible' && load(), 20000);
     const onFocus = () => document.visibilityState === 'visible' && load();
     document.addEventListener('visibilitychange', onFocus);
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onFocus); };
+    // A push notification arrived: refresh at once instead of waiting for the next poll.
+    const onSw = (e) => e.data?.type === 'refresh' && load();
+    navigator.serviceWorker?.addEventListener('message', onSw);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onFocus); navigator.serviceWorker?.removeEventListener('message', onSw); };
   }, [load]);
 
   /** Call an endpoint that returns the full admin state. Returns the response or null. */
@@ -165,7 +223,8 @@ function Admin({ onLogout }) {
     try {
       const res = await api(method, url, body);
       if (res.tenants) setState(res);
-      if (success) notify(typeof success === 'function' ? success(res) : success);
+      const msg = success && (typeof success === 'function' ? success(res) : success);
+      if (msg) notify(msg);
       return res;
     } catch (e) {
       if (e.status === 401) onLogout();
@@ -211,17 +270,22 @@ function Admin({ onLogout }) {
   const badges = { '/invoices': claimed, '/customers': missingId, '/inbox': unreadMsgs };
   const section = '/' + (path.split('/')[1] || '');
   const EXTRA = { '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
-  const current = NAV.find(([p]) => p === section) || (EXTRA[section] ? [section, EXTRA[section]] : NAV[0]);
+  const shown = state.account.role === 'staff' && (section === '/' || !allowedPage('staff', section)) ? '/meters' : section;
+  const current = NAV.find(([p]) => p === shown) || (EXTRA[section] ? [section, EXTRA[section]] : NAV[0]);
 
+  const role = state.account.role || 'owner';
+  const nav = NAV.filter(([p]) => allowedPage(role, p));
   let page;
   const customerMatch = path.match(/^\/customers\/(.+)$/);
-  if (customerMatch) page = <CustomerDetail id={decodeURIComponent(customerMatch[1])} />;
+  if (!allowedPage(role, section) || (role === 'staff' && section === '/')) page = role === 'staff' ? <Meters /> : <Home />;
+  else if (customerMatch) page = <CustomerDetail id={decodeURIComponent(customerMatch[1])} />;
   else if (section === '/customers') page = <Customers />;
   else if (section === '/rooms') page = <Rooms />;
   else if (section === '/inbox') page = <Inbox />;
   else if (path === '/invoices/design') page = <InvoiceDesigner />;
   else if (section === '/invoices') page = <Invoices />;
   else if (section === '/meters') page = <Meters />;
+  else if (section === '/reports') page = <Reports />;
   else if (section === '/qr') page = <QrCenter />;
   else if (section === '/telegram') page = <TelegramPage />;
   else if (section === '/settings') page = <SettingsPage />;
@@ -240,7 +304,7 @@ function Admin({ onLogout }) {
             <span className="brand-name">{state.settings.propertyName}</span>
           </button>
           <nav className={'mainnav ' + (menuOpen ? 'open' : '')} onClick={() => setMenuOpen(false)}>
-            {NAV.map(([p, label, Icon]) => (
+            {nav.map(([p, label, Icon]) => (
               <button key={p} className={section === p ? 'active' : ''} onClick={() => navigate(p)}>
                 <Icon size={16} /> <span>{label}</span>
                 {!!badges[p] && <em className="count">{num(badges[p], state.settings.khmerNumerals)}</em>}

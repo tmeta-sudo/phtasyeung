@@ -46,92 +46,10 @@ Forgot your password? A 6-digit reset code is sent to the owner Telegram you lin
 | **ID card OCR** | **Chakkhu OCR** by Ing Muyleang runs *on the device* (onnxruntime-web, int8 model ~39 MB downloaded once). It finds the text lines on the card and reads the Khmer front and the MRZ on the back (with check digits), then fills in name, Latin name, ID number, sex, date of birth, issue and expiry dates. Photos never leave the phone. |
 | **Bot conversations** | Customers tap 🔧 Report repair or 💬 Message owner in the bot (photos allowed). You get it in Telegram and reply by swiping to reply or tapping ↩️, and can mark it 🔵 in progress / ✅ done. The same threads are in the web **Inbox (សារ)**, with replies sent through the bot. Repair reports also appear in Tasks. |
 | **Your data, your storage** | Files are stored in Postgres by default, or in Cloudflare R2 when its keys are set. A landlord can instead connect **their own Google Drive**: ID cards and photos go into a "ផ្ទះយើង" folder in their Drive (`drive.file` scope only), with a daily JSON backup there. Files are moved over automatically, and can be moved back when you disconnect. |
-
-## Sign in with Telegram
-
-- **Sign in:** tap **ចូលតាម Telegram**. The bot shows the device, IP and time, then asks you to approve. The page signs you in once you do. On a phone this opens Telegram directly; on a computer you scan a QR instead.
-- **Sign up:** on the create-account tab, enter your property name and tap **បង្កើតគណនីតាម Telegram**. No email or password is needed, and owner alerts are connected automatically.
-- **Recovery:** send `/recover` (or tap 🔑 ចូលគណនី) to the bot. You get a one-time sign-in link for each linked account, valid for 15 minutes. After you open it, you can set a new password without the old one.
-- Accounts made with email can link Telegram in **ការកំណត់**. Scanning the owner QR also links it.
-
-## Super admin (platform owner)
-
-Set `SUPER_ADMIN_EMAILS` and/or `SUPER_ADMIN_TELEGRAM_IDS`. Those accounts get a **Super** console with:
-
-- platform statistics: landlords, sign-ups, active users, rooms/customers, invoice volume, feature adoption, storage
-- a landlord list with **suspend / restore**
-- **announcements** ("what's new"), shown in every landlord's app and optionally broadcast to their owner Telegram
-- a **feature request board** (landlords vote) and **issue reports**, each with a status and reply; the landlord is told on Telegram when you update it
-- an audit log of super-admin actions
-
-The console shows aggregate numbers and account details only. It never shows customers' personal data or ID documents.
-
-## Install as an app (PWA)
-
-The app can be installed on Android, iPhone, Windows and macOS. It has a manifest, icons (including maskable and Apple touch icons), shortcuts, an offline app shell, update prompts and an install banner. Each customer's portal installs as its own app that opens straight to their page. Private data (`/api/*`) is never cached.
-
-## Dark mode
-
-Follows the system setting by default. The ☀️/🌙 toggle in the menu, on the login page, in the portal and in Settings cycles between system, light and dark. QR codes always stay dark-on-white so bank apps can still scan them.
-
-## Deploy free: Vercel + Neon
-
-1. **Neon**: create a project and copy the **pooled** connection string (`…-pooler…`).
-2. **Telegram**: in @BotFather, run `/newbot` to create the shared platform bot. Copy its token and username.
-3. **Vercel**: import this GitHub repo. *Framework preset: Other.* The build settings come from `vercel.json`. Add these environment variables:
-
-   | Variable | Value |
-   | --- | --- |
-   | `DATABASE_URL` | Neon pooled connection string |
-   | `TELEGRAM_BOT_TOKEN` | platform bot token |
-   | `TELEGRAM_BOT_USERNAME` | platform bot username, e.g. `phtasyeungbot` (a leading @ is ignored; the real name is checked with Telegram) |
-   | `CRON_SECRET` | any long random string (`openssl rand -hex 32`) |
-   | `SUPER_ADMIN_EMAILS` | your email (and/or `SUPER_ADMIN_TELEGRAM_IDS`) |
-   | `APP_SECRET` | long random string (encrypts Google Drive tokens) |
-   | `R2_*` (optional) | Cloudflare R2 account id, keys and bucket, to store uploads in R2 |
-   | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (optional) | lets landlords use their own Google Drive |
-   | `APP_URL` | optional: your custom domain, e.g. `https://phteahyeung.com` |
-
-4. Deploy. The database tables are created automatically on the first request.
-5. Register the Telegram webhook once by opening your site, or by running:
-   `curl -H "Authorization: Bearer $CRON_SECRET" https://YOUR-APP.vercel.app/api/cron/daily`
-   After that, the daily cron re-registers it automatically.
-
-**How it runs on Vercel**
-
-- `api/index.js` is one serverless function, and all `/api/*` requests go to it. Everything else is the static Vite build.
-- Telegram sends updates to `/api/telegram/webhook/<bot>`. Each request is checked with a secret header derived from the bot's token.
-- Vercel Cron calls `/api/cron/daily` at 01:00 UTC (08:00 in Phnom Penh). That run creates and sends the monthly invoices for every landlord whose invoice day has come, and sends the reminders.
-- ID cards and photos are stored in Postgres (bytea), scoped to their landlord. Photos are shrunk in the browser to stay under Vercel's 4.5 MB request limit.
-
-**Free-tier limits to know**
-
-- **Vercel Hobby**: one cron run per day, so auto-invoices go out every morning rather than at a custom hour. Functions run for up to 300 s, which is fine for hundreds of landlords per daily run; beyond that, move the daily job to a queue. Vercel's Hobby plan is meant for **non-commercial** use, so if you ever charge for this service, move to the Pro plan.
-- **Neon Free**: 0.5 GB of storage per project. With compressed ID photos of about 200–400 KB, that's roughly 1,500 customers with full ID sets. When you outgrow it, move file storage to Cloudflare R2 (10 GB free).
-- Pages refresh every 20 s and whenever you return to the tab. Instant alerts arrive through Telegram.
-
-## Run it on your computer (Windows, macOS or Linux)
-
-1. Install **Node.js 22 or newer** from <https://nodejs.org/>.
-2. Open a terminal in this folder. On Windows: click the File Explorer address bar, type `cmd` and press Enter.
-3. Run `npm install` once, then `npm run dev`, and open <http://localhost:5173/>.
-4. Click **បង្កើតគណនី** (Create account).
-
-Without `DATABASE_URL`, an embedded Postgres (PGlite) stores data in `./data/pglite`, so you don't need to install anything. To use Neon locally too, copy `.env.example` to `.env` and fill it in. Locally the bots use long polling, so no public URL is needed. **Use a separate test bot locally.** Polling turns off the production bot's webhook.
-
-If you used the previous single-owner version, its `data/db.json` is imported on first start. Sign in with the email **`admin`** and your old password.
-
-## Privacy and security
-
-- ID cards and other documents are stored in the database, tied to their landlord. They are never served publicly: only that landlord, logged in, or that customer's own portal link can open them. Uploaded files are checked by their content (JPG/PNG/WEBP/PDF only), and photos are shrunk on the device before upload.
-- Customer portal links are long random tokens. You can re-issue one from the profile, which disables the old link and QR. Telegram link codes are single-use.
-- Customers can edit their personal details but not their room, rent, contract or your private notes.
-- Passwords are hashed with scrypt. Session tokens are stored only as SHA-256 hashes, in HttpOnly SameSite cookies. Login, sign-up and reset attempts are rate limited in the database, so limits hold across serverless instances. Cross-site write requests are rejected.
-- Telegram button presses include the landlord and invoice IDs, and each press is checked against that landlord's chats. A customer cannot confirm their own payment, and no landlord can act on another landlord's invoice.
-- Each landlord's document is locked (`SELECT … FOR UPDATE`) while a request changes it, so simultaneous edits are never lost.
-
-## Current limits
-
-- Payments are confirmed by the owner. Automatic bank confirmation would need Bakong's merchant API (`check_transaction_by_md5`), which requires a registered Bakong developer token.
-- One owner login per landlord. Staff accounts with roles are not built yet.
-- No browser (Web Push) notifications yet. Alerts are delivered through Telegram.
+| **Automatic payment confirmation (Bakong)** | Each invoice keeps one KHQR. With a free Bakong developer token (`BAKONG_TOKEN` for everyone, or the landlord's own in Settings → KHQR), the app asks Bakong whether that exact QR was paid — while the customer's pay screen is open, when the dashboard opens, and every day. It is marked paid only if the money reached the landlord's account and the amount matches, then receipts go out automatically. |
+| **One-click backup** | Settings → Backup: one button downloads everything (data + ID card photos) as a zip, optionally locked with a password (AES-256). Backups can go to the owner's Telegram with one tap and automatically every week. Restore from the same file in one step. A reminder appears on the dashboard after 30 days without a backup. |
+| **Notifications on the phone** | Web Push for payments, Bakong confirmations, repair reports and ID uploads, even without Telegram open. Zero setup: keys are generated automatically. On iPhone, add the app to the Home Screen first. |
+| **Team accounts** | Invite a manager or staff member with a one-time link (7 days). Managers handle customers, rooms, invoices and meters; staff only record meters, answer repair messages and do tasks — they never see money, ID cards or portal links. Every route is checked on the server. |
+| **Reports** | Billed vs collected per month, who still owes and since when, occupancy, water and electricity usage, with Excel export and print. |
+| **Smarter ID scanning** | The photo is cropped to the card, straightened and turned the right way up before OCR, so a quick photo on a table works. |
+| **Error monitoring** | Server and browser errors are grouped in the super admin **Errors** tab (emails, phone numbers and links are scrubbed). A crash shows a friendly Khmer screen instead of a blank page. |

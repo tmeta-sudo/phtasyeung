@@ -2,6 +2,7 @@
 //  • Platform bot (TELEGRAM_BOT_TOKEN): shared by all landlords — nothing to set up.
 //  • Own bot (optional): a landlord pastes a @BotFather token to use their own name.
 // Production (Vercel) receives updates by webhook; local dev uses long polling.
+import { pushToOrg, htmlToText } from './push.js';
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import { db, save, uid, now, logEvent, orgId } from './db.js';
@@ -9,6 +10,7 @@ import { withOrg, findOrgs, q, listOrgIds } from './store.js';
 import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices } from './invoices.js';
 import { usd, khr, monthKm, kmDigits, nowInCambodia, dateKm } from '../shared/khmer.js';
 import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
+import { checkInvoice } from './bakong.js';
 
 const API = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org';
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -149,7 +151,11 @@ export const send = (chatId, html, extra = {}) =>
 
 const propertyTag = () => `🏠 <b>${esc(db().settings.propertyName)}</b>\n`;
 
-export async function notifyAdmins(html, extra = {}) {
+export async function notifyAdmins(html, extra = {}, { url = '/', tag, push = true } = {}) {
+  // Web Push to the landlord's installed app (independent of Telegram).
+  const text = htmlToText(html).trim();
+  const [title, ...rest] = text.split('\n');
+  if (push) await pushToOrg(orgId(), { title: title || 'ផ្ទះយើង', body: rest.join('\n').trim(), url, tag }).catch(() => {});
   if (!tokenOf(db())) return 0;
   let n = 0;
   for (const c of db().settings.telegram.adminChats) {
@@ -224,7 +230,7 @@ export async function notifyTenant(tenant, html) {
 
 /** Deliver a password-reset code to the owner's linked Telegram chats. */
 export async function sendResetCode(org, code) {
-  return withOrg(org, async () => (await notifyAdmins(`🔑 លេខកូដប្តូរពាក្យសម្ងាត់ <b>${esc(db().settings.propertyName)}</b>:\n\n<code>${code}</code>\n\nមានសុពលភាព ១៥ នាទី។ បើអ្នកមិនបានស្នើ សូមមិនអើពើ។`)) > 0);
+  return withOrg(org, async () => (await notifyAdmins(`🔑 លេខកូដប្តូរពាក្យសម្ងាត់ <b>${esc(db().settings.propertyName)}</b>:\n\n<code>${code}</code>\n\nមានសុពលភាព ១៥ នាទី។ បើអ្នកមិនបានស្នើ សូមមិនអើពើ។`, {}, { push: false })) > 0);
 }
 
 // ---------- payment claims ----------
@@ -238,11 +244,13 @@ export async function claimPayment(inv, source, proof) {
   const html = `💸 <b>ការជូនដំណឹងការបង់ប្រាក់</b>\n${propertyTag()}🚪 ${esc(inv.roomId)} · ${esc(inv.name)}\n🧾 ${esc(inv.number)} · ${esc(monthKm(inv.month))}\n💰 <b>${usd(inv.total)}</b> (${khr(inv.totalKhr)})\nតាមរយៈ: ${source === 'portal' ? 'គេហទំព័រអតិថិជន' : 'Telegram'}`;
   const reply_markup = { inline_keyboard: [[{ text: '✅ បញ្ជាក់ថាបានទទួល', callback_data: cb('ok', inv) }, { text: '❌ មិនទាន់ទទួល', callback_data: cb('no', inv) }]] };
   if (proof?.telegramFileId) {
+    const [pt, ...pb] = htmlToText(html).split('\n');
+    await pushToOrg(orgId(), { title: pt, body: pb.join('\n'), url: '/invoices', tag: 'claim-' + inv.id }).catch(() => {});
     for (const c of db().settings.telegram.adminChats) {
       await call('sendPhoto', { chat_id: c.chatId, photo: proof.telegramFileId, caption: html, parse_mode: 'HTML', reply_markup }).catch(() => {});
     }
   } else {
-    await notifyAdmins(html, { reply_markup });
+    await notifyAdmins(html, { reply_markup }, { url: '/invoices', tag: 'claim-' + inv.id });
   }
 }
 
@@ -440,6 +448,7 @@ async function handleCallback(botKey, token, query) {
         const tenant = tenantByChat(chatId);
         if (!tenant || tenant.id !== inv.tenantId) return answer('មិនមានសិទ្ធិ');
         if (inv.status === 'paid') return answer('បានបង់រួចហើយ ✅');
+        if (await checkInvoice(inv, { minIntervalMs: 0 }) === 'paid') return answer('បានទទួលការបង់ប្រាក់ ✅');
         await claimPayment(inv, 'telegram');
         return answer('បានជូនដំណឹងម្ចាស់ផ្ទះ ✅');
       }
@@ -487,6 +496,8 @@ function ownerButtons(t) {
 /** Forward a tenant's text/photo to every owner chat and remember the message ids for replies. */
 async function forwardToOwners(t, msg) {
   const html = ticketHtml(t, msg);
+  const [pt, ...pb] = htmlToText(html).split('\n');
+  await pushToOrg(orgId(), { title: pt, body: pb.join('\n'), url: '/inbox', tag: 'ticket-' + t.id, roles: ['owner', 'manager', 'staff'] }).catch(() => {});
   for (const c of db().settings.telegram.adminChats) {
     const sent = msg.photo
       ? await call('sendPhoto', { chat_id: c.chatId, photo: msg.photo, caption: html, parse_mode: 'HTML', reply_markup: ownerButtons(t) }).catch(() => null)

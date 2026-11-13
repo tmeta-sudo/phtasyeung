@@ -5,9 +5,11 @@ import './styles.css';
 import { usePath } from './ui.jsx';
 import { setupPwa } from './pwa.js';
 import { applyTheme } from './theme.jsx';
+import { installErrorReporting, reportError } from './errorReport.js';
 
 applyTheme();
 setupPwa();
+installErrorReporting();
 
 const Admin = lazy(() => import('./App.jsx'));
 const Portal = lazy(() => import('./portal/Portal.jsx'));
@@ -41,4 +43,25 @@ function LandingGate() {
   return authed ? <Admin /> : <Landing />;
 }
 
-createRoot(document.getElementById('root')).render(<Root />);
+/** A crash in one screen shows a friendly message instead of a blank page, and is reported. */
+class Boundary extends React.Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error, info) { reportError(error, info?.componentStack); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="crash">
+        <div className="crash-card">
+          <span className="crash-icon">⚠️</span>
+          <h1>មានបញ្ហាបន្តិចបន្តួច</h1>
+          <p>ទំព័រនេះមិនអាចបង្ហាញបានទេ។ ទិន្នន័យរបស់អ្នកនៅសុវត្ថិភាព។ ក្រុមការងារបានទទួលដំណឹងរួចហើយ។</p>
+          <button className="btn primary" onClick={() => location.reload()}>ផ្ទុកឡើងវិញ</button>
+          <button className="btn ghost" onClick={() => { location.href = '/'; }}>ទៅទំព័រដើម</button>
+        </div>
+      </div>
+    );
+  }
+}
+
+createRoot(document.getElementById('root')).render(<Boundary><Root /></Boundary>);

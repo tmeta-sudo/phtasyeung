@@ -4,6 +4,8 @@
 import { db, save, logEvent } from './db.js';
 import { withOrg, listOrgIds } from './store.js';
 import { googleUpload } from './blob.js';
+import { sendBackupToTelegram } from './backup.js';
+import { checkAllUnpaid } from './bakong.js';
 import { orgId } from './db.js';
 import { generateInvoices, isOverdue } from './invoices.js';
 import { sendInvoices, notifyAdmins, botStatus } from './telegram.js';
@@ -71,6 +73,13 @@ async function dailyForOrg({ respectHour }) {
   if (storage?.gdrive?.refreshToken && String(storage.gdrive.lastBackupAt || '').slice(0, 10) !== today) {
     await backupToDrive().catch((e) => console.error('[backup]', e.message));
   }
+  // Weekly backup to the owner's own Telegram (on by default; nothing to set up).
+  const bk = db().settings.backup || {};
+  if (bk.telegramWeekly && db().settings.telegram.adminChats?.length && (db().tenants.length || db().rooms.length)
+    && (!bk.lastTelegramAt || Date.now() - new Date(bk.lastTelegramAt).getTime() > 6.5 * 86400000)) {
+    await sendBackupToTelegram({ includeFiles: !!bk.includeFiles }).catch((e) => console.error('[backup]', e.message));
+  }
+  await checkAllUnpaid({ limit: 60 }).catch((e) => console.error('[bakong]', e.message));
   if (!auto.enabled) return null;
   const t = nowInCambodia();
   if (respectHour && t.hour < +auto.hour) return null;

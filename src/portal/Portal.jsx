@@ -17,6 +17,22 @@ export default function Portal({ token }) {
   const [toast, setToast] = useState(null);
   const [pay, setPay] = useState(null);
   const [showLease, setShowLease] = useState(false);
+  // While the KHQR is on screen, ask the server (→ Bakong) every 5 s whether it was paid.
+  useEffect(() => {
+    if (!pay || pay.status === 'paid' || !data?.autoConfirm) return undefined;
+    let stop = false;
+    const started = Date.now();
+    const tick = async () => {
+      if (stop || Date.now() - started > 15 * 60000) return;
+      try {
+        const r = await api('GET', `/api/portal/${token}/invoices/${pay.id}/status`);
+        if (r.status === 'paid') { await load(); setPay((p) => (p ? { ...p, status: 'paid' } : p)); notify('✅ បានទទួលការបង់ប្រាក់ — សូមអរគុណ!'); return; }
+      } catch { /* keep trying */ }
+      setTimeout(tick, document.visibilityState === 'visible' ? 5000 : 15000);
+    };
+    const t = setTimeout(tick, 4000);
+    return () => { stop = true; clearTimeout(t); };
+  }, [pay?.id, pay?.status, data?.autoConfirm]); // eslint-disable-line react-hooks/exhaustive-deps
   const [intro, setIntro] = useState(() => { try { return !localStorage.getItem('py-portal-intro'); } catch { return false; } });
   const notify = useCallback((text, err = false) => { setToast({ text, error: err }); setTimeout(() => setToast(null), 3500); }, []);
   const load = useCallback(() => api('GET', `/api/portal/${token}`).then(setData).catch((e) => setError(e.message)), [token]);
@@ -151,6 +167,7 @@ export default function Portal({ token }) {
               <small>{pay.number}</small>
               <b className="pt-amount">{$(pay.total)}</b>
               <small>{khr(pay.totalKhr, k)} · {usdInWords(pay.total)}</small>
+              {pay.khqr && pay.status !== 'paid' && data.autoConfirm && <p className="pt-auto"><span className="dot-pulse" /> រង់ចាំការបង់ប្រាក់ — នឹងបញ្ជាក់ដោយស្វ័យប្រវត្តិ</p>}
               {pay.khqr && pay.status !== 'paid' && <div className="pt-khqr"><span>KHQR</span><QR value={pay.khqr} size={210} label="KHQR" /><small>ថតរូបអេក្រង់ ឬស្កេនដោយកម្មវិធីធនាគារ ABA, ACLEDA, Wing, Bakong…</small></div>}
             </div>
             <div className="pt-items">
