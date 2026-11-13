@@ -44,7 +44,7 @@ export function requiredRole(method, routePath) {
 }
 
 /** Settings a manager may change (the rest stay with the owner). */
-export const MANAGER_SETTINGS = new Set(['lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
+export const MANAGER_SETTINGS = new Set(['carryOver', 'lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
 

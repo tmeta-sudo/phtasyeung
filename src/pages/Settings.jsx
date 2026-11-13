@@ -59,8 +59,10 @@ export default function SettingsPage() {
           <button className="btn primary">រក្សាទុក</button>
         </form>
         
-        <form className="card" onSubmit={(e) => save(e, { lateFee: f.lateFee })}>
-          <h3 className="sec-title"><AlarmClock size={17} /> ថ្លៃបង់យឺត (ស្វ័យប្រវត្តិ)</h3>
+        <form className="card" onSubmit={(e) => save(e, { lateFee: f.lateFee, carryOver: !!f.carryOver })}>
+          <h3 className="sec-title"><AlarmClock size={17} /> ការបង់យឺត និងប្រាក់នៅជំពាក់</h3>
+          <label className="switch-row"><input type="checkbox" checked={!!f.carryOver} onChange={(e) => set('carryOver', e.target.checked)} />
+            <span><b>ផ្ទេរប្រាក់នៅជំពាក់ទៅវិក្កយបត្រខែក្រោយ</b><small>ប្រាក់ដែលនៅសល់ (បង់ខ្លះ ឬមិនទាន់បង់) បញ្ចូលក្នុងវិក្កយបត្រថ្មី — វិក្កយបត្រមួយ KHQR មួយ។</small></span></label>
           <label className="switch-row"><input type="checkbox" checked={!!f.lateFee?.enabled} onChange={(e) => set('lateFee', { ...f.lateFee, enabled: e.target.checked })} />
             <span><b>បន្ថែមថ្លៃបង់យឺតដោយស្វ័យប្រវត្តិ</b><small>បន្ថែមម្តងគត់ ទៅវិក្កយបត្រដែលហួសកំណត់ ហើយ KHQR ធ្វើបច្ចុប្បន្នភាពតាមចំនួនថ្មី។</small></span></label>
           {f.lateFee?.enabled && (

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Download, Printer } from 'lucide-react';
-import { useApp, useFmt, Empty } from '../ui.jsx';
+import { useApp, useFmt, Empty, billedOf, collectedOf } from '../ui.jsx';
 import { kmDigits } from '../../shared/khmer.js';
 
 const MONTHS_KM = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
@@ -86,8 +86,8 @@ export default function Reports() {
     const months = MONTHS_KM.map((_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
     const rows = months.map((m) => {
       const inv = state.invoices.filter((i) => i.month === m);
-      const billed = inv.reduce((a, i) => a + (+i.total || 0), 0);
-      const collected = inv.filter((i) => i.status === 'paid').reduce((a, i) => a + (+i.total || 0), 0);
+      const billed = inv.reduce((a, i) => a + billedOf(i), 0);
+      const collected = inv.reduce((a, i) => a + collectedOf(i), 0);
       const mt = state.meters.filter((x) => x.month === m);
       return {
         m, billed, collected, outstanding: billed - collected, rooms: new Set(inv.map((i) => i.roomId)).size,
@@ -100,7 +100,7 @@ export default function Reports() {
     for (const i of state.invoices) {
       if (i.status === 'paid') continue;
       const cur = owed.get(i.tenantId) || { name: i.name, room: i.roomId, count: 0, amount: 0, oldest: i.month };
-      cur.count += 1; cur.amount += +i.total || 0; if (i.month < cur.oldest) cur.oldest = i.month;
+      cur.count += 1; cur.amount += i.balance ?? (+i.total || 0); if (i.month < cur.oldest) cur.oldest = i.month;
       owed.set(i.tenantId, cur);
     }
     const occupied = state.tenants.filter((t) => t.status === 'active' && t.roomId).length;

@@ -12,7 +12,7 @@ setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
-import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
+import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, configureOwnBot,
@@ -110,7 +110,7 @@ async function publicSettings() {
   };
 }
 
-const withQr = (inv) => { const khqr = khqrOf(inv); const { khqrStr, khqrSig, khqrExp, ...rest } = inv; return { ...rest, khqr, overdue: isOverdue(inv) }; };
+const withQr = (inv) => { const khqr = khqrOf(inv); const { khqrStr, khqrSig, khqrExp, ...rest } = inv; return { ...rest, khqr, overdue: isOverdue(inv), paid: paidSoFar(inv), balance: balanceOf(inv) }; };
 
 async function accountInfo(req) {
   if (!req?.session) return {};
@@ -355,12 +355,42 @@ app.put('/api/invoices/:id', ...owner(async (req) => {
   }
   if (date(b.dueDate)) inv.dueDate = b.dueDate;
   if (b.status === 'paid' && inv.status !== 'paid') await confirmPayment(inv, 'admin');
-  else if (b.status === 'unpaid') { inv.status = 'unpaid'; inv.paidAt = null; }
+  else if (b.status === 'unpaid') { inv.status = 'unpaid'; inv.paidAt = null; inv.payments = []; }
+  save();
+  return adminState(req);
+}));
+
+const PAY_METHODS = ['cash', 'bank', 'khqr', 'aba', 'acleda', 'wing', 'other'];
+
+app.post('/api/invoices/:id/payments', ...owner(async (req) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (inv.status === 'paid') fail('វិក្កយបត្រនេះបានបង់រួចហើយ');
+  const via = PAY_METHODS.includes(req.body?.via) ? req.body.via : 'cash';
+  const at = date(req.body?.date) ? `${req.body.date}T12:00:00+07:00` : now();
+  const { full } = addPayment(inv, { amount: req.body?.amount, via, note: str(req.body?.note, 200), at });
+  if (full) await confirmPayment(inv, via);
+  else {
+    logEvent('admin', `បានទទួលប្រាក់ខ្លះ ${usdFmt(+req.body.amount)} ពី ${inv.roomId} · នៅសល់ ${usdFmt(balanceOf(inv))}`, { invoiceId: inv.id });
+    const t = db().tenants.find((x) => x.id === inv.tenantId);
+    await notifyTenant(t, `✅ <b>បានទទួលប្រាក់ ${usdFmt(+req.body.amount)}</b>\n🧾 ${inv.number}\nនៅសល់: <b>${usdFmt(balanceOf(inv))}</b>`);
+  }
+  return adminState(req);
+}));
+
+app.delete('/api/invoices/:id/payments/:pid', ...owner((req) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (inv.paidVia === 'carried') fail('សមតុល្យនេះបានផ្ទេរទៅវិក្កយបត្របន្ទាប់');
+  inv.payments = (inv.payments || []).filter((p) => p.id !== req.params.pid);
+  if (inv.status === 'paid' && balanceOf({ ...inv, status: 'unpaid' }) > 0) { inv.status = 'unpaid'; inv.paidAt = null; }
   save();
   return adminState(req);
 }));
 
 app.delete('/api/invoices/:id', ...owner((req) => {
+  const gone = findInvoice(req.params.id);
+  if (gone) reopenCarried(gone);
   db().invoices = db().invoices.filter((i) => i.id !== req.params.id);
   save();
   return adminState(req);
@@ -506,6 +536,7 @@ app.put('/api/settings', ...owner(async (req) => {
     if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
+  if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
   if (b.lateFee) {
     s.lateFee = {
       enabled: !!b.lateFee.enabled,

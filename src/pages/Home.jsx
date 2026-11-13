@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { billedOf, collectedOf } from '../ui.jsx';
 import { ChevronRight, CalendarDays, CheckCircle2, Sparkles, Send, ScanLine, FileText, Bot } from 'lucide-react';
 import { useApp, useFmt, navigate, Avatar, tenantPhoto } from '../ui.jsx';
 import { greetingKm, dateKm, nowInCambodia, lunarKm, monthKm, holidaysBetween, MONTHS_KM, toRiel, khr } from '../../shared/khmer.js';
@@ -23,9 +24,9 @@ export default function Home() {
     const active = state.tenants.filter((t) => t.status === 'active');
     const occupied = state.rooms.filter((r) => active.some((t) => t.roomId === r.id)).length;
     const inv = state.invoices.filter((i) => i.month === ym);
-    const billed = inv.reduce((s, i) => s + i.total, 0);
+    const billed = inv.reduce((s, i) => s + billedOf(i), 0);
     const paid = inv.filter((i) => i.status === 'paid');
-    const paidAmt = paid.reduce((s, i) => s + i.total, 0);
+    const paidAmt = Math.min(billed, inv.reduce((s, i) => s + collectedOf(i), 0));
     const sent = inv.filter((i) => i.sentAt).length;
     // cumulative collection by day of month
     const daysInMonth = new Date(today.year, today.month, 0).getDate();

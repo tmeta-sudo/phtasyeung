@@ -1111,3 +1111,11 @@ body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
 .offline-bar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top)); z-index: 90; background: var(--dark); color: #fff; border-radius: 999px; padding: 8px 14px; font-size: 13px; display: flex; gap: 8px; align-items: center; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop { display: none !important; }
 .overlay { z-index: 70; }
+.payments { display: grid; gap: 8px; margin-top: 12px; padding: 12px; border-radius: 16px; background: var(--card); }
+.payments-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.payments .owe { color: var(--danger); }
+.pay-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.pay-row > span { display: grid; }
+.pay-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.pay-form input, .pay-form select { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface); color: var(--ink); font: inherit; }
+.pay-form .row-btns { grid-column: 1 / -1; justify-content: flex-end; }

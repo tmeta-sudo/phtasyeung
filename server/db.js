@@ -51,6 +51,7 @@ export function defaultSettings(name = 'ផ្ទះរបស់ខ្ញុំ'
     storage: { mode: 'database' },
     backup: { telegramWeekly: true, includeFiles: false, lastAt: '', lastTelegramAt: '' },
     lateFee: { enabled: false, amount: 5, afterDays: 5 },
+    carryOver: true,
   };
 }
 

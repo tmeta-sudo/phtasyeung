@@ -49,7 +49,7 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
         <div><span>សម្រាប់</span><b>{inv.kind === 'movein' ? 'ចូលស្នាក់នៅ' : monthKm(inv.month, khmer)}</b></div>
         <div><span>ថ្ងៃចេញ</span><b>{dateKm(inv.issuedAt, khmer)}</b></div>
         <div><span>ថ្ងៃផុតកំណត់</span><b>{dateKm(inv.dueDate, khmer)}</b></div>
-        <div><span>ស្ថានភាព</span><b className={inv.status === 'paid' ? 'paid-t' : ''}>{inv.status === 'paid' ? 'បានបង់ ✓' : 'មិនទាន់បង់'}</b></div>
+        <div><span>ស្ថានភាព</span><b className={inv.status === 'paid' ? 'paid-t' : ''}>{inv.status === 'paid' ? (inv.paidVia === 'carried' ? 'ផ្ទេរទៅខែក្រោយ' : 'បានបង់ ✓') : inv.paid > 0 ? 'បង់ខ្លះ' : 'មិនទាន់បង់'}</b></div>
       </div>
     ),
     items: (
@@ -72,6 +72,7 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
         <div className="grand-row"><span>សរុប</span><b className="grand">{usd(inv.total, khmer)}</b></div>
         {d.showRiel && <div><span>ប្រហែលជារៀល (អត្រា {n(inv.rate)})</span><b>{khr(inv.totalKhr, khmer)}</b></div>}
         {d.showWords && <p className="words">ជាអក្សរ៖ {usdInWords(inv.total)}</p>}
+        {inv.status !== 'paid' && inv.paid > 0 && <><div><span>បានបង់រួច</span><b>−{usd(inv.paid, khmer)}</b></div><div className="grand-row"><span>នៅសល់ត្រូវបង់</span><b className="grand">{usd(inv.balance, khmer)}</b></div></>}
         {inv.status === 'paid' && <div className="paid-stamp">បានបង់<small>PAID</small></div>}
       </div>
     ),

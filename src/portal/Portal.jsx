@@ -168,7 +168,8 @@ export default function Portal({ token }) {
             <header className="pt-top"><button className="pt-round" onClick={() => setPay(null)} aria-label="បិទ"><ArrowLeft size={18} /></button><b>{monthKm(pay.month, k)}</b><span /></header>
             <div className="pt-pay-card">
               <small>{pay.number}</small>
-              <b className="pt-amount">{$(pay.total)}</b>
+              <b className="pt-amount">{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b>
+              {pay.status !== 'paid' && pay.paid > 0 && <small>បានបង់ {$(pay.paid)} នៃ {$(pay.total)}</small>}
               <small>{khr(pay.totalKhr, k)} · {usdInWords(pay.total)}</small>
               {pay.khqr && pay.status !== 'paid' && data.autoConfirm && <p className="pt-auto"><span className="dot-pulse" /> រង់ចាំការបង់ប្រាក់ — នឹងបញ្ជាក់ដោយស្វ័យប្រវត្តិ</p>}
               {pay.khqr && pay.status !== 'paid' && <div className="pt-khqr"><span>KHQR</span><QR value={pay.khqr} size={210} label="KHQR" /><small>ថតរូបអេក្រង់ ឬស្កេនដោយកម្មវិធីធនាគារ ABA, ACLEDA, Wing, Bakong…</small></div>}
@@ -178,7 +179,7 @@ export default function Portal({ token }) {
             </div>
             <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={{ ...data.property, addressText: data.location?.addressText, location: data.location }} khmer={k} design={data.invoiceDesign} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
             <div className="pt-bottom-bar">
-              <div><b>{$(pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
+              <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
               {pay.status === 'unpaid' && <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>}
               {pay.status === 'claimed' && <span className="pt-wait">⏳ រង់ចាំបញ្ជាក់</span>}
               {pay.status === 'paid' && <span className="pt-done"><Check size={16} /> បានបង់</span>}

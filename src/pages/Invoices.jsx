@@ -91,6 +91,49 @@ export default function Invoices() {
   );
 }
 
+export const PAY_VIA = { cash: 'សាច់ប្រាក់', khqr: 'KHQR', aba: 'ABA', acleda: 'ACLEDA', wing: 'Wing', bank: 'ធនាគារផ្សេង', bakong: 'Bakong (ស្វ័យប្រវត្តិ)', deposit: 'ពីប្រាក់កក់', admin: 'ម្ចាស់ផ្ទះបញ្ជាក់', telegram: 'Telegram', portal: 'គេហទំព័រ', other: 'ផ្សេងៗ' };
+
+/** Payments received on an invoice, and a quick form to record a partial (or full) payment. */
+function Payments({ inv }) {
+  const { call } = useApp();
+  const { $ } = useFmt();
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ amount: '', via: 'cash', date: '', note: '' });
+  const list = inv.payments || [];
+  if (!list.length && inv.status === 'paid') return null;
+  async function submit(e) {
+    e.preventDefault();
+    const r = await call('POST', `/api/invoices/${inv.id}/payments`, { ...f, amount: +f.amount }, (res) => {
+      const x = res.invoices.find((i) => i.id === inv.id);
+      return x?.status === 'paid' ? `✅ បានបង់គ្រប់ ${$(x.total)}` : `បានកត់ ${$(+f.amount)} · នៅសល់ ${$(x?.balance || 0)}`;
+    });
+    if (r) { setOpen(false); setF({ amount: '', via: 'cash', date: '', note: '' }); }
+  }
+  return (
+    <div className="payments">
+      <div className="payments-head">
+        <b>ការបង់ប្រាក់</b>
+        {inv.status !== 'paid' && <span className="muted small">បានបង់ {$(inv.paid || 0)} · <b className="owe">នៅសល់ {$(inv.balance ?? inv.total)}</b></span>}
+      </div>
+      {list.map((p) => (
+        <div key={p.id} className="pay-row">
+          <span><b>{$(p.amount)}</b><small className="muted">{PAY_VIA[p.via] || p.via} · {dateKm(p.at.slice(0, 10)).replace('ថ្ងៃទី', '')}{p.note ? ` · ${p.note}` : ''}</small></span>
+          {inv.paidVia !== 'carried' && <button className="icon-btn" aria-label="លុប" onClick={() => window.confirm('លុបការបង់ប្រាក់នេះ?') && call('DELETE', `/api/invoices/${inv.id}/payments/${p.id}`)}><Trash2 size={14} /></button>}
+        </div>
+      ))}
+      {inv.status !== 'paid' && (open ? (
+        <form className="pay-form" onSubmit={submit}>
+          <input type="number" inputMode="decimal" step="0.01" min="0.01" max={inv.balance ?? inv.total} required placeholder={`ចំនួន (អតិបរមា ${inv.balance ?? inv.total})`} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
+          <select value={f.via} onChange={(e) => setF({ ...f, via: e.target.value })}>{['cash', 'khqr', 'aba', 'acleda', 'wing', 'bank', 'other'].map((v) => <option key={v} value={v}>{PAY_VIA[v]}</option>)}</select>
+          <input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="ថ្ងៃបង់" />
+          <input placeholder="កំណត់ចំណាំ (មិនចាំបាច់)" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+          <div className="row-btns"><button type="button" className="btn ghost sm" onClick={() => setOpen(false)}>បោះបង់</button><button className="btn primary sm"><Check size={14} /> កត់ត្រា</button></div>
+        </form>
+      ) : <button className="btn ghost sm" onClick={() => setOpen(true)}><Plus size={14} /> កត់ការបង់ប្រាក់ខ្លះ</button>)}
+    </div>
+  );
+}
+
 export function InvoiceModal({ id, onClose }) {
   const { state, call, print, setState, notify } = useApp();
   const { $, k } = useFmt();
@@ -138,6 +181,7 @@ export function InvoiceModal({ id, onClose }) {
       ) : (
         <InvoiceDoc inv={inv} property={property} khmer={k} design={design} innerRef={docRef} />
       )}
+      {!editing && <Payments inv={inv} />}
       {!editing && (
         <div className="modal-actions">
           <button className="btn ghost danger" onClick={() => window.confirm('លុបវិក្កយបត្រនេះ?') && call('DELETE', `/api/invoices/${inv.id}`, undefined, 'បានលុប').then((r) => r && onClose())}><Trash2 size={15} /></button>
@@ -160,7 +204,7 @@ export function InvoiceModal({ id, onClose }) {
           </button>
           {inv.status === 'paid'
             ? <button className="btn ghost" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'unpaid' }, 'បានសម្គាល់មិនទាន់បង់')}><Undo2 size={15} /> មិនទាន់បង់</button>
-            : <button className="btn primary" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, `បានទទួល ${$(inv.total)}`)}><Check size={15} /> បានបង់</button>}
+            : <button className="btn primary" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, `បានទទួល ${$(inv.balance ?? inv.total)}`)}><Check size={15} /> បានបង់គ្រប់</button>}
         </div>
       )}
     </Modal>
