@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight, CalendarDays, CheckCircle2, Sparkles, Send, ScanLine, FileText, Bot } from 'lucide-react';
 import { useApp, useFmt, navigate, Avatar, tenantPhoto } from '../ui.jsx';
-import { greetingKm, dateKm, lunarKm, monthKm, holidaysBetween, MONTHS_KM, toRiel, khr } from '../../shared/khmer.js';
+import { greetingKm, dateKm, nowInCambodia, lunarKm, monthKm, holidaysBetween, MONTHS_KM, toRiel, khr } from '../../shared/khmer.js';
 
 const ppHour = (iso) => +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Phnom_Penh', hour: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 const ppDate = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Phnom_Penh' }).format(new Date(iso));
@@ -62,7 +62,7 @@ export default function Home() {
     {
       const bk = state.settings.backup || {};
       const last = Math.max(+new Date(bk.lastAt || 0) || 0, +new Date(bk.lastTelegramAt || 0) || 0);
-      if (state.account.role === 'owner' && state.tenants.length && Date.now() - last > 30 * 86400000) needs.push({ key: 'backup', name: 'បម្រុងទុកទិន្នន័យ', sub: last ? `ចុងក្រោយ ${new Date(last).toLocaleDateString('km-KH')}` : 'មិនទាន់ធ្លាប់បម្រុងទុក · ចុចម្តងគត់', pill: 'បម្រុង', tone: 'blue', go: () => navigate('/settings#backup') });
+      if (state.account.role === 'owner' && state.tenants.length && Date.now() - last > 30 * 86400000) needs.push({ key: 'backup', name: 'បម្រុងទុកទិន្នន័យ', sub: last ? `ចុងក្រោយ ${dateKm(nowInCambodia(new Date(last)).ymd, k).replace('ថ្ងៃទី', '')}` : 'មិនទាន់ធ្លាប់បម្រុងទុក · ចុចម្តងគត់', pill: 'បម្រុង', tone: 'blue', go: () => navigate('/settings#backup') });
     }
     for (const t of active.filter((x) => !x.telegram?.chatId).slice(0, 3)) needs.push({ key: 'tg' + t.id, name: t.nameKm || t.nameEn, sub: `មិនទាន់ភ្ជាប់ Telegram · ${t.roomId || '—'}`, pill: 'ភ្ជាប់', tone: 'light', photo: tenantPhoto(t), go: () => navigate('/customers/' + t.id) });
     const unsent = inv.filter((i) => !i.sentAt && i.status !== 'paid');
@@ -84,11 +84,11 @@ export default function Home() {
       <div className="page-head">
         <h1 className="greeting">{greetingKm(today.hour)}, ម្ចាស់ផ្ទះ</h1>
         <div className="head-actions">
-          <button className="btn ghost" onClick={openScanner}><ScanLine size={16} /> ស្កេន QR</button>
+          <button className="btn ghost hide-m" onClick={openScanner}><ScanLine size={16} /> ស្កេន QR</button>
           <span className="btn ghost static" title={lunarKm(today.ymd)}><CalendarDays size={16} /> {dateKm(today.ymd, k).replace('ថ្ងៃទី', '')}</span>
-          <button className="btn primary" onClick={() => navigate('/invoices')} disabled={!d.needs.length && false}>
+          {d.needs.length > 0 && <button className="btn primary" onClick={() => document.querySelector('.needs-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
             <CheckCircle2 size={16} /> ពិនិត្យ {n(d.needs.length)} ការងារ
-          </button>
+          </button>}
         </div>
       </div>
       <p className="lunar-line">{lunarKm(today.ymd)}{holidays.length > 0 && <> · <b>{holidays[0].nameKm}</b> {dateKm(holidays[0].date, k).replace('ថ្ងៃទី', '')}</>}</p>

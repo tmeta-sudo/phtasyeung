@@ -130,3 +130,28 @@ export function invoiceTelegramHtml(inv, { reminder = false, hasQr = false } = {
   }
   return lines.join('\n');
 }
+
+/**
+ * Add the landlord's late fee (once) to unpaid invoices overdue by `afterDays` or more.
+ * The KHQR follows automatically because it is keyed on the total. Returns the changed invoices.
+ */
+export function applyLateFees(today = nowInCambodia().ymd) {
+  const s = db();
+  const lf = s.settings.lateFee || {};
+  const amount = Math.round((+lf.amount || 0) * 100) / 100;
+  if (!lf.enabled || amount <= 0) return [];
+  const after = Math.max(0, Math.round(+lf.afterDays || 0));
+  const limit = new Date(`${today}T00:00:00Z`);
+  limit.setUTCDate(limit.getUTCDate() - after);
+  const cutoff = limit.toISOString().slice(0, 10);
+  const changed = [];
+  for (const inv of s.invoices) {
+    if (inv.status !== 'unpaid' || !inv.dueDate || inv.dueDate >= cutoff || inv.items.some((it) => it.key === 'late')) continue;
+    inv.items.push({ key: 'late', label: 'ថ្លៃបង់យឺត', qty: 1, unit: 'ដង', rate: amount, amount });
+    recalc(inv);
+    inv.lateFeeAt = now();
+    changed.push(inv);
+  }
+  if (changed.length) { save(); logEvent('auto', `បានបន្ថែមថ្លៃបង់យឺតលើ ${kmDigits(changed.length)} វិក្កយបត្រ`); }
+  return changed;
+}

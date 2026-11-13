@@ -30,6 +30,7 @@ const RULES = [
   ['*', '/api/tenants*', 'manager'],
   ['*', '/api/invoices*', 'manager'],
   ['POST', '/api/auto/run', 'manager'],
+  ['*', '/api/notices*', 'manager'],
   ['PUT', '/api/settings', 'manager'], // the handler limits managers to invoice/utility keys
 ];
 
@@ -43,7 +44,7 @@ export function requiredRole(method, routePath) {
 }
 
 /** Settings a manager may change (the rest stay with the owner). */
-export const MANAGER_SETTINGS = new Set(['invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
+export const MANAGER_SETTINGS = new Set(['lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
 
@@ -60,6 +61,7 @@ export function staffView(st) {
     })),
     invoices: [],
     events: [],
+    notices: [],
     settings: {
       ...pick(s, ['propertyName', 'propertyNameEn', 'address', 'phone', 'khmerNumerals', 'location', 'theme']),
       khqr: {}, telegram: { adminChats: [] }, bakong: { enabled: false }, backup: {}, auto: {}, contract: {},
