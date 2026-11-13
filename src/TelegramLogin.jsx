@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Send, CheckCircle2, XCircle, RefreshCw, Copy } from 'lucide-react';
 import { api } from './api.js';
 import { QR } from './ui.jsx';
 
@@ -68,6 +68,13 @@ export default function TelegramLogin({ mode = 'login', extra = {}, onDone, onCa
           {!isMobile() && <div className="tg-qr"><QR value={flow.link} size={180} label="Telegram login QR" /></div>}
           <a className="btn tg block" href={flow.link} target="_blank" rel="noreferrer"><Send size={17} /> បើក Telegram</a>
           <p className="tg-wait"><span className="dot-pulse" /> កំពុងរង់ចាំការអនុញ្ញាតពី Telegram…</p>
+          <details className="tg-fallback">
+            <summary>Bot មិនឆ្លើយតប? ផ្ញើលេខកូដនេះទៅ @{flow.bot}</summary>
+            <div className="tg-code">
+              <code>{flow.code}</code>
+              <button type="button" className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(flow.code)}><Copy size={14} /> ចម្លង</button>
+            </div>
+          </details>
         </>
       )}
       {status === 'starting' && !flow && <div className="boot small"><span className="spinner" /></div>}
