@@ -12,7 +12,8 @@ import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } 
 
 const API = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org';
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-let platformUsername = process.env.TELEGRAM_BOT_USERNAME || '';
+// Accept the username with or without a leading @ (t.me links must not contain it).
+let platformUsername = String(process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@+/, '').replace(/^https?:\/\/t\.me\//i, '');
 const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export const appUrl = () => {
@@ -40,10 +41,21 @@ export async function api(token, method, payload) {
 }
 const call = (method, payload) => api(tokenOf(db()), method, payload);
 
+/**
+ * The shared bot's username. The value from TELEGRAM_BOT_USERNAME is checked once
+ * against Telegram (getMe), because a wrong value silently breaks every t.me link.
+ */
+let usernameVerified = false;
 export async function platformBotName() {
-  if (!platformUsername && PLATFORM_TOKEN) {
-    try { platformUsername = (await api(PLATFORM_TOKEN, 'getMe')).username; } catch { /* offline */ }
-  }
+  if (usernameVerified || !PLATFORM_TOKEN) return platformUsername;
+  try {
+    const real = (await api(PLATFORM_TOKEN, 'getMe')).username;
+    if (platformUsername && platformUsername.toLowerCase() !== real.toLowerCase()) {
+      console.warn(`[telegram] TELEGRAM_BOT_USERNAME is "${platformUsername}" but the token belongs to @${real}; using @${real}`);
+    }
+    platformUsername = real;
+    usernameVerified = true;
+  } catch { /* offline: fall back to the configured value */ }
   return platformUsername;
 }
 

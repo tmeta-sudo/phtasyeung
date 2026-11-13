@@ -70,7 +70,7 @@ Follows the system setting by default. The ☀️/🌙 toggle in the menu, on th
    | --- | --- |
    | `DATABASE_URL` | Neon pooled connection string |
    | `TELEGRAM_BOT_TOKEN` | platform bot token |
-   | `TELEGRAM_BOT_USERNAME` | platform bot username (without @) |
+   | `TELEGRAM_BOT_USERNAME` | platform bot username, e.g. `phtasyeungbot` (a leading @ is ignored; the real name is checked with Telegram) |
    | `CRON_SECRET` | any long random string (`openssl rand -hex 32`) |
    | `SUPER_ADMIN_EMAILS` | your email (and/or `SUPER_ADMIN_TELEGRAM_IDS`) |
    | `APP_URL` | optional: your custom domain, e.g. `https://phteahyeung.com` |

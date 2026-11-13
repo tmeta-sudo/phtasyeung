@@ -10,16 +10,34 @@ setupPwa();
 
 const Admin = lazy(() => import('./App.jsx'));
 const Portal = lazy(() => import('./portal/Portal.jsx'));
+const Landing = lazy(() => import('./landing/Landing.jsx'));
 const Magic = lazy(() => import('./TelegramLogin.jsx').then((m) => ({ default: m.MagicLogin })));
+
+const authHint = () => { try { return localStorage.getItem('py-authed') === '1'; } catch { return false; } };
 
 function Root() {
   const path = usePath();
+  // First-time visitors see the landing page instantly; signed-in users go straight to the app.
+  if (path === '/' && !authHint()) {
+    return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><LandingGate /></Suspense>;
+  }
   const portal = path.match(/^\/p\/([\w-]{10,})/);
   return (
     <Suspense fallback={<div className="boot"><span className="spinner" /></div>}>
       {portal ? <Portal token={portal[1]} /> : path === '/auth/magic' ? <Magic /> : <Admin />}
     </Suspense>
   );
+}
+
+/** Shows the landing page, and switches to the app if the visitor turns out to be signed in. */
+function LandingGate() {
+  const [authed, setAuthed] = React.useState(false);
+  React.useEffect(() => {
+    fetch('/api/auth/state', { credentials: 'same-origin' }).then((r) => r.json()).then((a) => {
+      if (a.authed) { try { localStorage.setItem('py-authed', '1'); } catch { /* ignore */ } setAuthed(true); }
+    }).catch(() => {});
+  }, []);
+  return authed ? <Admin /> : <Landing />;
 }
 
 createRoot(document.getElementById('root')).render(<Root />);

@@ -725,3 +725,4 @@ fieldset > :not(legend) { clear: both; }
 .bh-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
 .bh-grid span { color: var(--muted); }
 .bh-grid b { font-weight: 500; word-break: break-all; }
+.logo-link img { border-radius: 16px; display: block; }
