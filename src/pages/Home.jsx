@@ -82,6 +82,20 @@ export default function Home() {
       </div>
       <p className="lunar-line">{lunarKm(today.ymd)}{holidays.length > 0 && <> · <b>{holidays[0].nameKm}</b> {dateKm(holidays[0].date, k).replace('ថ្ងៃទី', '')}</>}</p>
 
+      {(!state.rooms.length || !state.tenants.length || !settings.khqrReady || !settings.telegram.adminChats.length) && (
+        <div className="onboard">
+          {[
+            [!!state.rooms.length, 'បន្ថែមបន្ទប់', 'បញ្ចូលបន្ទប់ និងថ្លៃជួល', '/rooms'],
+            [!!state.tenants.length, 'បន្ថែមអតិថិជន', 'ព័ត៌មាន និងរូបអត្តសញ្ញាណប័ណ្ណ', '/customers'],
+            [settings.khqrReady, 'កំណត់ KHQR', 'Bakong ID ដើម្បីទទួលប្រាក់', '/settings'],
+            [!!settings.telegram.adminChats.length, 'ភ្ជាប់ Telegram', 'ស្កេន QR ម្ចាស់ផ្ទះ ដើម្បីទទួលការជូនដំណឹង', '/telegram'],
+          ].map(([done, title, sub, to], i) => (
+            <button key={title} className={'onboard-step ' + (done ? 'done' : '')} onClick={() => navigate(to)}>
+              <span className="num">{done ? '✓' : n(i + 1)}</span><b>{title}</b><small>{sub}</small>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="dash">
         {/* Property */}
         <section className="card photo-card" style={{ backgroundImage: settings.coverUrl ? `url("${settings.coverUrl}")` : undefined }}>
@@ -89,7 +103,7 @@ export default function Home() {
           <div className="photo-bottom">
             <span className="chip glass"><Bot size={14} /> {state.bot.running ? `@${state.bot.username} កំពុងតាមដាន` : 'Telegram bot មិនទាន់ដំណើរការ'}</span>
             <button className="glass-card" onClick={() => navigate('/rooms')}>
-              <span><b>{settings.propertyName}</b><small>{n(state.rooms.length)} បន្ទប់ · {settings.address}</small></span>
+              <span><b>{settings.propertyName}</b><small>{n(state.rooms.length)} បន្ទប់{settings.address ? ` · ${settings.address}` : ''}</small></span>
               <i className="round-dark"><ChevronRight size={18} /></i>
             </button>
           </div>

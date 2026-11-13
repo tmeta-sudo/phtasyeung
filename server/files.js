@@ -1,12 +1,11 @@
 // Private customer documents (ID card front/back, profile photo, signed contract).
-// Stored on disk under DATA_DIR/uploads with random names; never served statically.
-import fs from 'node:fs';
-import path from 'node:path';
+// Stored as bytea rows scoped to the landlord; never publicly addressable.
 import multer from 'multer';
-import { UPLOAD_DIR, uid, now, save } from './db.js';
+import { uid, now, save, orgId } from './db.js';
+import { putFile, getFile, deleteFile } from './store.js';
 
 export const SLOTS = { idFront: 'អត្តសញ្ញាណប័ណ្ណ (មុខ)', idBack: 'អត្តសញ្ញាណប័ណ្ណ (ក្រោយ)', photo: 'រូបថត', contract: 'កិច្ចសន្យា' };
-const MAX = 8 * 1024 * 1024;
+const MAX = 4 * 1024 * 1024; // Vercel functions accept bodies up to 4.5 MB; the browser shrinks photos first.
 
 export const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX, files: 1 } }).single('file');
 
@@ -18,32 +17,31 @@ function sniff(buf) {
   return null;
 }
 
-const fileOf = (meta) => path.join(UPLOAD_DIR, `${meta.id}.${meta.ext}`);
-
-export function removeFile(meta) {
-  if (meta?.id && /^[\w-]+$/.test(meta.id)) fs.rm(fileOf(meta), { force: true }, () => {});
+export async function removeFile(meta) {
+  if (meta?.id) await deleteFile(orgId(), meta.id);
 }
 
-/** Store req.file into tenant.files[slot]. Returns an error string or ''. */
-export function storeFile(tenant, slot, file) {
+/** Store an uploaded file into tenant.files[slot]. Returns an error string or ''. */
+export async function storeFile(tenant, slot, file) {
   if (!SLOTS[slot]) return 'ប្រភេទឯកសារមិនត្រឹមត្រូវ';
   if (!file?.buffer?.length) return 'សូមជ្រើសរើសឯកសារ';
   const kind = sniff(file.buffer);
   if (!kind || (slot !== 'contract' && kind[0] === 'pdf')) return 'អនុញ្ញាតតែរូបភាព JPG, PNG ឬ WEBP' + (slot === 'contract' ? ' ឬ PDF' : '');
   const meta = { id: uid(16), ext: kind[0], type: kind[1], size: file.buffer.length, at: now() };
-  fs.writeFileSync(fileOf(meta), file.buffer);
-  removeFile(tenant.files?.[slot]);
+  await putFile(orgId(), meta.id, meta.type, file.buffer);
+  await removeFile(tenant.files?.[slot]);
   tenant.files = { ...(tenant.files || {}), [slot]: meta };
   tenant.updatedAt = now();
   save();
   return '';
 }
 
-export function sendStored(res, meta) {
-  if (!meta?.id || !/^[\w-]+$/.test(meta.id) || !fs.existsSync(fileOf(meta))) return res.status(404).end();
-  res.setHeader('Content-Type', meta.type);
-  res.setHeader('Cache-Control', 'private, max-age=300');
+export async function sendStored(res, org, meta) {
+  const f = meta?.id && await getFile(org, meta.id);
+  if (!f) return res.status(404).end();
+  res.setHeader('Content-Type', f.mime);
+  res.setHeader('Cache-Control', 'private, max-age=600');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Disposition', 'inline');
-  fs.createReadStream(fileOf(meta)).pipe(res);
+  res.end(f.data);
 }

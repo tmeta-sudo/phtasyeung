@@ -25,48 +25,68 @@ Khmer-first rental management: rooms, customers with full profiles and ID cards,
 | [Kantumruy Pro](https://fonts.google.com/specimen/Kantumruy+Pro), [Moul](https://fonts.google.com/specimen/Moul) | Tep Sovichet; Danh Hong | Fonts |
 | [`khmer-normalizer`](https://www.npmjs.com/package/khmer-normalizer) | Keyman/SIL | Khmer encoding normalisation (Unicode L2/22-290) |
 
-## Run it (Windows, macOS or Linux)
+## Free for every landlord
 
-1. Install **Node.js 20 or newer** from <https://nodejs.org/>.
+Anyone can sign up with an email and password and gets their own private workspace. Every landlord's rooms, customers, invoices and ID-card images are stored separately, and each request can only reach that landlord's data. Landlords can export everything as JSON or permanently delete their account from **ការកំណត់** (Settings).
+
+Telegram works without any setup. All landlords share one platform bot, and each message names the landlord's property. A landlord can switch to their own bot (their own name and logo) by pasting a @BotFather token.
+
+Forgot your password? A 6-digit reset code is sent to the owner Telegram you linked, so no email service is needed.
+
+## Deploy free: Vercel + Neon
+
+1. **Neon**: create a project and copy the **pooled** connection string (`…-pooler…`).
+2. **Telegram**: in @BotFather, run `/newbot` to create the shared platform bot. Copy its token and username.
+3. **Vercel**: import this GitHub repo. *Framework preset: Other.* The build settings come from `vercel.json`. Add these environment variables:
+
+   | Variable | Value |
+   | --- | --- |
+   | `DATABASE_URL` | Neon pooled connection string |
+   | `TELEGRAM_BOT_TOKEN` | platform bot token |
+   | `TELEGRAM_BOT_USERNAME` | platform bot username (without @) |
+   | `CRON_SECRET` | any long random string (`openssl rand -hex 32`) |
+   | `APP_URL` | optional: your custom domain, e.g. `https://phteahyeung.com` |
+
+4. Deploy. The database tables are created automatically on the first request.
+5. Register the Telegram webhook once by opening your site, or by running:
+   `curl -H "Authorization: Bearer $CRON_SECRET" https://YOUR-APP.vercel.app/api/cron/daily`
+   After that, the daily cron re-registers it automatically.
+
+**How it runs on Vercel**
+
+- `api/index.js` is one serverless function, and all `/api/*` requests go to it. Everything else is the static Vite build.
+- Telegram sends updates to `/api/telegram/webhook/<bot>`. Each request is checked with a secret header derived from the bot's token.
+- Vercel Cron calls `/api/cron/daily` at 01:00 UTC (08:00 in Phnom Penh). That run creates and sends the monthly invoices for every landlord whose invoice day has come, and sends the reminders.
+- ID cards and photos are stored in Postgres (bytea), scoped to their landlord. Photos are shrunk in the browser to stay under Vercel's 4.5 MB request limit.
+
+**Free-tier limits to know**
+
+- **Vercel Hobby**: one cron run per day, so auto-invoices go out every morning rather than at a custom hour. Functions run for up to 300 s, which is fine for hundreds of landlords per daily run; beyond that, move the daily job to a queue. Vercel's Hobby plan is meant for **non-commercial** use, so if you ever charge for this service, move to the Pro plan.
+- **Neon Free**: 0.5 GB of storage per project. With compressed ID photos of about 200–400 KB, that's roughly 1,500 customers with full ID sets. When you outgrow it, move file storage to Cloudflare R2 (10 GB free).
+- Pages refresh every 20 s and whenever you return to the tab. Instant alerts arrive through Telegram.
+
+## Run it on your computer (Windows, macOS or Linux)
+
+1. Install **Node.js 22 or newer** from <https://nodejs.org/>.
 2. Open a terminal in this folder. On Windows: click the File Explorer address bar, type `cmd` and press Enter.
-3. Run `npm install` once.
-4. Run `npm run dev`, then open <http://localhost:5173/>.
-5. The first visit asks you to create the owner password (at least 8 characters).
+3. Run `npm install` once, then `npm run dev`, and open <http://localhost:5173/>.
+4. Click **បង្កើតគណនី** (Create account).
 
-For production, run `npm run build`, then `npm start`.
+Without `DATABASE_URL`, an embedded Postgres (PGlite) stores data in `./data/pglite`, so you don't need to install anything. To use Neon locally too, copy `.env.example` to `.env` and fill it in. Locally the bots use long polling, so no public URL is needed. **Use a separate test bot locally.** Polling turns off the production bot's webhook.
 
-### Connect Telegram (5 minutes)
-
-1. In Telegram, open **@BotFather**, send `/newbot` and copy the token it gives you.
-2. Go to **Telegram** in the app and paste the token. The status shows `@YourBot កំពុងដំណើរការ`.
-3. Scan the **owner QR** on that page with your phone. You'll now receive payment alerts.
-4. For each customer, open their profile and have them scan the **Telegram QR**, or print their welcome card.
-5. Turn on **វិក្កយបត្រស្វ័យប្រវត្តិ**, then choose the day, hour and reminder interval.
-
-The bot uses long polling, so it needs no public URL, domain or webhook.
-
-### KHQR
-
-In **ការកំណត់ → KHQR**, enter your Bakong account ID (e.g. `name@aclb`, `name@abaa`) and the receiver name in Latin letters.
-
-## Environment variables (all optional)
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `PORT` | `5173` | HTTP port |
-| `DATA_DIR` | `./data` | Database and uploaded documents |
-| `ADMIN_PASSWORD` | — | Fixed owner password (otherwise it is set in the browser on first run) |
-| `TELEGRAM_BOT_TOKEN` | — | Bot token (otherwise it is set on the Telegram page) |
+If you used the previous single-owner version, its `data/db.json` is imported on first start. Sign in with the email **`admin`** and your old password.
 
 ## Privacy and security
 
-- ID cards and other documents are stored in `DATA_DIR/uploads` with random file names. They are never served publicly: only a logged-in owner or that customer's own portal link can open them. Uploaded files are checked by their content (JPG/PNG/WEBP/PDF only), and photos are shrunk on the device before upload.
+- ID cards and other documents are stored in the database, tied to their landlord. They are never served publicly: only that landlord, logged in, or that customer's own portal link can open them. Uploaded files are checked by their content (JPG/PNG/WEBP/PDF only), and photos are shrunk on the device before upload.
 - Customer portal links are long random tokens. You can re-issue one from the profile, which disables the old link and QR. Telegram link codes are single-use.
 - Customers can edit their personal details but not their room, rent, contract or your private notes.
-- Passwords are hashed with scrypt. Sessions use HttpOnly SameSite cookies. Logins are rate limited, and cross-site write requests are rejected.
-- `data/` is git-ignored. **Back it up**: it is your whole database.
+- Passwords are hashed with scrypt. Session tokens are stored only as SHA-256 hashes, in HttpOnly SameSite cookies. Login, sign-up and reset attempts are rate limited in the database, so limits hold across serverless instances. Cross-site write requests are rejected.
+- Telegram button presses include the landlord and invoice IDs, and each press is checked against that landlord's chats. A customer cannot confirm their own payment, and no landlord can act on another landlord's invoice.
+- Each landlord's document is locked (`SELECT … FOR UPDATE`) while a request changes it, so simultaneous edits are never lost.
 
 ## Current limits
 
-- One owner account per installation, stored in a JSON file in `DATA_DIR`. Hosting therefore needs a persistent disk. See the roadmap in the pull request for moving to Postgres (Neon) and multi-owner hosting.
 - Payments are confirmed by the owner. Automatic bank confirmation would need Bakong's merchant API (`check_transaction_by_md5`), which requires a registered Bakong developer token.
+- One owner login per landlord. Staff accounts with roles are not built yet.
+- No browser (Web Push) notifications yet. Alerts are delivered through Telegram.

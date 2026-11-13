@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages } from 'lucide-react';
+import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound } from 'lucide-react';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
 import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.js';
@@ -66,7 +66,7 @@ export default function SettingsPage() {
           <button className="btn primary">រក្សាទុក</button>
         </form>
 
-        {!state.settings.passwordFromEnv && (
+        {(
           <form className="card" onSubmit={async (e) => { e.preventDefault(); try { await api('POST', '/api/auth/password', pw); setPw({ current: '', next: '' }); notify('បានប្តូរពាក្យសម្ងាត់'); } catch (err) { notify(err.message, true); } }}>
             <h3 className="sec-title"><Lock size={17} /> ពាក្យសម្ងាត់</h3>
             <div className="form-grid">
@@ -76,6 +76,24 @@ export default function SettingsPage() {
             <button className="btn primary">ប្តូរ</button>
           </form>
         )}
+
+        <div className="card">
+          <h3 className="sec-title"><UserRound size={17} /> គណនី</h3>
+          <p className="muted">ចូលដោយ <b>{state.account.email}</b>។ ទិន្នន័យទាំងអស់ជារបស់អ្នក — អាចនាំចេញ ឬលុបបានគ្រប់ពេល។</p>
+          <div className="row-btns"><a className="btn ghost" href="/api/account/export" download><Download size={15} /> នាំចេញទិន្នន័យ (JSON)</a></div>
+        </div>
+
+        <form className="card danger-zone" onSubmit={async (e) => {
+          e.preventDefault();
+          const password = new FormData(e.currentTarget).get('password');
+          if (!window.confirm('លុបគណនី និងទិន្នន័យទាំងអស់ (បន្ទប់ អតិថិជន រូបអត្តសញ្ញាណប័ណ្ណ វិក្កយបត្រ) ជាអចិន្ត្រៃយ៍? មិនអាចយកមកវិញបានទេ។')) return;
+          try { await api('POST', '/api/account/delete', { password }); location.href = '/'; } catch (err) { notify(err.message, true); }
+        }}>
+          <h3 className="sec-title"><Trash2 size={17} /> លុបគណនី</h3>
+          <p className="muted">លុបទិន្នន័យទាំងអស់របស់អ្នកពីម៉ាស៊ីនមេជាអចិន្ត្រៃយ៍។ សូមនាំចេញទិន្នន័យជាមុនសិន។</p>
+          <Field label="បញ្ជាក់ដោយពាក្យសម្ងាត់"><input name="password" type="password" autoComplete="current-password" required /></Field>
+          <button className="btn ghost danger">លុបគណនីជាអចិន្ត្រៃយ៍</button>
+        </form>
 
         {legacy?.rooms?.length > 0 && (
           <div className="card">

@@ -1,108 +1,75 @@
-// Tiny JSON-file database. One process owns the file; writes are atomic
-// (write to a temp file then rename) and coalesced.
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
+// Per-request access to the current landlord's document (set up by store.withOrg).
+import { als, uid, now } from './store.js';
 
-export const DATA_DIR = path.resolve(process.env.DATA_DIR || 'data');
-export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+export { uid, now };
 
-export const uid = (bytes = 9) => crypto.randomBytes(bytes).toString('base64url');
-export const now = () => new Date().toISOString();
+export function db() {
+  const ctx = als.getStore();
+  if (!ctx?.doc) throw new Error('db() called outside withOrg');
+  return ctx.doc;
+}
+export const orgId = () => als.getStore()?.orgId;
 
-const SEED_COVER = 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1400&q=80';
+/** Mark the current document as changed; it is written when the request's transaction ends. */
+export function save() {
+  const ctx = als.getStore();
+  if (ctx) ctx.dirty = true;
+}
 
-function seed() {
-  const t = (id, nameKm, nameEn, gender, phone, roomId, start, end) => ({
-    id, nameKm, nameEn, gender, dob: '', phone, phone2: '', email: '', occupation: '', workplace: '',
-    idType: 'national_id', idNumber: '', idIssued: '', idExpiry: '', files: {},
-    address: { provinceId: '', districtId: '', communeId: '', villageId: '', detail: '' },
-    emergency: { name: '', relation: '', phone: '' },
-    roomId, contract: { start, end, deposit: 150 }, status: 'active', notes: '',
-    portalToken: uid(18), linkCode: uid(6), telegram: null, createdAt: now(), updatedAt: now(),
-  });
+/** Append to the dashboard activity feed. kind: auto | admin | tenant | alert */
+export function logEvent(kind, text, refs = {}) {
+  const s = db();
+  s.events.unshift({ id: uid(), at: now(), kind, text, ...refs });
+  s.events.length = Math.min(s.events.length, 300);
+  save();
+}
+
+const COVER = 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1400&q=80';
+
+export function defaultSettings(name = 'ផ្ទះរបស់ខ្ញុំ') {
   return {
-    version: 3,
-    rooms: [
-      { id: 'A-101', building: 'អគារ A', floor: '1', rent: 150, water: 124, electric: 1260 },
-      { id: 'A-102', building: 'អគារ A', floor: '1', rent: 150, water: 98, electric: 1082 },
-      { id: 'A-103', building: 'អគារ A', floor: '1', rent: 150, water: 156, electric: 1420 },
-      { id: 'A-201', building: 'អគារ A', floor: '2', rent: 170, water: 40, electric: 610 },
-    ],
-    tenants: [
-      t('c-demo-1', 'សុខ ស្រីនាង', 'Sok Sreyneang', 'female', '012 345 678', 'A-101', '2026-01-01', '2026-12-31'),
-      t('c-demo-2', 'ចាន់ ដារ៉ា', 'Chan Dara', 'male', '096 234 567', 'A-102', '2026-02-01', '2027-01-31'),
-      t('c-demo-3', 'ពេជ្រ សុភា', 'Pich Sophea', 'female', '077 123 456', 'A-103', '2025-12-15', '2026-12-20'),
-    ],
+    propertyName: name,
+    propertyNameEn: '',
+    address: '',
+    phone: '',
+    coverUrl: COVER,
+    waterRate: 0.5,
+    electricRate: 0.25,
+    exchangeRate: 4100,
+    dueDays: 7,
+    khmerNumerals: true,
+    publicUrl: '',
+    khqr: { accountId: '', merchantName: '', city: 'Phnom Penh' },
+    telegram: { token: '', username: '', error: '', adminChats: [], adminLinkCode: uid(6) },
+    auto: { enabled: false, day: 1, hour: 8, send: true, reminderDays: 3, lastRunMonth: '', lastReminderDay: '' },
+  };
+}
+
+/** A brand-new landlord account. */
+export function newOrgDoc({ name, nameEn = '', phone = '' }) {
+  const settings = defaultSettings(name);
+  settings.propertyNameEn = nameEn;
+  settings.phone = phone;
+  return {
+    version: 4,
+    rooms: [],
+    tenants: [],
     meters: [],
     invoices: [],
     activities: [],
     events: [],
     counters: { invoice: 0 },
-    settings: {
-      propertyName: 'ផ្ទះយើង',
-      propertyNameEn: 'Phteah Yeung',
-      address: 'ភ្នំពេញ',
-      phone: '',
-      coverUrl: SEED_COVER,
-      waterRate: 0.5,
-      electricRate: 0.25,
-      exchangeRate: 4100,
-      dueDays: 7,
-      khmerNumerals: true,
-      publicUrl: '',
-      khqr: { accountId: '', merchantName: '', city: 'Phnom Penh' },
-      telegram: { token: '', adminChats: [], adminLinkCode: uid(6) },
-      auto: { enabled: false, day: 1, hour: 8, send: true, reminderDays: 3, lastRunMonth: '', lastReminderDay: '' },
-    },
-    auth: { passwordHash: '', sessions: {} },
+    settings,
   };
 }
 
-let state;
-let timer = null;
-
-export function load() {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  if (fs.existsSync(DB_FILE)) {
-    state = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    migrate(state);
-  } else {
-    state = seed();
-    flush();
-  }
-  return state;
+/** Bring older documents (including the single-owner v3 file) up to the current shape. */
+export function migrateDoc(doc) {
+  const base = newOrgDoc({ name: doc.settings?.propertyName || 'ផ្ទះរបស់ខ្ញុំ' });
+  for (const k of Object.keys(base)) if (doc[k] === undefined) doc[k] = base[k];
+  doc.settings = { ...base.settings, ...doc.settings };
+  for (const k of ['khqr', 'telegram', 'auto']) doc.settings[k] = { ...base.settings[k], ...(doc.settings[k] || {}) };
+  delete doc.auth;
+  doc.version = 4;
+  return doc;
 }
-
-function migrate(s) {
-  const base = seed();
-  for (const k of Object.keys(base)) if (s[k] === undefined) s[k] = base[k];
-  s.settings = { ...base.settings, ...s.settings };
-  for (const k of ['khqr', 'telegram', 'auto']) s.settings[k] = { ...base.settings[k], ...s.settings[k] };
-  s.auth = { ...base.auth, ...s.auth };
-}
-
-export const db = () => state;
-
-export function save() {
-  clearTimeout(timer);
-  timer = setTimeout(flush, 150);
-}
-
-export function flush() {
-  clearTimeout(timer);
-  const tmp = DB_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 1));
-  fs.renameSync(tmp, DB_FILE);
-}
-
-/** Append to the activity feed shown on the dashboard. kind: auto | admin | tenant | alert */
-export function logEvent(kind, text, refs = {}) {
-  state.events.unshift({ id: uid(), at: now(), kind, text, ...refs });
-  state.events.length = Math.min(state.events.length, 400);
-  save();
-}
-
-process.on('exit', () => { try { if (state) flush(); } catch { /* ignore */ } });
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
