@@ -1,9 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  Plus, Phone, Send, IdCard, Pencil, Trash2, ArrowLeft, Upload, Link2, RefreshCw, MapPin, HeartPulse, FileText, Unlink, ExternalLink, UserRound, Printer,
+  ScanText, Plus, Phone, Send, IdCard, Pencil, Trash2, ArrowLeft, Upload, Link2, RefreshCw, MapPin, HeartPulse, FileText, Unlink, ExternalLink, UserRound, Printer,
 } from 'lucide-react';
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR, AddressPicker, addressText, usePumi, useVillageName, StatusPill } from '../ui.jsx';
 import { uploadFile } from '../api.js';
+import ContractModal from './ContractModal.jsx';
+import { lazy, Suspense } from 'react';
+
+const IdScanner = lazy(() => import('../ocr/IdScanner.jsx'));
 import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm } from '../../shared/khmer.js';
 
 const FILTERS = [
@@ -82,6 +86,7 @@ export function CustomerDetail({ id }) {
   const t = state.tenants.find((x) => x.id === id);
   const village = useVillageName(t?.address?.villageId);
   const [viewer, setViewer] = useState('');
+  const [contract, setContract] = useState(() => new URLSearchParams(location.search).has('contract'));
   if (!t) return <Empty icon={UserRound} title="រកមិនឃើញអតិថិជន"><button className="btn ghost" onClick={() => navigate('/customers')}>ត្រឡប់ក្រោយ</button></Empty>;
 
   const room = state.rooms.find((r) => r.id === t.roomId);
@@ -105,6 +110,7 @@ export function CustomerDetail({ id }) {
         <div className="head-actions">
           <button className="btn ghost" onClick={() => print(<WelcomeSheet t={t} portal={portal} tgLink={tgLink} property={state.settings.propertyName} />)}><Printer size={16} /> បោះពុម្ពប័ណ្ណស្វាគមន៍</button>
           <button className="btn ghost danger" onClick={remove}><Trash2 size={16} /> លុប</button>
+          <button className="btn ghost" onClick={() => setContract(true)}><FileText size={16} /> {t.lease?.required === false ? 'គ្មានកិច្ចសន្យា' : t.lease?.text ? 'កិច្ចសន្យា' : 'បង្កើតកិច្ចសន្យា'}</button>
           <button className="btn primary" onClick={() => openCustomerForm(t)}><Pencil size={16} /> កែប្រែព័ត៌មាន</button>
         </div>
       </div>
@@ -204,6 +210,7 @@ export function CustomerDetail({ id }) {
           </section>
         </div>
       </div>
+      {contract && <ContractModal tenant={t} onClose={() => { setContract(false); if (location.search) history.replaceState({}, '', location.pathname); }} />}
       {viewer && <Modal title="មើលឯកសារ" onClose={() => setViewer('')} wide><img className="viewer-img" src={viewer} alt="" /></Modal>}
     </>
   );
@@ -278,6 +285,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
   const { state, call, setState, notify } = useApp();
   const [f, setF] = useState(() => ({ ...blank, ...(tenant || {}), ...(preset || {}) }));
   const [pending, setPending] = useState({});
+  const [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -302,7 +310,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
     notify('បានរក្សាទុកអតិថិជន');
     setBusy(false);
     onClose();
-    if (!tenant && id) navigate('/customers/' + id);
+    if (!tenant && id) navigate(`/customers/${id}?contract=1`);
   }
 
   return (
@@ -324,6 +332,9 @@ export function CustomerForm({ tenant, preset, onClose }) {
         </fieldset>
         <fieldset>
           <legend>អត្តសញ្ញាណប័ណ្ណ</legend>
+          <button type="button" className="ocr-cta" onClick={() => setScan(true)}>
+            <ScanText size={20} /><span><b>ស្កេនអត្តសញ្ញាណប័ណ្ណ</b><small>ថតរូប → បំពេញឈ្មោះ លេខ ថ្ងៃខែឆ្នាំកំណើតដោយស្វ័យប្រវត្តិ (Chakkhu OCR)</small></span>
+          </button>
           <div className="form-grid">
             <Field label="ប្រភេទឯកសារ"><select value={f.idType} onChange={(e) => set('idType', e.target.value)}>{ID_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
             <Field label="លេខ"><input value={f.idNumber} onChange={(e) => set('idNumber', e.target.value)} placeholder="0xxxxxxxx" /></Field>
@@ -359,6 +370,20 @@ export function CustomerForm({ tenant, preset, onClose }) {
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
         </fieldset>
+        {scan && (
+          <Suspense fallback={null}>
+            <IdScanner initial={{ front: pending.idFront, back: pending.idBack }} onClose={() => setScan(false)}
+              onApply={(fields, files) => {
+                setF((x) => ({
+                  ...x,
+                  ...Object.fromEntries(['nameKm', 'nameEn', 'idNumber', 'gender', 'dob', 'idIssued', 'idExpiry'].filter((k) => fields[k]).map((k) => [k, fields[k]])),
+                  idType: 'national_id',
+                  address: fields.addressDetail && !x.address?.detail ? { ...x.address, detail: fields.addressDetail } : x.address,
+                }));
+                setPending((p) => ({ ...p, ...(files.front ? { idFront: files.front } : {}), ...(files.back ? { idBack: files.back } : {}) }));
+              }} />
+          </Suspense>
+        )}
         {warnings.map((w) => <p key={w} className="form-warn">⚠️ {w}</p>)}
         {error && <p className="form-error">{error}</p>}
         <div className="form-actions">

@@ -1,8 +1,8 @@
 // Private customer documents (ID card front/back, profile photo, signed contract).
 // Stored as bytea rows scoped to the landlord; never publicly addressable.
 import multer from 'multer';
-import { uid, now, save, orgId } from './db.js';
-import { putFile, getFile, deleteFile } from './store.js';
+import { uid, now, save, orgId, db } from './db.js';
+import { putBlob, getBlob, deleteBlob } from './blob.js';
 
 export const SLOTS = { idFront: 'អត្តសញ្ញាណប័ណ្ណ (មុខ)', idBack: 'អត្តសញ្ញាណប័ណ្ណ (ក្រោយ)', photo: 'រូបថត', contract: 'កិច្ចសន្យា' };
 const MAX = 4 * 1024 * 1024; // Vercel functions accept bodies up to 4.5 MB; the browser shrinks photos first.
@@ -18,7 +18,7 @@ function sniff(buf) {
 }
 
 export async function removeFile(meta) {
-  if (meta?.id) await deleteFile(orgId(), meta.id);
+  if (meta?.id) await deleteBlob(orgId(), db().settings, meta.id);
 }
 
 /** Store an uploaded file into tenant.files[slot]. Returns an error string or ''. */
@@ -28,7 +28,8 @@ export async function storeFile(tenant, slot, file) {
   const kind = sniff(file.buffer);
   if (!kind || (slot !== 'contract' && kind[0] === 'pdf')) return 'អនុញ្ញាតតែរូបភាព JPG, PNG ឬ WEBP' + (slot === 'contract' ? ' ឬ PDF' : '');
   const meta = { id: uid(16), ext: kind[0], type: kind[1], size: file.buffer.length, at: now() };
-  await putFile(orgId(), meta.id, meta.type, file.buffer);
+  const who = (tenant.nameEn || tenant.nameKm || tenant.id).replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 40);
+  meta.backend = await putBlob(orgId(), db().settings, { id: meta.id, mime: meta.type, data: file.buffer, name: `${tenant.roomId || 'room'} ${who} ${slot}.${meta.ext}` });
   await removeFile(tenant.files?.[slot]);
   tenant.files = { ...(tenant.files || {}), [slot]: meta };
   tenant.updatedAt = now();
@@ -37,7 +38,8 @@ export async function storeFile(tenant, slot, file) {
 }
 
 export async function sendStored(res, org, meta) {
-  const f = meta?.id && await getFile(org, meta.id);
+  let f = null;
+  try { f = meta?.id && await getBlob(org, db().settings, meta.id); } catch (e) { console.error('[files]', e.message); }
   if (!f) return res.status(404).end();
   res.setHeader('Content-Type', f.mime);
   res.setHeader('Cache-Control', 'private, max-age=600');

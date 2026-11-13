@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, Gauge, QrCode, DoorOpen, Droplets, Zap, Printer } from 'lucide-react';
+import { Plus, Pencil, Trash2, Gauge, QrCode, DoorOpen, Droplets, Zap, Printer, Building2 } from 'lucide-react';
+import BuildingWizard, { Building3D } from './BuildingWizard.jsx';
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR } from '../ui.jsx';
 import { matchesQuery } from '../../shared/khmer.js';
 
@@ -9,6 +10,7 @@ export default function Rooms() {
   const [edit, setEdit] = useState(null);
   const [q, setQ] = useState('');
   const [qr, setQr] = useState(null);
+  const [wizard, setWizard] = useState(false);
   const tenantIn = (id) => state.tenants.find((t) => t.roomId === id && t.status === 'active');
   const rooms = state.rooms.filter((r) => matchesQuery([r.id, r.building, tenantIn(r.id)?.nameKm], q));
   const vacant = state.rooms.filter((r) => !tenantIn(r.id)).length;
@@ -20,10 +22,17 @@ export default function Rooms() {
         <div className="head-actions">
           <div className="search-pill"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ស្វែងរកបន្ទប់…" aria-label="ស្វែងរកបន្ទប់" /></div>
           <button className="btn ghost" onClick={() => print(<StickerSheet rooms={state.rooms} base={base} name={state.settings.propertyName} />)}><Printer size={16} /> បោះពុម្ព QR ទ្វារ</button>
+          <button className="btn ghost" onClick={() => setWizard(true)}><Building2 size={16} /> បង្កើតអគារ</button>
           <button className="btn primary" onClick={() => setEdit({ id: '', building: state.rooms.at(-1)?.building || '', floor: '', rent: '', water: 0, electric: 0, extras: [] })}><Plus size={16} /> បន្ថែមបន្ទប់</button>
         </div>
       </div>
       <p className="lunar-line">{n(state.rooms.length - vacant)} កំពុងជួល · {n(vacant)} ទំនេរ</p>
+      {!state.rooms.length && (
+        <button className="card empty-build" onClick={() => setWizard(true)}>
+          <Building2 size={30} /><b>បង្កើតអគាររបស់អ្នកក្នុង ១ នាទី</b><span className="muted">ជ្រើសប្រភេទ ចំនួនជាន់ និងរបៀបដាក់លេខ — មើលជា 3D មុននឹងបង្កើត</span>
+        </button>
+      )}
+      <BuildingViews tenantIn={tenantIn} onPick={(id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
       <div className="room-grid">
         {rooms.map((r) => {
           const t = tenantIn(r.id);
@@ -53,6 +62,7 @@ export default function Rooms() {
       </div>
       {!rooms.length && <Empty icon={DoorOpen} title="មិនទាន់មានបន្ទប់" />}
       {edit && <RoomForm room={edit} onClose={() => setEdit(null)} />}
+      {wizard && <BuildingWizard onClose={() => setWizard(false)} />}
       {qr && (
         <Modal title={`QR បន្ទប់ ${qr.id}`} sub="បិទលើទ្វារ — បុគ្គលិកស្កេនដើម្បីកត់កុងទ័រ ឬមើលព័ត៌មាន" onClose={() => setQr(null)}>
           <div className="center-col"><QR value={`${base}/scan/room/${encodeURIComponent(qr.id)}`} size={220} /><code className="muted">{`${base}/scan/room/${qr.id}`}</code>
@@ -60,6 +70,34 @@ export default function Rooms() {
         </Modal>
       )}
     </>
+  );
+}
+
+/** 3D occupancy view of each building created with the designer. */
+function BuildingViews({ tenantIn, onPick }) {
+  const { state } = useApp();
+  const { n } = useFmt();
+  const owed = new Set(state.invoices.filter((i) => i.status !== 'paid').map((i) => i.roomId));
+  const views = (state.settings.buildings || []).map((b) => {
+    const rooms = state.rooms.filter((r) => r.buildingId === b.id);
+    const byFloor = new Map();
+    for (const r of rooms) { const k = r.floor || '1'; byFloor.set(k, [...(byFloor.get(k) || []), r]); }
+    const grid = [...byFloor.entries()].sort((a, c) => Number(c[0]) - Number(a[0]) || c[0].localeCompare(a[0]))
+      .map(([, list]) => list.sort((a, c) => a.id.localeCompare(c.id, undefined, { numeric: true })).map((r) => ({ id: r.id, floor: r.floor })));
+    return { b, grid, rooms };
+  }).filter((v) => v.rooms.length);
+  if (!views.length) return null;
+  const status = (id) => (owed.has(id) ? 'due' : tenantIn(id) ? 'occ' : 'free');
+  return (
+    <div className="building-views">
+      {views.map(({ b, grid, rooms }) => (
+        <section key={b.id} className="card building-view">
+          <div className="bv-head"><b>{b.name}</b><span className="muted">{n(rooms.filter((r) => tenantIn(r.id)).length)}/{n(rooms.length)} កំពុងជួល</span></div>
+          <Building3D grid={grid} type={b.type} color={b.color} statusOf={status} onPick={(u) => onPick(u.id)} label={rooms.length <= 120} />
+          <div className="legend"><span><i className="lg-occ" /> កំពុងជួល</span><span><i className="lg-due" /> មិនទាន់បង់</span><span><i className="lg-free" /> ទំនេរ</span></div>
+        </section>
+      ))}
+    </div>
   );
 }
 

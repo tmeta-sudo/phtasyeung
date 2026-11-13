@@ -237,3 +237,11 @@
   .final-cta { padding: 48px 20px; border-radius: 28px; }
   .lp-footer { grid-template-columns: 1fr; text-align: center; justify-items: center; }
 }
+
+/* Grid children must be allowed to shrink below their content's natural width (iOS number inputs). */
+.playground { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+.pg-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pg-inputs label, .pg-invoice, .playground > * { min-width: 0; }
+.pg-inputs input[type=number] { width: 100%; min-width: 0; }
+.pg-invoice .pg-total b { font-size: clamp(24px, 7vw, 34px); }
+@media (max-width: 1080px) { .playground { grid-template-columns: minmax(0, 1fr); } }

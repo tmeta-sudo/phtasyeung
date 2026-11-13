@@ -1,21 +1,26 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
 import express from 'express';
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent } from './db.js';
-import { withOrg, findOrgs, q, init, storeKind } from './store.js';
+import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
+
+setDocMigrator(migrateDoc);
+import { withOrg, findOrgs, q, init, storeKind, setDocMigrator } from './store.js';
 import { authRoutes, requireOwner, verifyPassword } from './auth.js';
 import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
-import { isBakongId } from './khqr.js';
+import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, configureOwnBot,
-  webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook,
+  webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
-import { runAutoInvoices, runReminders, runDailyAll } from './scheduler.js';
+import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
+import {
+  r2Enabled, googleEnabled, googleExchange, googleEmail, googleCreateFolder, googleUpload, migrateBlobs, storageSummary, seal, unseal, deleteBlob,
+} from './blob.js';
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
-import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
+import { normalizePhone, nowInCambodia, kmDigits, usd as usdFmt } from '../shared/khmer.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -78,9 +83,10 @@ const portal = (fn, ...mw) => [...mw, async (req, res) => {
 }];
 
 async function publicSettings() {
-  const { telegram, ...rest } = db().settings;
+  const { telegram, storage, ...rest } = db().settings;
   return {
     ...rest,
+    storage: { mode: storage?.mode || 'database', gdrive: storage?.gdrive ? { email: storage.gdrive.email, connectedAt: storage.gdrive.connectedAt, lastBackupAt: storage.gdrive.lastBackupAt || '' } : null },
     telegram: {
       own: !!telegram.token,
       tokenHint: telegram.token ? '••••' + telegram.token.slice(-4) : '',
@@ -115,6 +121,7 @@ async function adminState(req) {
     meters: s.meters,
     invoices: s.invoices.map(withQr),
     activities: s.activities,
+    tickets: (s.tickets || []).slice(-300),
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
@@ -390,6 +397,7 @@ app.put('/api/settings', ...owner(async (req) => {
     propertyNameEn: str(b.propertyNameEn ?? s.propertyNameEn, 80),
     address: str(b.address ?? s.address, 200),
     phone: str(b.phone ?? s.phone, 40),
+    ownerName: str(b.ownerName ?? s.ownerName, 80),
     coverUrl: /^https:\/\//.test(b.coverUrl || '') ? str(b.coverUrl, 500) : (b.coverUrl === '' ? '' : s.coverUrl),
     waterRate: money(b.waterRate ?? s.waterRate),
     electricRate: money(b.electricRate ?? s.electricRate),
@@ -401,7 +409,14 @@ app.put('/api/settings', ...owner(async (req) => {
   if (b.khqr) {
     const id = str(b.khqr.accountId, 60);
     if (id && !isBakongId(id)) fail('Bakong ID មិនត្រឹមត្រូវ (ឧ. name@aclb)');
-    s.khqr = { accountId: id, merchantName: str(b.khqr.merchantName, 25), city: str(b.khqr.city, 15) || 'Phnom Penh' };
+    if (b.khqr.raw) {
+      // Uploaded picture of the landlord's own KHQR, decoded in the browser.
+      const parsed = parseKhqrUpload(b.khqr.raw);
+      if (!parsed) fail('មិនមែនជា KHQR ត្រឹមត្រូវ។ សូមថតរូប QR ពីកម្មវិធីធនាគាររបស់អ្នក (ABA, ACLEDA, Wing…)');
+      s.khqr = parsed;
+    } else {
+      s.khqr = { type: 'individual', accountId: id, merchantName: str(b.khqr.merchantName, 25), city: str(b.khqr.city, 15) || 'Phnom Penh', source: 'manual' };
+    }
   }
   if (b.auto) {
     s.auto = {
@@ -424,9 +439,214 @@ app.put('/api/settings', ...owner(async (req) => {
       await configureOwnBot();
     }
   }
+  if (b.location) {
+    const L = b.location;
+    const coord = (v, lim) => (v === null || v === '' || !Number.isFinite(+v) || Math.abs(+v) > lim ? null : Math.round(+v * 1e6) / 1e6);
+    s.location = {
+      lat: coord(L.lat, 90), lng: coord(L.lng, 180), houseNo: str(L.houseNo, 30), street: str(L.street, 80),
+      provinceId: str(L.provinceId, 12), districtId: str(L.districtId, 12), communeId: str(L.communeId, 12), villageId: str(L.villageId, 12),
+      detail: str(L.detail, 200), addressText: str(L.addressText, 300),
+    };
+  }
+  if (b.invoiceDesign) {
+    const d = b.invoiceDesign;
+    const known = ['header', 'meta', 'items', 'totals', 'payment', 'address', 'note', 'footer'];
+    const blocks = (Array.isArray(d.blocks) ? d.blocks : []).filter((x) => known.includes(x));
+    s.invoiceDesign = {
+      blocks: [...new Set([...blocks, ...known])],
+      hidden: (Array.isArray(d.hidden) ? d.hidden : []).filter((x) => known.includes(x)),
+      accent: /^#[0-9a-f]{6}$/i.test(d.accent || '') ? d.accent : '#1f5bff',
+      titleFont: ['Moul', 'Kantumruy Pro', 'Battambang', 'Koulen', 'Bokor', 'Siemreap'].includes(d.titleFont) ? d.titleFont : 'Moul',
+      size: ['a5', 'square', 'story', 'receipt'].includes(d.size) ? d.size : 'a5',
+      radius: Math.min(32, Math.max(0, Math.round(+d.radius || 0))),
+      headerStyle: ['line', 'band', 'card', 'minimal'].includes(d.headerStyle) ? d.headerStyle : 'line',
+      note: str(d.note, 300),
+      showLunar: d.showLunar !== false, showWords: d.showWords !== false, showRiel: d.showRiel !== false,
+    };
+  }
+  if (b.contract) {
+    s.contract = {
+      depositMonths: Math.min(12, Math.max(0, Math.round(+b.contract.depositMonths || 0))),
+      prepaidMonths: Math.min(12, Math.max(0, Math.round(+b.contract.prepaidMonths || 0))),
+      template: str(b.contract.template, 12000) || s.contract.template,
+    };
+  }
   if (b.rotateAdminLink) s.telegram.adminLinkCode = uid(6);
   save();
   return adminState(req);
+}));
+
+// ---------- building designer: create many rooms at once ----------
+
+app.post('/api/rooms/bulk', ...owner((req) => {
+  const b = req.body || {};
+  const s = db();
+  const building = {
+    id: str(b.building?.id, 20) || 'b' + uid(5),
+    name: str(b.building?.name, 60) || 'អគារ',
+    type: ['apartment', 'flat', 'row', 'house'].includes(b.building?.type) ? b.building.type : 'apartment',
+    floors: Math.min(40, Math.max(1, Math.round(+b.building?.floors || 1))),
+    perFloor: Math.min(60, Math.max(1, Math.round(+b.building?.perFloor || 1))),
+    scheme: str(b.building?.scheme, 20),
+    color: /^#[0-9a-f]{6}$/i.test(b.building?.color || '') ? b.building.color : '#1f5bff',
+  };
+  const rooms = (Array.isArray(b.rooms) ? b.rooms : []).slice(0, 1000).map((r) => ({ ...cleanRoom({ ...r, building: building.name }), buildingId: building.id }));
+  if (!rooms.length) fail('សូមបញ្ចូលបន្ទប់យ៉ាងហោចណាស់មួយ');
+  if (s.rooms.length + rooms.length > 2000) fail('ចំនួនបន្ទប់អតិបរមា ២០០០');
+  let added = 0;
+  for (const r of rooms) {
+    if (!r.id || s.rooms.some((x) => x.id === r.id)) continue;
+    s.rooms.push({ ...r, floor: str(r.floor, 10) });
+    added += 1;
+  }
+  s.settings.buildings = [...(s.settings.buildings || []).filter((x) => x.id !== building.id), building].slice(-30);
+  logEvent('admin', `បានបង្កើតបន្ទប់ ${kmDigits(added)} ក្នុង ${building.name}`);
+  return adminState(req).then((st) => ({ ...st, result: { added, skipped: rooms.length - added } }));
+}));
+
+// ---------- contracts ----------
+
+app.put('/api/tenants/:id/contract', ...owner((req) => {
+  const t = findTenant(req.params.id);
+  if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  const b = req.body || {};
+  t.lease = {
+    required: b.required !== false,
+    depositMonths: Math.min(12, Math.max(0, Math.round(+(b.depositMonths ?? 1)))),
+    prepaidMonths: Math.min(12, Math.max(0, Math.round(+(b.prepaidMonths ?? 1)))),
+    text: str(b.text, 15000),
+    updatedAt: now(),
+  };
+  save();
+  return adminState(req);
+}));
+
+/** Move-in invoice: booking deposit + prepaid rent, as agreed in the contract. */
+app.post('/api/tenants/:id/movein-invoice', ...owner((req) => {
+  const s = db();
+  const t = findTenant(req.params.id);
+  if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  const room = s.rooms.find((r) => r.id === t.roomId);
+  if (!room) fail('អតិថិជននេះមិនទាន់មានបន្ទប់');
+  const L = t.lease || { depositMonths: s.settings.contract.depositMonths, prepaidMonths: s.settings.contract.prepaidMonths };
+  const items = [];
+  if (L.depositMonths) items.push({ key: 'deposit', label: `ប្រាក់កក់ ${kmDigits(L.depositMonths)} ខែ`, qty: L.depositMonths, unit: 'ខែ', rate: room.rent, amount: room.rent * L.depositMonths });
+  if (L.prepaidMonths) items.push({ key: 'prepaid', label: `ថ្លៃជួលបង់មុន ${kmDigits(L.prepaidMonths)} ខែ`, qty: L.prepaidMonths, unit: 'ខែ', rate: room.rent, amount: room.rent * L.prepaidMonths });
+  if (!items.length) fail('មិនមានប្រាក់កក់ ឬបង់មុនទេ');
+  const today = nowInCambodia().ymd;
+  s.counters.invoice += 1;
+  const inv = recalc({
+    id: uid(), number: `MOV-${today.replace(/-/g, '').slice(2)}-${String(s.counters.invoice).padStart(4, '0')}`, month: today.slice(0, 7), kind: 'movein',
+    roomId: room.id, tenantId: t.id, name: t.nameKm || t.nameEn, items, rate: s.settings.exchangeRate, issuedAt: today, dueDate: today,
+    status: 'unpaid', hasMeter: false, claims: [], reminders: [], createdAt: now(), createdBy: 'admin',
+  });
+  s.invoices.push(inv);
+  logEvent('admin', `បានបង្កើតវិក្កយបត្រចូលស្នាក់នៅ ${room.id} ${usdFmt(inv.total)}`, { invoiceId: inv.id });
+  return adminState(req).then((st) => ({ ...st, result: { invoiceId: inv.id } }));
+}));
+
+// ---------- tenant messages & maintenance tickets (from the Telegram bot) ----------
+
+app.post('/api/tickets/:id/reply', ...owner(async (req) => {
+  const t = db().tickets.find((x) => x.id === req.params.id);
+  if (!t) fail('រកមិនឃើញ', 404);
+  const text = str(req.body?.text, 3000);
+  if (!text) fail('សូមសរសេរសារ');
+  const r = await replyToTicket(t, text, 'web');
+  if (!r.ok) fail(r.error);
+  return adminState(req);
+}));
+
+app.get('/api/tickets/:id/photo/:i', ...owner(async (req, res) => {
+  const t = db().tickets.find((x) => x.id === req.params.id);
+  const fileId = t?.messages[+req.params.i]?.photo;
+  if (!fileId) return res.status(404).end();
+  const f = await fetchTelegramFile(fileId);
+  res.setHeader('Content-Type', f.type);
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.end(f.data);
+}));
+
+app.put('/api/tickets/:id', ...owner(async (req) => {
+  const t = db().tickets.find((x) => x.id === req.params.id);
+  if (!t) fail('រកមិនឃើញ', 404);
+  if (['open', 'progress', 'done'].includes(req.body?.status)) await setTicketStatus(t, req.body.status);
+  if (req.body?.read) { t.unread = 0; save(); }
+  return adminState(req);
+}));
+
+// ---------- send a designed invoice picture (PNG made in the browser) to Telegram ----------
+
+app.post('/api/invoices/:id/send-image', ...owner(async (req) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  const buf = req.file?.buffer;
+  if (!buf || !buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) fail('រូបភាពមិនត្រឹមត្រូវ');
+  const r = await sendInvoice(inv, { image: buf, reminder: !!inv.sentAt && req.body?.reminder === '1' });
+  if (!r.ok) fail(r.error);
+  return adminState(req);
+}, upload));
+
+// ---------- storage: platform (database / R2) or the landlord's own Google Drive ----------
+
+const googleRedirect = () => `${appUrl() || process.env.LOCAL_URL || ''}/api/storage/google/callback`;
+
+app.get('/api/storage', ...owner(async (req) => ({
+  mode: db().settings.storage?.mode || 'database',
+  gdrive: db().settings.storage?.gdrive ? { email: db().settings.storage.gdrive.email, connectedAt: db().settings.storage.gdrive.connectedAt, lastBackupAt: db().settings.storage.gdrive.lastBackupAt || '' } : null,
+  platform: r2Enabled() ? 'r2' : 'database',
+  googleAvailable: googleEnabled(),
+  summary: await storageSummary(req.session.orgId),
+})));
+
+app.get('/api/storage/google/start', ...owner((req) => {
+  if (!googleEnabled()) fail('Google Drive មិនទាន់បើកលើប្រព័ន្ធនេះ (GOOGLE_CLIENT_ID)', 503);
+  const state = seal(JSON.stringify({ org: req.session.orgId, user: req.session.userId, exp: Date.now() + 10 * 60000 }));
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: googleRedirect(), response_type: 'code', access_type: 'offline', prompt: 'consent',
+    scope: 'openid email https://www.googleapis.com/auth/drive.file', state, include_granted_scopes: 'true',
+  });
+  return { url };
+}));
+
+app.get('/api/storage/google/callback', requireOwner, async (req, res) => {
+  let st;
+  try { st = JSON.parse(unseal(req.query.state)); } catch { st = null; }
+  if (!st || st.org !== req.session.orgId || st.exp < Date.now() || !req.query.code) return res.redirect('/settings?storage=error');
+  try {
+    const tok = await googleExchange(String(req.query.code), googleRedirect());
+    if (!tok.refresh_token) throw new Error('no refresh token');
+    const email = await googleEmail(tok.access_token);
+    await withOrg(req.session.orgId, async () => {
+      const s = db().settings;
+      const folderId = await googleCreateFolder(tok.access_token, `ផ្ទះយើង — ${s.propertyName}`);
+      s.storage = { mode: 'gdrive', gdrive: { refreshToken: seal(tok.refresh_token), email, folderId, connectedAt: now() } };
+      save();
+      logEvent('admin', `បានភ្ជាប់ Google Drive (${email})`);
+    });
+    res.redirect('/settings?storage=connected');
+  } catch (e) {
+    console.error('[gdrive]', e.message);
+    res.redirect('/settings?storage=error');
+  }
+});
+
+/** Move this landlord's files to the current storage target, a batch per call. */
+app.post('/api/storage/migrate', ...owner(async (req) => migrateBlobs(req.session.orgId, db().settings, 15)));
+
+/** Stop using Google Drive: new files go to the platform; existing ones are copied back first. */
+app.post('/api/storage/disconnect', ...owner(async (req) => {
+  const s = db().settings;
+  if (s.storage?.mode === 'gdrive') { s.storage = { ...s.storage, mode: 'database' }; save(); }
+  const r = await migrateBlobs(req.session.orgId, s, 15);
+  if (!r.remaining) { s.storage = { mode: 'database' }; save(); logEvent('admin', 'បានផ្តាច់ Google Drive'); }
+  return r;
+}));
+
+app.post('/api/storage/backup', ...owner(async (req) => {
+  const r = await backupToDrive();
+  if (!r) fail('សូមភ្ជាប់ Google Drive ជាមុនសិន');
+  return r;
 }));
 
 // ---------- tasks (maintenance & leads) ----------
@@ -463,6 +683,8 @@ app.post('/api/account/delete', requireOwner, async (req, res) => {
   if (rows[0].pass_hash) {
     if (!verifyPassword(req.body?.password, rows[0].pass_hash)) fail('ពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
   } else if (String(req.body?.confirm || '').trim() !== rows[0].name) fail('ឈ្មោះមិនត្រូវគ្នា');
+  const { rows: blobs } = await q("SELECT id FROM files WHERE org_id = $1 AND backend = 'r2'", [req.session.orgId]);
+  for (const b of blobs) await deleteBlob(req.session.orgId, {}, b.id);
   await q('DELETE FROM orgs WHERE id = $1', [req.session.orgId]); // cascades to users, sessions' users, files, lookups
   res.setHeader('Set-Cookie', 'py_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });
@@ -522,6 +744,9 @@ async function portalState(t) {
     meters: s.meters.filter((m) => m.roomId === t.roomId).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12),
     property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, waterRate: st.waterRate, electricRate: st.electricRate },
     telegram: { bot, linked: !!t.telegram?.chatId, link: bot ? `https://t.me/${bot}?start=${linkCode}` : '' },
+    lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths } : null,
+    location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
+    invoiceDesign: st.invoiceDesign,
   };
 }
 

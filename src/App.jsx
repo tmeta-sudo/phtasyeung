@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Home as HomeIcon, UsersRound, DoorOpen, ReceiptText, Gauge, QrCode, Send, Settings, Wrench, Search, Bell, ScanLine,
-  LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download,
+  LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download, MessageSquare,
 } from 'lucide-react';
 import { api } from './api.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
@@ -17,6 +17,8 @@ import SettingsPage from './pages/Settings.jsx';
 import Tasks from './pages/Tasks.jsx';
 import Feedback, { News, useNewsUnread } from './pages/Feedback.jsx';
 import Super from './pages/Super.jsx';
+import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
+import Inbox from './pages/Inbox.jsx';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
@@ -28,6 +30,7 @@ const NAV = [
   ['/rooms', 'បន្ទប់', DoorOpen],
   ['/invoices', 'វិក្កយបត្រ', ReceiptText],
   ['/meters', 'កុងទ័រ', Gauge],
+  ['/inbox', 'សារ', MessageSquare],
   ['/qr', 'QR', QrCode],
   ['/telegram', 'Telegram', Send],
 ];
@@ -204,7 +207,8 @@ function Admin({ onLogout }) {
 
   const claimed = state.invoices.filter((i) => i.status === 'claimed').length;
   const missingId = state.tenants.filter((t) => t.status === 'active' && !t.files?.idFront).length;
-  const badges = { '/invoices': claimed, '/customers': missingId };
+  const unreadMsgs = (state.tickets || []).reduce((a, t) => a + (t.unread || 0), 0);
+  const badges = { '/invoices': claimed, '/customers': missingId, '/inbox': unreadMsgs };
   const section = '/' + (path.split('/')[1] || '');
   const EXTRA = { '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
   const current = NAV.find(([p]) => p === section) || (EXTRA[section] ? [section, EXTRA[section]] : NAV[0]);
@@ -214,6 +218,8 @@ function Admin({ onLogout }) {
   if (customerMatch) page = <CustomerDetail id={decodeURIComponent(customerMatch[1])} />;
   else if (section === '/customers') page = <Customers />;
   else if (section === '/rooms') page = <Rooms />;
+  else if (section === '/inbox') page = <Inbox />;
+  else if (path === '/invoices/design') page = <InvoiceDesigner />;
   else if (section === '/invoices') page = <Invoices />;
   else if (section === '/meters') page = <Meters />;
   else if (section === '/qr') page = <QrCenter />;

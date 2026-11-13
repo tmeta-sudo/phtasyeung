@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Home, ReceiptText, UserRound, Send, ArrowLeft, Bell, Droplets, Zap, CalendarDays, IdCard, Upload, Check, ChevronRight, ShieldCheck, Download } from 'lucide-react';
+import { Home, ReceiptText, UserRound, Send, ArrowLeft, Bell, Droplets, Zap, CalendarDays, IdCard, Upload, Check, ChevronRight, ShieldCheck, Download, MapPin, FileText } from 'lucide-react';
+import { ContractDoc } from '../ContractDoc.jsx';
 import { api, uploadFile } from '../api.js';
 import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
@@ -15,6 +16,7 @@ export default function Portal({ token }) {
   const [tab, setTab] = useState('home');
   const [toast, setToast] = useState(null);
   const [pay, setPay] = useState(null);
+  const [showLease, setShowLease] = useState(false);
   const [intro, setIntro] = useState(() => { try { return !localStorage.getItem('py-portal-intro'); } catch { return false; } });
   const notify = useCallback((text, err = false) => { setToast({ text, error: err }); setTimeout(() => setToast(null), 3500); }, []);
   const load = useCallback(() => api('GET', `/api/portal/${token}`).then(setData).catch((e) => setError(e.message)), [token]);
@@ -96,6 +98,20 @@ export default function Portal({ token }) {
                 <ChevronRight size={18} />
               </button>
             )}
+            {(data.location?.addressText || Number.isFinite(data.location?.lat)) && (
+              <a className="pt-card pt-tg" href={Number.isFinite(data.location?.lat) ? `https://maps.google.com/?q=${data.location.lat},${data.location.lng}` : undefined} target="_blank" rel="noreferrer">
+                <span className="pt-tg-icon map"><MapPin size={18} /></span>
+                <span><b>ទីតាំងផ្ទះ</b><small>{data.location.addressText || 'មើលលើផែនទី'}</small></span>
+                <ChevronRight size={18} />
+              </a>
+            )}
+            {data.lease && (
+              <button className="pt-card pt-tg" onClick={() => setShowLease(true)}>
+                <span className="pt-tg-icon lease"><FileText size={18} /></span>
+                <span><b>កិច្ចសន្យាជួល</b><small>ប្រាក់កក់ {n(data.lease.depositMonths)} ខែ · បង់មុន {n(data.lease.prepaidMonths)} ខែ</small></span>
+                <ChevronRight size={18} />
+              </button>
+            )}
             {data.meters[0] && (
               <div className="pt-card">
                 <b>ការប្រើប្រាស់ {monthKm(data.meters[0].month, k)}</b>
@@ -140,7 +156,7 @@ export default function Portal({ token }) {
             <div className="pt-items">
               {pay.items.map((it, i) => <div key={i}><span>{it.label}{it.from !== undefined ? ` (${n(it.qty)} ${it.unit})` : ''}</span><b>{$(it.amount)}</b></div>)}
             </div>
-            <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={data.property} khmer={k} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
+            <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={{ ...data.property, addressText: data.location?.addressText, location: data.location }} khmer={k} design={data.invoiceDesign} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
             <div className="pt-bottom-bar">
               <div><b>{$(pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
               {pay.status === 'unpaid' && <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>}
@@ -157,6 +173,7 @@ export default function Portal({ token }) {
         {data.telegram.link && <a href={data.telegram.link} target="_blank" rel="noreferrer"><Send size={18} /><span>Telegram</span></a>}
         <button className={tab === 'me' ? 'on' : ''} onClick={() => setTab('me')}><UserRound size={18} /><span>ខ្ញុំ</span></button>
       </nav>
+      {showLease && data.lease && <Modal title="កិច្ចសន្យាជួល" onClose={() => setShowLease(false)} wide><ContractDoc text={data.lease.text} property={data.property.name} /></Modal>}
       <Toast toast={toast} />
     </div>
   );

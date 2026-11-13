@@ -3,6 +3,8 @@
 // Each step is idempotent (lastRunMonth / lastReminderDay), so extra runs are harmless.
 import { db, save, logEvent } from './db.js';
 import { withOrg, listOrgIds } from './store.js';
+import { googleUpload } from './blob.js';
+import { orgId } from './db.js';
 import { generateInvoices, isOverdue } from './invoices.js';
 import { sendInvoices, notifyAdmins, botStatus } from './telegram.js';
 import { nowInCambodia, monthKm, kmDigits, usd } from '../shared/khmer.js';
@@ -47,9 +49,28 @@ export async function runReminders() {
   return r;
 }
 
+/** Write a JSON backup of the landlord's data into their own Google Drive folder (overwrites one file). */
+export async function backupToDrive() {
+  const s = db();
+  const g = s.settings.storage?.gdrive;
+  if (!g?.refreshToken || !g.folderId) return null;
+  const { settings, ...rest } = s;
+  const { token, ...telegram } = settings.telegram;
+  const { storage, ...safeSettings } = settings;
+  const data = Buffer.from(JSON.stringify({ backupAt: new Date().toISOString(), ...rest, settings: { ...safeSettings, telegram } }, null, 1));
+  const id = await googleUpload(orgId(), s.settings.storage.gdrive, { name: 'phteah-yeung-backup.json', mime: 'application/json', data, fileId: g.backupFileId || '' });
+  s.settings.storage.gdrive = { ...g, backupFileId: id, lastBackupAt: new Date().toISOString() };
+  save();
+  return { ok: true, bytes: data.length, at: s.settings.storage.gdrive.lastBackupAt };
+}
+
 /** One landlord's daily duties. `respectHour` is used by the local hourly timer. */
 async function dailyForOrg({ respectHour }) {
-  const { auto } = db().settings;
+  const { auto, storage } = db().settings;
+  const today = nowInCambodia().ymd;
+  if (storage?.gdrive?.refreshToken && String(storage.gdrive.lastBackupAt || '').slice(0, 10) !== today) {
+    await backupToDrive().catch((e) => console.error('[backup]', e.message));
+  }
   if (!auto.enabled) return null;
   const t = nowInCambodia();
   if (respectHour && t.hour < +auto.hour) return null;
