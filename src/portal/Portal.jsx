@@ -5,6 +5,9 @@ import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
 import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords } from '../../shared/khmer.js';
 import './portal.css';
+import PwaBar from '../PwaBar.jsx';
+import { useAppIdentity } from '../pwa.js';
+import { ThemeToggle } from '../theme.jsx';
 
 export default function Portal({ token }) {
   const [data, setData] = useState(null);
@@ -15,6 +18,8 @@ export default function Portal({ token }) {
   const [intro, setIntro] = useState(() => { try { return !localStorage.getItem('py-portal-intro'); } catch { return false; } });
   const notify = useCallback((text, err = false) => { setToast({ text, error: err }); setTimeout(() => setToast(null), 3500); }, []);
   const load = useCallback(() => api('GET', `/api/portal/${token}`).then(setData).catch((e) => setError(e.message)), [token]);
+  // Installing from here gives the customer their own app that opens straight to this page.
+  useAppIdentity({ manifest: `/api/portal/${token}/manifest.webmanifest`, appleIcon: '/icons/portal-apple-touch-icon.png', title: data ? `${data.property.name} · ${data.room?.id || ''}` : undefined });
   useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [load]);
 
   if (error) return <div className="pt-shell"><div className="pt-error"><ShieldCheck size={36} /><b>{error}</b><p>សូមសុំតំណ ឬ QR ថ្មីពីម្ចាស់ផ្ទះ។</p></div></div>;
@@ -54,8 +59,9 @@ export default function Portal({ token }) {
           <>
             <header className="pt-top">
               <div><b>{greetingKm(nowInCambodia().hour)}, {p.nameKm || p.nameEn}</b><small>📍 {data.property.name}{data.room ? ` · បន្ទប់ ${data.room.id}` : ''}</small></div>
-              <button className="pt-round" onClick={() => setTab('bills')} aria-label="វិក្កយបត្រ"><Bell size={18} />{open.length > 0 && <i />}</button>
+              <span className="pt-top-actions"><ThemeToggle className="pt-round" /><button className="pt-round" onClick={() => setTab('bills')} aria-label="វិក្កយបត្រ"><Bell size={18} />{open.length > 0 && <i />}</button></span>
             </header>
+            <PwaBar appName={data.property.name} className="portal" />
             <h1 className="pt-title">គ្រប់គ្រង<b>ផ្ទះជួល</b><br /><b>របស់អ្នក</b>យ៉ាងងាយ</h1>
             <div className="pt-chips">
               <button className="active" onClick={() => setTab('home')}><span><Home size={15} /></span>ទំព័រដើម</button>

@@ -8,6 +8,7 @@ import { db, save, uid, now, logEvent, orgId } from './db.js';
 import { withOrg, findOrgs, q, listOrgIds } from './store.js';
 import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices } from './invoices.js';
 import { usd, khr, monthKm, kmDigits, nowInCambodia, dateKm } from '../shared/khmer.js';
+import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
 
 const API = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org';
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -98,6 +99,7 @@ export async function registerBot(token, botKey) {
     commands: [
       { command: 'invoice', description: 'មើលវិក្កយបត្រ' },
       { command: 'profile', description: 'ព័ត៌មានរបស់ខ្ញុំ' },
+      { command: 'recover', description: 'ចូល / ស្តារគណនីម្ចាស់ផ្ទះ' },
       { command: 'help', description: 'ជំនួយ' },
     ],
   }).catch(() => {});
@@ -117,7 +119,7 @@ export function portalUrl(tenant) {
 }
 
 const MENU = { keyboard: [[{ text: '🧾 វិក្កយបត្រ' }, { text: '👤 ព័ត៌មានរបស់ខ្ញុំ' }], [{ text: '❓ ជំនួយ' }]], resize_keyboard: true };
-const ADMIN_MENU = { keyboard: [[{ text: '📊 សង្ខេបខែនេះ' }, { text: '⏳ មិនទាន់បង់' }], [{ text: '❓ ជំនួយ' }]], resize_keyboard: true };
+const ADMIN_MENU = { keyboard: [[{ text: '📊 សង្ខេបខែនេះ' }, { text: '⏳ មិនទាន់បង់' }], [{ text: '🔑 ចូលគណនី' }, { text: '❓ ជំនួយ' }]], resize_keyboard: true };
 
 export const send = (chatId, html, extra = {}) =>
   call('sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
@@ -263,11 +265,17 @@ async function orgsForChat(botKey, chatId) {
 
 /** Entry point for both webhook and polling. */
 export async function handleUpdate(botKey, token, u) {
+  // Account sign-in / recovery lives on the shared platform bot.
+  if (botKey === 'platform' && u.callback_query?.data?.startsWith('L:')) return botLoginCallback(u.callback_query);
   if (u.callback_query) return handleCallback(botKey, token, u.callback_query);
   const m = u.message;
   if (!m || m.chat?.type !== 'private') return;
   const chatId = m.chat.id;
   const text = (m.text || '').trim();
+  if (botKey === 'platform') {
+    if (text.startsWith('/start login-')) return botLoginStart(m, text.slice('/start login-'.length).trim());
+    if (['/recover', '/login', '🔑 ចូលគណនី'].includes(text)) return botRecover(m);
+  }
   const reply = (html, extra) => api(token, 'sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', ...extra }).catch(() => {});
 
   if (text.startsWith('/start')) {
@@ -332,6 +340,7 @@ async function linkAdmin(botKey, m) {
   if (!isAdminChat(chatId)) s.settings.telegram.adminChats.push({ chatId, name: [m.from.first_name, m.from.last_name].filter(Boolean).join(' '), username: m.from.username || '', linkedAt: now() });
   s.settings.telegram.adminLinkCode = uid(6); // single use
   save();
+  if (botKey === 'platform') await linkTelegramToOrgOwners(orgId(), m.from); // enables sign-in & recovery via the bot
   logEvent('admin', `ម្ចាស់ផ្ទះបានភ្ជាប់ Telegram (${m.from.first_name || ''})`);
   return send(chatId, `🔐 <b>បានភ្ជាប់ជាម្ចាស់ផ្ទះ ${esc(s.settings.propertyName)}</b>\nអ្នកនឹងទទួលការជូនដំណឹងការបង់ប្រាក់ និងការងារសំខាន់ៗនៅទីនេះ។`, { reply_markup: ADMIN_MENU });
 }

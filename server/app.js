@@ -2,7 +2,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent } from './db.js';
-import { withOrg, findOrgs, ownersOf, q, init, storeKind } from './store.js';
+import { withOrg, findOrgs, q, init, storeKind } from './store.js';
 import { authRoutes, requireOwner, verifyPassword } from './auth.js';
 import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
@@ -12,6 +12,9 @@ import {
   webhookRoute, registerAllWebhooks, sendResetCode, appUrl,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll } from './scheduler.js';
+import { superRoutes, isSuper } from './super.js';
+import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
+import { api as tgApi, platformBotName } from './telegram.js';
 import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
 
 const app = express();
@@ -38,7 +41,9 @@ app.use('/api', (req, res, next) => {
 });
 app.use('/api', (req, res, next) => init().then(() => next(), next));
 
-authRoutes(app, { sendResetCode });
+authRoutes(app, { sendResetCode, botName: () => platformBotName() });
+configureTgLogin({ api: tgApi, botName: platformBotName, appUrl });
+tgLoginRoutes(app);
 webhookRoute(app);
 
 // ---------- helpers ----------
@@ -86,6 +91,20 @@ async function publicSettings() {
 
 const withQr = (inv) => ({ ...inv, khqr: khqrOf(inv), overdue: isOverdue(inv) });
 
+async function accountInfo(req) {
+  if (!req?.session) return {};
+  const { rows } = await q('SELECT email, pass_hash, telegram_id, telegram_name FROM users WHERE id = $1', [req.session.userId]);
+  const u = rows[0] || {};
+  return {
+    email: isTelegramEmail(u.email) ? '' : u.email,
+    super: isSuper(u.email, u.telegram_id),
+    hasPassword: !!u.pass_hash,
+    canReset: !!req.session.canReset,
+    telegram: u.telegram_id ? { name: u.telegram_name || '' } : null,
+    platformLogin: !!process.env.TELEGRAM_BOT_TOKEN,
+  };
+}
+
 async function adminState(req) {
   const s = db();
   return {
@@ -98,7 +117,7 @@ async function adminState(req) {
     settings: await publicSettings(),
     bot: await botStatus(),
     today: nowInCambodia(),
-    account: { email: req?.session?.email || '' },
+    account: await accountInfo(req),
     runtime: { serverless: !!process.env.VERCEL, appUrl: appUrl() },
   };
 }
@@ -437,10 +456,11 @@ app.get('/api/account/export', ...owner((req, res) => {
 }));
 
 app.post('/api/account/delete', requireOwner, async (req, res) => {
-  const owners = await ownersOf(req.session.orgId);
-  const me = owners.find((o) => o.id === req.session.userId);
-  const { rows } = await q('SELECT pass_hash FROM users WHERE id = $1', [me?.id]);
-  if (!rows[0] || !verifyPassword(req.body?.password, rows[0].pass_hash)) fail('ពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
+  const { rows } = await q(`SELECT u.pass_hash, o.doc->'settings'->>'propertyName' AS name FROM users u JOIN orgs o ON o.id = u.org_id WHERE u.id = $1`, [req.session.userId]);
+  if (!rows[0]) fail('រកមិនឃើញគណនី', 404);
+  if (rows[0].pass_hash) {
+    if (!verifyPassword(req.body?.password, rows[0].pass_hash)) fail('ពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
+  } else if (String(req.body?.confirm || '').trim() !== rows[0].name) fail('ឈ្មោះមិនត្រូវគ្នា');
   await q('DELETE FROM orgs WHERE id = $1', [req.session.orgId]); // cascades to users, sessions' users, files, lookups
   res.setHeader('Set-Cookie', 'py_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });
@@ -505,6 +525,24 @@ async function portalState(t) {
 
 app.get('/api/portal/:token', ...portal((req, res, t) => portalState(t)));
 
+// Each customer's portal installs as its own app, opening straight to their page.
+app.get('/api/portal/:token/manifest.webmanifest', ...portal((req, res, t) => {
+  const name = db().settings.propertyName;
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.end(JSON.stringify({
+    id: `/p/${t.portalToken}`, name: `${name} · ${t.roomId || t.nameKm}`, short_name: name.slice(0, 12),
+    description: 'វិក្កយបត្រ បង់ប្រាក់ KHQR និងព័ត៌មានរបស់ខ្ញុំ', lang: 'km', dir: 'ltr',
+    start_url: `/p/${t.portalToken}`, scope: '/p/', display: 'standalone', orientation: 'portrait',
+    background_color: '#eceef1', theme_color: '#eef0f6',
+    icons: [
+      { src: '/icons/portal-192.png', sizes: '192x192', type: 'image/png' },
+      { src: '/icons/portal-512.png', sizes: '512x512', type: 'image/png' },
+      { src: '/icons/portal-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  }));
+}));
+
 app.put('/api/portal/:token/profile', ...portal(async (req, res, t) => {
   const next = cleanProfile(req.body, t, { admin: false });
   const err = validateTenant(next);
@@ -554,6 +592,8 @@ app.get('/api/cron/daily', cronAuth, async (req, res) => {
   const result = await runDailyAll();
   res.json({ ok: true, webhooks, ...result });
 });
+
+superRoutes(app);
 
 app.get('/api/health', async (req, res) => res.json({ ok: true, store: storeKind(), time: now() }));
 

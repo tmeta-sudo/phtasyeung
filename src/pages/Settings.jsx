@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
-import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound } from 'lucide-react';
+import { Building2, Droplets, Wallet, Globe, Lock, DatabaseZap, Languages, Download, Trash2, UserRound, Send, Palette, Unlink } from 'lucide-react';
+import TelegramLogin from '../TelegramLogin.jsx';
+import { ThemePicker } from '../theme.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
 import { usdInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.js';
 
 export default function SettingsPage() {
-  const { state, call, notify } = useApp();
+  const { state, call, notify, reload } = useApp();
   const { $ } = useFmt();
   const [f, setF] = useState(() => ({ ...state.settings, khqr: { ...state.settings.khqr } }));
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const [pw, setPw] = useState({ current: '', next: '' });
+  const [linking, setLinking] = useState(false);
+  const acct = state.account;
+  const recovered = new URLSearchParams(location.search).has('recovered');
+  const needCurrent = acct.hasPassword && !acct.canReset;
   const save = (e, part) => { e?.preventDefault(); call('PUT', '/api/settings', part, 'បានរក្សាទុកការកំណត់'); };
   let legacy = null;
   try { legacy = JSON.parse(localStorage.getItem('rental-v2') || 'null'); } catch { /* ignore */ }
@@ -66,32 +72,62 @@ export default function SettingsPage() {
           <button className="btn primary">រក្សាទុក</button>
         </form>
 
-        {(
-          <form className="card" onSubmit={async (e) => { e.preventDefault(); try { await api('POST', '/api/auth/password', pw); setPw({ current: '', next: '' }); notify('បានប្តូរពាក្យសម្ងាត់'); } catch (err) { notify(err.message, true); } }}>
-            <h3 className="sec-title"><Lock size={17} /> ពាក្យសម្ងាត់</h3>
-            <div className="form-grid">
-              <Field label="ពាក្យសម្ងាត់បច្ចុប្បន្ន"><input type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} required /></Field>
-              <Field label="ពាក្យសម្ងាត់ថ្មី (≥ ៨ តួ)"><input type="password" autoComplete="new-password" minLength={8} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} required /></Field>
-            </div>
-            <button className="btn primary">ប្តូរ</button>
-          </form>
+        <form className={'card ' + (recovered ? 'highlight' : '')} id="password" onSubmit={async (e) => { e.preventDefault(); try { await api('POST', '/api/auth/password', pw); setPw({ current: '', next: '' }); notify('បានរក្សាទុកពាក្យសម្ងាត់'); reload(); } catch (err) { notify(err.message, true); } }}>
+          <h3 className="sec-title"><Lock size={17} /> ពាក្យសម្ងាត់</h3>
+          {recovered && <p className="form-warn">🔑 អ្នកបានចូលតាមតំណស្តារគណនី។ សូមកំណត់ពាក្យសម្ងាត់ថ្មីខាងក្រោម (មិនត្រូវការពាក្យសម្ងាត់ចាស់)។</p>}
+          {!acct.hasPassword && <p className="muted">គណនីនេះចូលតាម Telegram។ អ្នកអាចកំណត់ពាក្យសម្ងាត់បន្ថែម (ជម្រើស)។</p>}
+          <div className="form-grid">
+            {needCurrent && <Field label="ពាក្យសម្ងាត់បច្ចុប្បន្ន"><input type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} required /></Field>}
+            <Field label="ពាក្យសម្ងាត់ថ្មី (≥ ៨ តួ)"><input type="password" autoComplete="new-password" minLength={8} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} required /></Field>
+          </div>
+          <button className="btn primary">{acct.hasPassword ? 'ប្តូរ' : 'កំណត់'}</button>
+        </form>
+
+        {acct.platformLogin && (
+          <div className="card">
+            <h3 className="sec-title"><Send size={17} /> ចូល និងស្តារគណនីតាម Telegram</h3>
+            {acct.telegram ? (
+              <>
+                <div className="bot-status on"><Send size={16} /><span>បានភ្ជាប់ជាមួយ Telegram <b>{acct.telegram.name}</b></span></div>
+                <p className="muted">អ្នកអាចចូលដោយចុច «ចូលតាម Telegram» ឬផ្ញើ <code>/recover</code> ទៅ bot ពេលភ្លេចពាក្យសម្ងាត់។</p>
+                {acct.hasPassword && <button className="btn ghost sm" onClick={async () => { if (window.confirm('ផ្តាច់ Telegram ពីការចូលគណនី?')) { try { await api('POST', '/api/auth/telegram/unlink'); reload(); notify('បានផ្តាច់'); } catch (err) { notify(err.message, true); } } }}><Unlink size={14} /> ផ្តាច់</button>}
+              </>
+            ) : linking ? (
+              <TelegramLogin mode="link" onDone={() => { setLinking(false); reload(); notify('បានភ្ជាប់ Telegram'); }} onCancel={() => setLinking(false)} />
+            ) : (
+              <>
+                <p className="muted">ភ្ជាប់ Telegram ដើម្បីចូលគណនីដោយចុចតែម្តង និងស្តារគណនីបានភ្លាមៗពេលភ្លេចពាក្យសម្ងាត់។</p>
+                <button className="btn tg" onClick={() => setLinking(true)}><Send size={16} /> ភ្ជាប់ Telegram</button>
+              </>
+            )}
+          </div>
         )}
 
         <div className="card">
+          <h3 className="sec-title"><Palette size={17} /> រូបរាង</h3>
+          <ThemePicker />
+          <p className="muted small">«តាមប្រព័ន្ធ» ប្តូរពន្លឺ/ងងឹតតាមការកំណត់ទូរស័ព្ទ ឬកុំព្យូទ័ររបស់អ្នក។</p>
+        </div>
+
+        <div className="card">
           <h3 className="sec-title"><UserRound size={17} /> គណនី</h3>
-          <p className="muted">ចូលដោយ <b>{state.account.email}</b>។ ទិន្នន័យទាំងអស់ជារបស់អ្នក — អាចនាំចេញ ឬលុបបានគ្រប់ពេល។</p>
+          <p className="muted">ចូលដោយ <b>{acct.email || (acct.telegram ? `Telegram · ${acct.telegram.name}` : '—')}</b>។ ទិន្នន័យទាំងអស់ជារបស់អ្នក — អាចនាំចេញ ឬលុបបានគ្រប់ពេល។</p>
           <div className="row-btns"><a className="btn ghost" href="/api/account/export" download><Download size={15} /> នាំចេញទិន្នន័យ (JSON)</a></div>
         </div>
 
         <form className="card danger-zone" onSubmit={async (e) => {
           e.preventDefault();
-          const password = new FormData(e.currentTarget).get('password');
+          const fd = new FormData(e.currentTarget);
+          const password = fd.get('password');
+          const confirm = fd.get('confirm');
           if (!window.confirm('លុបគណនី និងទិន្នន័យទាំងអស់ (បន្ទប់ អតិថិជន រូបអត្តសញ្ញាណប័ណ្ណ វិក្កយបត្រ) ជាអចិន្ត្រៃយ៍? មិនអាចយកមកវិញបានទេ។')) return;
-          try { await api('POST', '/api/account/delete', { password }); location.href = '/'; } catch (err) { notify(err.message, true); }
+          try { await api('POST', '/api/account/delete', { password, confirm }); location.href = '/'; } catch (err) { notify(err.message, true); }
         }}>
           <h3 className="sec-title"><Trash2 size={17} /> លុបគណនី</h3>
           <p className="muted">លុបទិន្នន័យទាំងអស់របស់អ្នកពីម៉ាស៊ីនមេជាអចិន្ត្រៃយ៍។ សូមនាំចេញទិន្នន័យជាមុនសិន។</p>
-          <Field label="បញ្ជាក់ដោយពាក្យសម្ងាត់"><input name="password" type="password" autoComplete="current-password" required /></Field>
+          {acct.hasPassword
+            ? <Field label="បញ្ជាក់ដោយពាក្យសម្ងាត់"><input name="password" type="password" autoComplete="current-password" required /></Field>
+            : <Field label={`វាយឈ្មោះ «${state.settings.propertyName}» ដើម្បីបញ្ជាក់`}><input name="confirm" required autoComplete="off" /></Field>}
           <button className="btn ghost danger">លុបគណនីជាអចិន្ត្រៃយ៍</button>
         </form>
 
