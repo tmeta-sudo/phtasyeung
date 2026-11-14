@@ -1,4 +1,5 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { recordMeter, submitReading, approveSubmission, rejectSubmission } from './readings.js';
 import { FEATURE_IDS } from '../shared/features.js';
 import { recordError, installProcessHandlers } from './errors.js';
 installProcessHandlers();
@@ -16,7 +17,7 @@ import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
-  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, configureOwnBot,
+  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, configureOwnBot,
   webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
@@ -145,6 +146,7 @@ async function fullState(req) {
     notices: (s.notices || []).slice(0, 30),
     expenses: (s.expenses || []).slice(-2000),
     sharedReadings: (s.sharedReadings || []).slice(-600),
+    meterSubmissions: (s.meterSubmissions || []).filter((x) => x.status === 'pending'),
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
@@ -367,25 +369,35 @@ app.delete('/api/meters/shared/:id', ...owner((req) => {
 }));
 
 app.post('/api/meters', ...owner((req) => {
-  const s = db();
-  const room = s.rooms.find((r) => r.id === req.body?.roomId);
-  const m = month(req.body?.month);
-  // A kind measured by a shared meter is not read per room: keep the old number.
-  const inShared = (kind) => (s.settings.sharedMeters || []).some((g) => g.kind === kind && g.rooms.includes(room?.id));
-  const water = inShared('water') && (req.body?.water === '' || req.body?.water == null) ? room?.water : Number(req.body?.water);
-  const electric = inShared('electric') && (req.body?.electric === '' || req.body?.electric == null) ? room?.electric : Number(req.body?.electric);
-  if (!room || !m) fail('សូមជ្រើសរើសបន្ទប់ និងខែ');
-  if (!Number.isFinite(water) || !Number.isFinite(electric) || water < room.water || electric < room.electric) {
-    fail(`លេខថ្មីត្រូវធំជាង ឬស្មើលេខចាស់ (ទឹក ${room.water}, ភ្លើង ${room.electric})`);
-  }
-  if (s.meters.some((x) => x.roomId === room.id && x.month === m)) fail('បន្ទប់នេះបានកត់កុងទ័រសម្រាប់ខែនេះរួចហើយ');
-  if (s.invoices.some((i) => i.roomId === room.id && i.month === m)) fail('ខែនេះមានវិក្កយបត្ររួចហើយ។ សូមលុបវិក្កយបត្រមុនពេលកត់កុងទ័រ');
-  s.meters.push({ id: uid(), roomId: room.id, month: m, oldWater: room.water, water, oldElectric: room.electric, electric, at: now() });
-  room.water = water;
-  room.electric = electric;
-  save();
+  recordMeter({ roomId: req.body?.roomId, month: month(req.body?.month), water: req.body?.water, electric: req.body?.electric, by: req.session.role });
   return adminState(req);
 }));
+
+// ---------- readings sent by tenants (bot / portal) ----------
+
+app.post('/api/meter-submissions/:id/approve', ...owner(async (req) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
+  if (!sub) fail('រកមិនឃើញ', 404);
+  await approveAndNotify(sub, req.session.role);
+  return adminState(req);
+}));
+app.post('/api/meter-submissions/:id/reject', ...owner(async (req) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
+  if (!sub) fail('រកមិនឃើញ', 404);
+  rejectSubmission(sub);
+  const t = db().tenants.find((x) => x.id === sub.tenantId);
+  await notifyTenant(t, `⚠️ លេខកុងទ័រដែលអ្នកផ្ញើមិនត្រឹមត្រូវ។ ${str(req.body?.reason, 200) || 'សូមពិនិត្យ ហើយផ្ញើម្តងទៀត ឬរង់ចាំម្ចាស់ផ្ទះមកកត់។'}`);
+  return adminState(req);
+}));
+app.get('/api/meter-submissions/:id/photo/:kind', ...owner(async (req, res) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
+  const ph = sub?.photos?.[req.params.kind];
+  if (ph?.tg) {
+    try { const f = await fetchTelegramFile(ph.tg); res.setHeader('Content-Type', f.type); res.setHeader('Cache-Control', 'private, max-age=600'); return res.end(f.data); } catch { return res.status(404).end(); }
+  }
+  return sendStored(res, req.session.orgId, ph);
+}));
+
 
 app.delete('/api/meters/:id', ...owner(async (req) => {
   const s = db();
@@ -605,6 +617,7 @@ app.put('/api/settings', ...owner(async (req) => {
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (typeof b.autoApproveReadings === 'boolean') s.autoApproveReadings = b.autoApproveReadings;
   if (Array.isArray(b.addons)) {
     const seen = new Set();
     s.addons = b.addons.slice(0, 20).map((a) => ({
@@ -1061,6 +1074,9 @@ async function portalState(t) {
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
     autoConfirm: bakongEnabled(),
+    today: nowInCambodia(),
+    myReading: (s.meterSubmissions || []).filter((x) => x.tenantId === t.id).at(-1) || null,
+    sharedKinds: ['water', 'electric'].filter((k) => (st.sharedMeters || []).some((g) => g.kind === k && g.rooms.includes(t.roomId))),
     notices: (s.notices || []).filter((n) => n.rooms?.includes(t.roomId) && Date.now() - new Date(n.at).getTime() < 60 * 86400000).slice(0, 5).map(({ id, at, text }) => ({ id, at, text })),
   };
 }
@@ -1115,6 +1131,25 @@ app.get('/api/portal/:token/meters/:id/photo/:kind', ...portal((req, res, t, org
   const m = db().meters.find((x) => x.id === req.params.id && x.roomId === t.roomId);
   return sendStored(res, org, m?.photos?.[req.params.kind]);
 }));
+
+app.post('/api/portal/:token/readings', ...portal(async (req, res, t) => {
+  if (!(await rateLimit(`reading:${t.id}`, 10, 3600))) fail('ផ្ញើច្រើនដងពេក សូមរង់ចាំ');
+  const { sub, approved } = submitReading(t, { water: req.body?.water, electric: req.body?.electric, source: 'portal' });
+  if (!approved) await notifyReadingToOwners(sub);
+  return { ...(await portalState(t)), result: { id: sub.id, approved } };
+}));
+app.post('/api/portal/:token/readings/:id/photo/:kind', ...portal(async (req, res, t) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id && x.tenantId === t.id);
+  if (!sub || !['water', 'electric'].includes(req.params.kind)) fail('រកមិនឃើញ', 404);
+  const { meta, error } = await storeImage(req.file, `meter ${sub.roomId} ${sub.month} ${req.params.kind}`);
+  if (error) fail(error);
+  if (sub.status === 'approved') {
+    const m = db().meters.find((x) => x.id === sub.meterId);
+    if (m) m.photos = { ...(m.photos || {}), [req.params.kind]: meta };
+  } else sub.photos = { ...(sub.photos || {}), [req.params.kind]: meta };
+  save();
+  return { ok: true };
+}, upload));
 
 app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);

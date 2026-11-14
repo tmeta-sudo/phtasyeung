@@ -12,6 +12,7 @@ const RULES = [
   ['GET', '/api/state', 'staff'],
   ['POST', '/api/meters', 'staff'],
   ['POST', '/api/meters/shared', 'staff'],
+  ['*', '/api/meter-submissions*', 'staff'],
   ['*', '/api/meters/:id/photo/:kind', 'staff'],
   ['DELETE', '/api/meters/shared/:id', 'manager'],
   ['DELETE', '/api/meters/:id', 'manager'],
@@ -48,7 +49,7 @@ export function requiredRole(method, routePath) {
 }
 
 /** Settings a manager may change (the rest stay with the owner). */
-export const MANAGER_SETTINGS = new Set(['addons', 'tiers', 'sharedMeters', 'carryOver', 'lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
+export const MANAGER_SETTINGS = new Set(['autoApproveReadings', 'addons', 'tiers', 'sharedMeters', 'carryOver', 'lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
 

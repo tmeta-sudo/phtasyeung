@@ -6,6 +6,7 @@ import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
 import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords } from '../../shared/khmer.js';
 import './portal.css';
+import MeterSubmit from './MeterSubmit.jsx';
 import PwaBar from '../PwaBar.jsx';
 import { useAppIdentity } from '../pwa.js';
 import { ThemeToggle } from '../theme.jsx';
@@ -131,6 +132,7 @@ export default function Portal({ token }) {
                 <ChevronRight size={18} />
               </button>
             )}
+            <MeterSubmit token={token} data={data} onDone={load} notify={notify} />
             {data.meters[0] && (
               <div className="pt-card">
                 <b>ការប្រើប្រាស់ {monthKm(data.meters[0].month, k)}</b>

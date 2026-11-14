@@ -18,6 +18,7 @@ export default function Meters() {
   const [gv, setGv] = useState({});
 
   const { setState } = useApp();
+  const role = state.account?.role || 'owner';
   async function saveRow(r) {
     const v = rows[r.id] || {};
     const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric }, `បានកត់ ${r.id}`);
@@ -36,6 +37,26 @@ export default function Meters() {
         <h1>កត់កុងទ័រ</h1>
         <div className="head-actions"><input className="month-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="ខែ" /></div>
       </div>
+      {role !== 'staff' && (
+        <label className="switch-row small auto-approve"><input type="checkbox" checked={!!state.settings.autoApproveReadings} onChange={(e) => call('PUT', '/api/settings', { autoApproveReadings: e.target.checked })} />
+          <span><b>ទទួលយកលេខពីអតិថិជនដោយស្វ័យប្រវត្តិ</b><small>បើការប្រើប្រាស់ធម្មតា (ប្រៀបធៀបនឹង ៣ ខែមុន)។ ប្លែកពេក → រង់ចាំអ្នកពិនិត្យ។</small></span></label>
+      )}
+      {(state.meterSubmissions || []).length > 0 && (
+        <section className="card from-tenants">
+          <h3 className="sec-title">📟 លេខពីអតិថិជន ({n(state.meterSubmissions.length)})</h3>
+          {state.meterSubmissions.map((x) => (
+            <div key={x.id} className="sub-row">
+              <span><b>{x.roomId} · {x.name}</b><small className="muted">💧 {n(x.oldWater)} → <b>{n(x.water)}</b> (+{n(x.water - x.oldWater)}) · ⚡ {n(x.oldElectric)} → <b>{n(x.electric)}</b> (+{n(x.electric - x.oldElectric)}) · {x.source === 'telegram' ? 'Telegram' : 'គេហទំព័រ'}</small>
+                {Object.keys(x.photos || {}).map((kind) => <a key={kind} className="mp-thumb" href={`/api/meter-submissions/${x.id}/photo/${kind}`} target="_blank" rel="noreferrer">📷 {kind === 'water' ? 'ទឹក' : 'ភ្លើង'}</a>)}
+              </span>
+              <span className="row-btns">
+                <button className="btn ghost sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/reject`, {}, 'បានបដិសេធ')}>✖</button>
+                <button className="btn primary sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/approve`, {}, `បានកត់ ${x.roomId}`)}><Check size={14} /> ទទួលយក</button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
       <p className="lunar-line">{monthKm(month, k)} · កត់រួច {n(state.rooms.filter((r) => done(r.id)).length)}/{n(state.rooms.length)} · វាយលេខថ្មី ហើយចុច Enter</p>
       <section className="card">
         <div className="meter-table">
