@@ -10,7 +10,7 @@ import { orgId } from './db.js';
 import { generateInvoices, isOverdue, applyLateFees, repeatMonthlyExpenses, paidSoFar } from './invoices.js';
 import { isHoliday, holidayOn, addDays } from './due.js';
 import { sendInvoices, notifyAdmins, notifyTenant, botStatus } from './telegram.js';
-import { nowInCambodia, monthKm, kmDigits } from '../shared/khmer.js';
+import { nowInCambodia, monthKm, kmDigits, dateKm } from '../shared/khmer.js';
 import { fm as usd } from './db.js';
 
 /** Generate this month's invoices for the current org and send them. */
@@ -93,6 +93,10 @@ async function dailyForOrg({ respectHour }) {
   applyLateFees();
   repeatMonthlyExpenses();
   await holidayGreeting().catch((e) => console.error('[greeting]', e.message));
+  if (db().settings.auto.ownerNews !== false) {
+    await contractAlerts().catch((e) => console.error('[contracts]', e.message));
+    await monthlyDigest().catch((e) => console.error('[digest]', e.message));
+  }
   if (!auto.enabled) return null;
   const t = nowInCambodia();
   if (respectHour && t.hour < +auto.hour) return null;
@@ -149,4 +153,58 @@ export async function holidayGreeting(today = nowInCambodia().ymd) {
   }
   if (n) logEvent('auto', `បានផ្ញើពរជ័យបុណ្យទៅអតិថិជន ${kmDigits(n)} នាក់`);
   return n;
+}
+
+const daysUntil = (from, to) => Math.round((new Date(to + 'T00:00:00Z') - new Date(from + 'T00:00:00Z')) / 86400000);
+
+/** Tell the landlord when a contract ends in 30 days and again at 7 days (once each). */
+export async function contractAlerts(today = nowInCambodia().ymd) {
+  const s = db();
+  const due = [];
+  for (const t of s.tenants.filter((x) => x.status === 'active' && x.contract?.end)) {
+    const days = daysUntil(today, t.contract.end);
+    if (days < 0 || days > 30) continue;
+    const step = days <= 7 ? 7 : 30;
+    const key = `${step}:${t.contract.end}`;
+    if ((t.contractAlerts || []).includes(key)) continue;
+    t.contractAlerts = [...(t.contractAlerts || []).filter((k) => k.endsWith(t.contract.end)), key, ...(step === 7 ? [`30:${t.contract.end}`] : [])];
+    due.push({ t, days });
+  }
+  if (!due.length) return 0;
+  save();
+  const lines = due.sort((a, b) => a.days - b.days).map(({ t, days }) => `• ${t.roomId || '—'} ${t.nameKm || t.nameEn} — ${days ? `នៅសល់ ${kmDigits(days)} ថ្ងៃ` : 'ថ្ងៃនេះ'} (${dateKm(t.contract.end)})`);
+  await notifyAdmins(`📄 <b>កិច្ចសន្យាជិតផុតកំណត់</b>\n🏠 ${s.settings.propertyName}\n${lines.join('\n')}\n\nសូមនិយាយជាមួយអតិថិជន ថាតើបន្តជួល ឬចាកចេញ។`, {}, { url: '/customers', tag: 'contracts' });
+  logEvent('auto', `រំលឹកកិច្ចសន្យាជិតផុត ${kmDigits(due.length)}`);
+  return due.length;
+}
+
+/** On the first days of a month: last month in one message (billed, collected, still owed, costs, empty rooms). */
+export async function monthlyDigest(t = nowInCambodia()) {
+  const s = db();
+  const auto = s.settings.auto;
+  if (auto.lastDigest === t.ym) return null;
+  auto.lastDigest = t.ym;
+  save();
+  const [y, m] = t.ym.split('-').map(Number);
+  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  const invs = s.invoices.filter((i) => i.month === prev);
+  if (!invs.length || t.day > 7) return null; // nothing to report yet, or the moment has passed
+  const billed = invs.reduce((a, i) => a + i.total, 0);
+  const collected = invs.reduce((a, i) => a + paidSoFar(i), 0);
+  const owing = invs.filter((i) => i.status !== 'paid');
+  const costs = (s.expenses || []).filter((e) => String(e.date).startsWith(prev)).reduce((a, e) => a + (+e.amount || 0), 0);
+  const living = new Set(s.tenants.filter((x) => x.status === 'active' && x.roomId).map((x) => x.roomId));
+  const empty = s.rooms.filter((r) => !living.has(r.id));
+  const pct = billed ? Math.round((collected / billed) * 100) : 0;
+  const msg = [
+    `📊 <b>សង្ខេបខែ ${monthKm(prev)}</b>`,
+    `🏠 ${s.settings.propertyName}`,
+    `🧾 វិក្កយបត្រ: ${kmDigits(invs.length)} · ${usd(billed)}`,
+    `💰 ទទួលបាន: <b>${usd(collected)}</b> (${kmDigits(pct)}%)`,
+    owing.length ? `⏳ នៅជំពាក់: ${kmDigits(owing.length)} បន្ទប់ · ${usd(billed - collected)}` : '✅ បង់គ្រប់គ្នា!',
+    costs ? `🧰 ចំណាយ: ${usd(costs)} · ចំណេញ: <b>${usd(collected - costs)}</b>` : '',
+    `🚪 បន្ទប់ទំនេរ: ${kmDigits(empty.length)}/${kmDigits(s.rooms.length)}${empty.length && empty.length <= 8 ? ` (${empty.map((r) => r.id).join(', ')})` : ''}`,
+  ].filter(Boolean).join('\n');
+  await notifyAdmins(msg, {}, { url: '/reports', tag: 'digest' });
+  return { billed, collected, owing: owing.length, costs, empty: empty.length };
 }

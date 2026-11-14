@@ -498,6 +498,21 @@ app.post('/api/invoices/:id/payments', ...owner(async (req) => {
   return adminState(req);
 }));
 
+// Mark several invoices fully paid at once (e.g. after collecting cash door to door).
+app.post('/api/invoices/bulk-pay', ...owner(async (req) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.slice(0, 500).map((x) => str(x, 40)) : [];
+  const via = PAY_METHODS.includes(req.body?.via) ? req.body.via : 'cash';
+  let n = 0;
+  for (const id of ids) {
+    const inv = findInvoice(id);
+    if (!inv || inv.status === 'paid') continue;
+    await confirmPayment(inv, via); // records whatever is still owed as the final payment
+    n += 1;
+  }
+  if (!n) fail('មិនមានវិក្កយបត្រដែលត្រូវបញ្ជាក់');
+  return { ...(await adminState(req)), bulkPaid: n };
+}));
+
 app.delete('/api/invoices/:id/payments/:pid', ...owner((req) => {
   const inv = findInvoice(req.params.id);
   if (!inv) fail('រកមិនឃើញវិក្កយបត្រ', 404);
@@ -606,6 +621,7 @@ app.put('/api/settings', ...owner(async (req) => {
       hour: Math.min(23, Math.max(0, Math.round(+b.auto.hour) || 0)),
       send: !!b.auto.send,
       reminderDays: Math.min(30, Math.max(0, Math.round(+b.auto.reminderDays) || 0)),
+      ownerNews: (b.auto.ownerNews ?? s.auto?.ownerNews) !== false,
     };
   }
   if (typeof b.telegramToken === 'string') {

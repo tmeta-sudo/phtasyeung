@@ -16,6 +16,19 @@ export async function api(method, url, body) {
   return data;
 }
 
+// Requests started before the app code has even downloaded (see main.jsx), picked up later.
+const early = new Map();
+export function fetchEarly(url) {
+  const p = api('GET', url);
+  p.catch(() => {}); // a failure is handled by whoever takes it
+  early.set(url, p);
+}
+export function takeEarly(url) {
+  const p = early.get(url);
+  early.delete(url);
+  return p;
+}
+
 /** Downscale phone photos (ID cards are often 5–10 MB) to ≤1600px JPEG before upload. */
 export async function compressImage(file, max = 1600) {
   if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;

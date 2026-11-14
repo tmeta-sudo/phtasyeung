@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScanLine, Camera, ImageUp, DoorOpen, UserRound, ReceiptText, Gauge, Send, Check, Printer, QrCode, Wallet } from 'lucide-react';
-import jsQR from 'jsqr';
 import { useApp, useFmt, Modal, QR, Avatar, tenantPhoto, StatusPill, navigate } from '../ui.jsx';
 import { StickerSheet } from './Rooms.jsx';
 
@@ -58,6 +57,8 @@ function Scanner({ onResult }) {
   useEffect(() => {
     let stream; let raf; let stopped = false;
     const detector = 'BarcodeDetector' in window ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
+    let jsQR = null;
+    if (!detector) import('jsqr').then((m) => { jsQR = m.default; });
     async function start() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
@@ -76,7 +77,7 @@ function Scanner({ onResult }) {
           if (detector) {
             const codes = await detector.detect(v);
             if (codes[0]?.rawValue) return onResult(codes[0].rawValue);
-          } else {
+          } else if (jsQR) {
             const c = canvas.current;
             c.width = v.videoWidth; c.height = v.videoHeight;
             const ctx = c.getContext('2d', { willReadFrequently: true });
@@ -101,6 +102,7 @@ function Scanner({ onResult }) {
     c.width = bmp.width * scale; c.height = bmp.height * scale;
     const ctx = c.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    const { default: jsQR } = await import('jsqr');
     const code = jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
     if (code?.data) onResult(code.data); else setErr('រកមិនឃើញ QR ក្នុងរូបភាពនេះទេ');
   }

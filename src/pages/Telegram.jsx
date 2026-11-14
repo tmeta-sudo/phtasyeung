@@ -84,6 +84,7 @@ export default function TelegramPage() {
             <Field label="រំលឹករៀងរាល់ (ថ្ងៃ)" hint="0 = មិនរំលឹក"><input type="number" min="0" max="30" value={auto.reminderDays} onChange={(e) => setA('reminderDays', e.target.value)} /></Field>
             <label className="switch-row small"><input type="checkbox" checked={auto.send} onChange={(e) => setA('send', e.target.checked)} /><span>ផ្ញើតាម Telegram ដោយស្វ័យប្រវត្តិ</span></label>
           </div>
+          <label className="switch-row small"><input type="checkbox" checked={auto.ownerNews !== false} onChange={(e) => setA('ownerNews', e.target.checked)} /><span><b>ផ្ញើព័ត៌មានមកខ្ញុំ</b><small>សង្ខេបខែមុននៅដើមខែ (ទទួលបាន នៅជំពាក់ ចំណាយ បន្ទប់ទំនេរ) និងរំលឹកកិច្ចសន្យាជិតផុត (៣០ និង ៧ ថ្ងៃមុន)</small></span></label>
           <p className="tip">💡 កត់កុងទ័រមុនថ្ងៃដែលបានកំណត់ ដើម្បីឱ្យវិក្កយបត្ររួមបញ្ចូលថ្លៃទឹក និងភ្លើង។</p>
           <div className="row-btns">
             <button className="btn primary" onClick={() => call('PUT', '/api/settings', { auto }, 'បានរក្សាទុក')}>រក្សាទុក</button>

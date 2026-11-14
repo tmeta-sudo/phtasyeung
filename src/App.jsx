@@ -4,7 +4,7 @@ import {
   LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download, MessageSquare,
   BarChart3,
 } from 'lucide-react';
-import { api } from './api.js';
+import { api, takeEarly } from './api.js';
 import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
 import { setClientCurrency } from '../shared/khmer.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
@@ -15,21 +15,40 @@ import Rooms from './pages/Rooms.jsx';
 import Invoices, { InvoiceModal } from './pages/Invoices.jsx';
 import Meters, { MeterModal } from './pages/Meters.jsx';
 import QrCenter, { ScannerModal } from './pages/QrCenter.jsx';
-import TelegramPage from './pages/Telegram.jsx';
-import SettingsPage from './pages/Settings.jsx';
-import Tasks from './pages/Tasks.jsx';
+const TelegramPage = lazy(() => LATER['./pages/Telegram.jsx']());
+const SettingsPage = lazy(() => LATER['./pages/Settings.jsx']());
+const Tasks = lazy(() => LATER['./pages/Tasks.jsx']());
 import Feedback, { News, useNewsUnread } from './pages/Feedback.jsx';
-import Super from './pages/Super.jsx';
-import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
-import Inbox from './pages/Inbox.jsx';
-import Reports from './pages/Reports.jsx';
-import Help from './help/Help.jsx';
+const Super = lazy(() => LATER['./pages/Super.jsx']());
+const InvoiceDesigner = lazy(() => LATER['./pages/InvoiceDesigner.jsx']());
+const Inbox = lazy(() => LATER['./pages/Inbox.jsx']());
+const Reports = lazy(() => LATER['./pages/Reports.jsx']());
+const Help = lazy(() => LATER['./help/Help.jsx']());
 import SimpleHome, { simpleMode } from './pages/SimpleHome.jsx';
 import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
 import { usePwa } from './pwa.js';
+
+// Pages most landlords open less often: downloaded on first visit, and fetched in the
+// background once the app is idle so tapping them still feels instant.
+const LATER = {
+  './pages/Telegram.jsx': () => import('./pages/Telegram.jsx'),
+  './pages/Settings.jsx': () => import('./pages/Settings.jsx'),
+  './pages/Tasks.jsx': () => import('./pages/Tasks.jsx'),
+  './pages/Super.jsx': () => import('./pages/Super.jsx'),
+  './pages/InvoiceDesigner.jsx': () => import('./pages/InvoiceDesigner.jsx'),
+  './pages/Inbox.jsx': () => import('./pages/Inbox.jsx'),
+  './pages/Reports.jsx': () => import('./pages/Reports.jsx'),
+  './help/Help.jsx': () => import('./help/Help.jsx'),
+};
+function prefetchLater() {
+  const save = navigator.connection?.saveData || /2g/.test(navigator.connection?.effectiveType || '');
+  if (save) return; // respect data-saver and very slow connections
+  const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
+  idle(() => Object.values(LATER).forEach((load) => load().catch(() => {})));
+}
 
 const NAV = [
   ['/', 'ទំព័រដើម', HomeIcon],
@@ -56,7 +75,7 @@ const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1
 export default function App() {
   const [auth, setAuth] = useState(null);
   const path = usePath();
-  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then((a) => { setAuthHint(a.authed); setAuth(a); }).catch((e) => {
+  const refreshAuth = useCallback(() => (takeEarly('/api/auth/state') || api('GET', '/api/auth/state')).then((a) => { setAuthHint(a.authed); setAuth(a); }).catch((e) => {
     // No internet but signed in before on this phone: open the saved copy (meter reading still works).
     let hint = false; try { hint = localStorage.getItem('py-authed') === '1'; } catch { /* ignore */ }
     setAuth(isNetworkError(e) && hint && cachedState() ? { authed: true, offline: true } : { error: true });
@@ -206,6 +225,7 @@ function Admin({ onLogout }) {
   const [printing, setPrinting] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [simple, setSimple] = useState(simpleMode.get);
+  useEffect(() => { prefetchLater(); }, []);
   useEffect(() => { const on = () => setSimple(simpleMode.get()); window.addEventListener('py-simple', on); return () => window.removeEventListener('py-simple', on); }, []);
   const path = usePath();
   const toastTimer = useRef();
@@ -223,7 +243,8 @@ function Admin({ onLogout }) {
       const q = await flushQueue(api);
       if (q.sent) notify(`📶 បានផ្ញើលេខកុងទ័រ ${q.sent} ដែលកត់ពេលគ្មានអ៊ីនធឺណិត`);
       for (const f of q.failed) notify(`${f.roomId}: ${f.error}`, true);
-      const st = await api('GET', '/api/state');
+      const early = takeEarly('/api/state');
+      const st = await ((!q.sent && early) || api('GET', '/api/state'));
       cacheState(st);
       setState(st);
     } catch (e) {
@@ -364,7 +385,7 @@ function Admin({ onLogout }) {
         </header>
         <PwaBar />
         <div className="crumbs">{state.settings.propertyName} <ChevronRight size={13} /> <b>{current[1]}</b></div>
-        <main key={section}>{page}</main>
+        <main key={section}><Suspense fallback={<div className="page-loading"><span className="spinner" /></div>}>{page}</Suspense></main>
       </div>
       <TabBar role={role} section={section} badges={badges} menuOpen={menuOpen} onMenu={() => setMenuOpen((v) => !v)} onScan={ctx.openScanner} k={state.settings.khmerNumerals} />
       {modal?.type === 'customer' && <CustomerForm tenant={modal.tenant} preset={modal.preset} onClose={() => setModal(null)} />}

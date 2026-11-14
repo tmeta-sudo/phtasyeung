@@ -34,6 +34,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 | Nothing | Reminds unpaid tenants — from their payday, never on public holidays |
 | Nothing (with a Bakong token) | Confirms KHQR payments with Bakong and sends the receipt |
 | Taps ✅ on a bank screenshot | Reads the amount and transaction number from the screenshot and warns about reused slips |
+| Nothing | Sends the landlord last month's summary (collected, owed, costs, empty rooms) and warns 30 and 7 days before a contract ends |
 | Nothing | Adds the late fee once, carries unpaid balance to next month, repeats monthly expenses, backs up to Telegram weekly |
 
 ## Features
@@ -43,6 +44,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - **KHQR on every invoice**, generated from the landlord's own bank KHQR (personal or merchant).
 - **Automatic confirmation** through the NBC Bakong Open API: an invoice is marked paid only when the money reached the landlord's account, in the right currency and amount.
 - **Bank screenshot reading** (ABA, ACLEDA, Wing…) on the landlord's device.
+- **Mark many invoices paid at once** after collecting cash door to door; every tenant still gets a receipt.
 - **Partial payments**, balance carried forward, **deposits and move-out settlement** with a printable Khmer slip.
 - **Payday due dates**: a due day per tenant, optionally in two halves.
 - **Expenses and profit**, with monthly expenses that repeat by themselves.
@@ -51,7 +53,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - 3D building designer, room features (air-con, hot water…), photos, and **shared rooms** with several tenants on one bill.
 - **Meter photos**: the phone reads the number; the photo is kept as proof.
 - **Tenants send their own readings** by bot or portal; normal readings can be approved automatically.
-- **Works offline** for meter reading; readings sync when the signal returns.
+- **Works offline** for meter reading; readings sync when the signal returns. Enter moves from water to electricity, and saving jumps to the next room.
 - Tiered prices (EDC-style bands) and meters shared between rooms.
 
 ### Tenants
@@ -95,7 +97,7 @@ npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm test           # 64 tests: embedded database, fake Telegram, Bakong and push services
+npm test           # 67 tests: embedded database, fake Telegram, Bakong and push services
 npm run build && npm start
 ```
 
@@ -123,7 +125,7 @@ See [`.env.example`](.env.example) for the full list. Never commit secrets.
 | Part | Technology |
 | --- | --- |
 | Server | Node 22, Express 5. One JSON document per landlord in Postgres, locked per request. |
-| Web app | React 19 + Vite, installable PWA, no UI framework |
+| Web app | React 19 + Vite, installable PWA, no UI framework. Rarely used pages and heavy tools (QR reading, zip, image export) load only when needed. |
 | Telegram | Bot API by webhook (long polling locally) |
 | OCR | Chakkhu model with onnxruntime-web, entirely in the browser |
 | Tests | `node:test` with in-process fakes; GitHub Actions on every pull request |
