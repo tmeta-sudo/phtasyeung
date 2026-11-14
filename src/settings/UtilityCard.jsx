@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { curSymbol, getClientCurrency } from '../../shared/khmer.js';
 import { Zap, Droplets, Plus, Trash2, Layers, Share2 } from 'lucide-react';
 import { useApp, useFmt } from '../ui.jsx';
 
@@ -34,7 +35,7 @@ export default function UtilityCard() {
         <div key={i} className="tier-row">
           <span>{i === 0 ? '០' : (list[i - 1].upTo || '…')} –</span>
           <input type="number" inputMode="decimal" placeholder="ដល់ (ទុកទំនេរ = ឡើងទៅ)" value={b.upTo ?? ''} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, upTo: e.target.value } : x)))} aria-label="ដល់" />
-          <input type="number" inputMode="decimal" step="0.001" placeholder="$ / ឯកតា" value={b.rate} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))} aria-label="តម្លៃ" />
+          <input type="number" inputMode="decimal" step="0.001" placeholder={`${curSymbol(getClientCurrency())} / ឯកតា`} value={b.rate} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))} aria-label="តម្លៃ" />
           <button type="button" className="icon-btn" aria-label="លុប" onClick={() => setList(list.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
         </div>
       ))}

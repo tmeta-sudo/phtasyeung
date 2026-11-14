@@ -1,18 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Home, ReceiptText, UserRound, Send, ArrowLeft, Bell, Droplets, Zap, CalendarDays, IdCard, Upload, Check, ChevronRight, ShieldCheck, Download, MapPin, FileText } from 'lucide-react';
 import { ContractDoc } from '../ContractDoc.jsx';
-import { api, uploadFile } from '../api.js';
+import { api, uploadFile, compressImage } from '../api.js';
 import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
-import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords } from '../../shared/khmer.js';
+import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords, fmtMoney, fmtAlt, moneyInWords, setClientCurrency } from '../../shared/khmer.js';
 import './portal.css';
 import MeterSubmit from './MeterSubmit.jsx';
+import { inTelegram } from './telegram.js';
 import SignaturePad from '../SignaturePad.jsx';
 import PwaBar from '../PwaBar.jsx';
 import { useAppIdentity } from '../pwa.js';
 import { ThemeToggle } from '../theme.jsx';
 
 export default function Portal({ token }) {
+  inTelegram(); // remember Telegram's launch data before anything changes the URL
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('home');
@@ -47,7 +49,9 @@ export default function Portal({ token }) {
 
   const k = data.property.khmerNumerals;
   const n = (v) => num(v, k);
-  const $ = (v) => usd(v, k);
+  const cur = data.property.currency === 'KHR' ? 'KHR' : 'USD';
+  setClientCurrency(cur);
+  const $ = (v) => fmtMoney(v, cur, k);
   const open = data.invoices.filter((i) => i.status !== 'paid');
   const owed = open.reduce((s, i) => s + i.total, 0);
   const p = data.profile;
@@ -68,8 +72,13 @@ export default function Portal({ token }) {
     );
   }
 
-  async function claim(inv) {
-    try { setData(await api('POST', `/api/portal/${token}/invoices/${inv.id}/claim`)); notify('បានជូនដំណឹងម្ចាស់ផ្ទះ ✅'); setPay(null); } catch (e) { notify(e.message, true); }
+  async function claim(inv, slipFile) {
+    try {
+      let body;
+      if (slipFile) { body = new FormData(); body.set('file', await compressImage(slipFile, 1600)); }
+      setData(await api('POST', `/api/portal/${token}/invoices/${inv.id}/claim`, body));
+      notify(slipFile ? 'បានផ្ញើបង្កាន់ដៃទៅម្ចាស់ផ្ទះ ✅' : 'បានជូនដំណឹងម្ចាស់ផ្ទះ ✅'); setPay(null);
+    } catch (e) { notify(e.message, true); }
   }
 
   return (
@@ -81,7 +90,7 @@ export default function Portal({ token }) {
               <div><b>{greetingKm(nowInCambodia().hour)}, {p.nameKm || p.nameEn}</b><small>📍 {data.property.name}{data.room ? ` · បន្ទប់ ${data.room.id}` : ''}</small></div>
               <span className="pt-top-actions"><ThemeToggle className="pt-round" /><button className="pt-round" onClick={() => setTab('bills')} aria-label="វិក្កយបត្រ"><Bell size={18} />{open.length > 0 && <i />}</button></span>
             </header>
-            <PwaBar appName={data.property.name} className="portal" />
+            {!inTelegram() && <PwaBar appName={data.property.name} className="portal" />}
             <h1 className="pt-title">គ្រប់គ្រង<b>ផ្ទះជួល</b><br /><b>របស់អ្នក</b>យ៉ាងងាយ</h1>
             <div className="pt-chips">
               <button className="active" onClick={() => setTab('home')}><span><Home size={15} /></span>ទំព័រដើម</button>
@@ -100,6 +109,7 @@ export default function Portal({ token }) {
                   {data.room && <span className="pt-glass">{$(data.room.rent)}<small>/ខែ</small></span>}
                   <span className="pt-glass">{owed ? `ជំពាក់ ${$(owed)}` : '✓ គ្មានជំពាក់'}</span>
                 </div>
+                {data.roommates?.length > 0 && <small className="pt-mates">👥 រួមបន្ទប់ជាមួយ {data.roommates.map((x) => x.name).join(', ')}{owed ? ` · ចំណែកម្នាក់ ≈ ${$(owed / (data.roommates.length + 1))}` : ''}</small>}
                 {open[0]
                   ? <button className="pt-glass-btn" onClick={() => setPay(open[0])}>បង់វិក្កយបត្រ {monthKm(open[0].month, k).replace(/ ឆ្នាំ.*/, '')}<i><ChevronRight size={16} /></i></button>
                   : <button className="pt-glass-btn" onClick={() => setTab('bills')}>មើលវិក្កយបត្រ<i><ChevronRight size={16} /></i></button>}
@@ -173,7 +183,7 @@ export default function Portal({ token }) {
               <small>{pay.number}</small>
               <b className="pt-amount">{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b>
               {pay.status !== 'paid' && pay.paid > 0 && <small>បានបង់ {$(pay.paid)} នៃ {$(pay.total)}</small>}
-              <small>{khr(pay.totalKhr, k)} · {usdInWords(pay.total)}</small>
+              <small>≈ {fmtAlt(pay.total, cur, pay.rate, k)} · {moneyInWords(pay.total, cur)}</small>
               {pay.khqr && pay.status !== 'paid' && data.autoConfirm && <p className="pt-auto"><span className="dot-pulse" /> រង់ចាំការបង់ប្រាក់ — នឹងបញ្ជាក់ដោយស្វ័យប្រវត្តិ</p>}
               {pay.khqr && pay.status !== 'paid' && <div className="pt-khqr"><span>KHQR</span><QR value={pay.khqr} size={210} label="KHQR" /><small>ថតរូបអេក្រង់ ឬស្កេនដោយកម្មវិធីធនាគារ ABA, ACLEDA, Wing, Bakong…</small></div>}
             </div>
@@ -182,8 +192,13 @@ export default function Portal({ token }) {
             </div>
             <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={{ ...data.property, addressText: data.location?.addressText, location: data.location }} khmer={k} design={data.invoiceDesign} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
             <div className="pt-bottom-bar">
-              <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
-              {pay.status === 'unpaid' && <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>}
+              <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>{pay.dueDate2 ? `ពាក់កណ្តាល ${dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '').replace(/ ឆ្នាំ.*/, '')} · នៅសល់ ${dateKm(pay.dueDate2, k).replace('ថ្ងៃទី', '').replace(/ ឆ្នាំ.*/, '')}` : `ផុត ${dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}`}</small></div>
+              {pay.status === 'unpaid' && (
+                <span className="pt-claim">
+                  <label className="pt-slip" title="ភ្ជាប់រូបបង្កាន់ដៃធនាគារ">📎<input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && claim(pay, e.target.files[0])} /></label>
+                  <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>
+                </span>
+              )}
               {pay.status === 'claimed' && <span className="pt-wait">⏳ រង់ចាំបញ្ជាក់</span>}
               {pay.status === 'paid' && <span className="pt-done"><Check size={16} /> បានបង់</span>}
             </div>

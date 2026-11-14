@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { curSymbol, getClientCurrency } from '../../shared/khmer.js';
 import { uploadFile } from '../api.js';
 import { FeaturePicker, FeatureIcons } from '../AddonsPicker.jsx';
 import { Plus, Pencil, Trash2, Gauge, QrCode, DoorOpen, Droplets, Zap, Printer, Building2 } from 'lucide-react';
@@ -47,10 +48,11 @@ export default function Rooms() {
               <small className="muted">{r.building}{r.floor ? ` · ជាន់ ${n(r.floor)}` : ''}</small>
               <b className="room-rent">{$(r.rent)}<small>/ខែ</small></b>
               <FeatureIcons ids={r.features} />
-              {t ? (
-                <button className="room-tenant" onClick={() => navigate('/customers/' + t.id)}><Avatar name={t.nameKm} src={tenantPhoto(t)} size={30} /><span>{t.nameKm}<small>{n(t.phone)}</small></span></button>
-              ) : (
-                <button className="room-tenant add" onClick={() => openCustomerForm(null, { roomId: r.id })}><Plus size={16} /> បន្ថែមអ្នកជួល</button>
+              {state.tenants.filter((x) => x.roomId === r.id && x.status === 'active').map((x) => (
+                <button key={x.id} className="room-tenant" onClick={() => navigate('/customers/' + x.id)}><Avatar name={x.nameKm || x.nameEn} src={tenantPhoto(x)} size={30} /><span>{x.nameKm || x.nameEn}<small>{n(x.phone)}</small></span></button>
+              ))}
+              {state.tenants.filter((x) => x.roomId === r.id && x.status === 'active').length < (r.capacity || 1) && (
+                <button className="room-tenant add" onClick={() => openCustomerForm(null, { roomId: r.id })}><Plus size={16} /> {t ? `បន្ថែមអ្នករួមបន្ទប់ (${n(state.tenants.filter((x) => x.roomId === r.id && x.status === 'active').length)}/${n(r.capacity)})` : 'បន្ថែមអ្នកជួល'}</button>
               )}
               <div className="room-meters"><span><Droplets size={13} /> {n(r.water)} m³</span><span><Zap size={13} /> {n(r.electric)} kWh</span></div>
               <div className="room-actions">
@@ -136,9 +138,10 @@ function RoomForm({ room, onClose }) {
           <Field label="លេខបន្ទប់ *"><input value={f.id} onChange={(e) => set('id', e.target.value)} disabled={!!room.originalId} required autoFocus /></Field>
           <Field label="អគារ"><input value={f.building} onChange={(e) => set('building', e.target.value)} placeholder="អគារ A" /></Field>
           <Field label="ជាន់"><input value={f.floor} onChange={(e) => set('floor', e.target.value)} /></Field>
-          <Field label="ថ្លៃជួល ($/ខែ)"><input type="number" min="0" step="any" value={f.rent} onChange={(e) => set('rent', e.target.value)} required /></Field>
+          <Field label={`ថ្លៃជួល (${curSymbol(getClientCurrency())}/ខែ)`}><input type="number" min="0" step="any" value={f.rent} onChange={(e) => set('rent', e.target.value)} required /></Field>
           <Field label="លេខកុងទ័រទឹកបច្ចុប្បន្ន (m³)"><input type="number" min="0" step="any" value={f.water} onChange={(e) => set('water', e.target.value)} /></Field>
           <Field label="លេខកុងទ័រភ្លើងបច្ចុប្បន្ន (kWh)"><input type="number" min="0" step="any" value={f.electric} onChange={(e) => set('electric', e.target.value)} /></Field>
+          <Field label="ចំនួនអ្នកស្នាក់នៅអតិបរមា" hint="១ = ជួលម្នាក់។ ច្រើនជាង ១ = ជួលរួមគ្នា (វិក្កយបត្រមួយ ផ្ញើទៅគ្រប់គ្នា)"><input type="number" min="1" max="20" inputMode="numeric" value={f.capacity ?? 1} onChange={(e) => set('capacity', e.target.value)} /></Field>
         </div>
         {room.originalId && <RoomPhotos roomId={room.originalId} />}
         <fieldset>
@@ -151,7 +154,7 @@ function RoomForm({ room, onClose }) {
           {f.extras.map((x, i) => (
             <div key={i} className="extra-row">
               <input value={x.label} onChange={(e) => setExtra(i, 'label', e.target.value)} placeholder="ឈ្មោះ" aria-label="ឈ្មោះ" />
-              <input type="number" min="0" step="any" value={x.amount} onChange={(e) => setExtra(i, 'amount', e.target.value)} placeholder="$" aria-label="ចំនួន" />
+              <input type="number" min="0" step="any" value={x.amount} onChange={(e) => setExtra(i, 'amount', e.target.value)} placeholder={curSymbol(getClientCurrency())} aria-label="ចំនួន" />
               <button type="button" className="icon-btn" onClick={() => set('extras', f.extras.filter((_, j) => j !== i))} aria-label="លុប"><Trash2 size={15} /></button>
             </div>
           ))}

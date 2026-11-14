@@ -1,6 +1,6 @@
 import React from 'react';
 import { QR } from './ui.jsx';
-import { usd, khr, num, monthKm, dateKm, lunarKm, usdInWords } from '../shared/khmer.js';
+import { fmtMoney, fmtAlt, moneyInWords, num, monthKm, dateKm, lunarKm } from '../shared/khmer.js';
 
 export const DEFAULT_DESIGN = {
   blocks: ['header', 'meta', 'items', 'totals', 'payment', 'address', 'note', 'footer'],
@@ -22,6 +22,8 @@ const mapsLink = (loc) => (Number.isFinite(loc?.lat) ? `https://maps.google.com/
 export default function InvoiceDoc({ inv, property, khmer = true, design: d0, innerRef }) {
   const d = { ...DEFAULT_DESIGN, ...(d0 || {}) };
   const n = (v) => num(v, khmer);
+  const cur = inv.currency === 'KHR' ? 'KHR' : 'USD';
+  const usd_ = (v, kh) => fmtMoney(v, cur, kh);
   const hidden = new Set(d.hidden);
   const order = d.blocks.filter((b) => !hidden.has(b));
   const showPay = inv.khqr && inv.status !== 'paid';
@@ -48,7 +50,7 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
         <div><span>បន្ទប់</span><b>{inv.roomId}</b></div>
         <div><span>សម្រាប់</span><b>{inv.kind === 'movein' ? 'ចូលស្នាក់នៅ' : monthKm(inv.month, khmer)}</b></div>
         <div><span>ថ្ងៃចេញ</span><b>{dateKm(inv.issuedAt, khmer)}</b></div>
-        <div><span>ថ្ងៃផុតកំណត់</span><b>{dateKm(inv.dueDate, khmer)}</b></div>
+        <div><span>{inv.dueDate2 ? 'បង់ជា ២ លើក' : 'ថ្ងៃផុតកំណត់'}</span><b>{dateKm(inv.dueDate, khmer)}{inv.dueDate2 ? ` · ${dateKm(inv.dueDate2, khmer)}` : ''}</b></div>
         <div><span>ស្ថានភាព</span><b className={inv.status === 'paid' ? 'paid-t' : ''}>{inv.status === 'paid' ? (inv.paidVia === 'carried' ? 'ផ្ទេរទៅខែក្រោយ' : 'បានបង់ ✓') : inv.paid > 0 ? 'បង់ខ្លះ' : 'មិនទាន់បង់'}</b></div>
       </div>
     ),
@@ -60,8 +62,8 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
             <tr key={i}>
               <td>{it.label}{it.from !== undefined && <small> ({n(it.from)} → {n(it.to)})</small>}{it.note && <small className="tier-note">{it.note}</small>}</td>
               <td>{n(it.qty)} {it.unit}</td>
-              <td>{it.rate !== undefined ? usd(it.rate, khmer) : ''}</td>
-              <td>{usd(it.amount, khmer)}</td>
+              <td>{it.rate !== undefined ? usd_(it.rate, khmer) : ''}</td>
+              <td>{usd_(it.amount, khmer)}</td>
             </tr>
           ))}
         </tbody>
@@ -69,10 +71,10 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
     ),
     totals: (
       <div key="totals" className="inv-totals">
-        <div className="grand-row"><span>សរុប</span><b className="grand">{usd(inv.total, khmer)}</b></div>
-        {d.showRiel && <div><span>ប្រហែលជារៀល (អត្រា {n(inv.rate)})</span><b>{khr(inv.totalKhr, khmer)}</b></div>}
-        {d.showWords && <p className="words">ជាអក្សរ៖ {usdInWords(inv.total)}</p>}
-        {inv.status !== 'paid' && inv.paid > 0 && <><div><span>បានបង់រួច</span><b>−{usd(inv.paid, khmer)}</b></div><div className="grand-row"><span>នៅសល់ត្រូវបង់</span><b className="grand">{usd(inv.balance, khmer)}</b></div></>}
+        <div className="grand-row"><span>សរុប</span><b className="grand">{usd_(inv.total, khmer)}</b></div>
+        {d.showRiel && <div><span>{cur === 'KHR' ? 'ប្រហែលជាដុល្លារ' : 'ប្រហែលជារៀល'} (អត្រា {n(inv.rate)})</span><b>{fmtAlt(inv.total, cur, inv.rate, khmer)}</b></div>}
+        {d.showWords && <p className="words">ជាអក្សរ៖ {moneyInWords(inv.total, cur)}</p>}
+        {inv.status !== 'paid' && inv.paid > 0 && <><div><span>បានបង់រួច</span><b>−{usd_(inv.paid, khmer)}</b></div><div className="grand-row"><span>នៅសល់ត្រូវបង់</span><b className="grand">{usd_(inv.balance, khmer)}</b></div></>}
         {inv.status === 'paid' && <div className="paid-stamp">បានបង់<small>PAID</small></div>}
       </div>
     ),
@@ -83,7 +85,7 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
           <QR value={inv.khqr} size={d.size === 'receipt' ? 150 : 132} label="KHQR" />
           <small>ស្កេនបង់តាមធនាគារណាមួយ</small>
         </div>
-        <div className="ivd-pay-text"><b>{usd(inv.total, khmer)}</b><small>ABA · ACLEDA · Wing · Bakong · …</small></div>
+        <div className="ivd-pay-text"><b>{usd_(inv.total, khmer)}</b><small>ABA · ACLEDA · Wing · Bakong · …</small></div>
       </div>
     ) : null,
     address: addr || map ? (

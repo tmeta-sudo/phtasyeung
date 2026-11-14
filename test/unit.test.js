@@ -60,3 +60,27 @@ test('help guides: every guide is complete and every link points to a real scree
   }
   for (const [page, id] of Object.entries(PAGE_GUIDE)) { assert.ok(screens.has(page)); assert.ok(ids.has(id), `❓ on ${page} → ${id}`); }
 });
+
+test('bank slips: amount, currency, reference and bank are read; matched against the invoice', async () => {
+  const { parseSlip, matchSlip } = await import('../src/ocr/slipParse.js');
+  const aba = parseSlip(['ABA Bank', 'Transfer to SOKHA', '-100.00 USD', 'Trx. ID: 17345678901', 'Date 14 Nov 2026 09:12']);
+  assert.deepEqual(aba.amounts, [{ value: 100, currency: 'USD' }]);
+  assert.equal(aba.ref, '17345678901');
+  assert.equal(aba.bank, 'ABA');
+  assert.equal(matchSlip(aba, { balance: 100, currency: 'USD' }).status, 'match');
+  assert.deepEqual(matchSlip(aba, { balance: 150, currency: 'USD' }), { status: 'partial', amount: 100, paid: 100, currency: 'USD' });
+  assert.equal(matchSlip(aba, { balance: 80, currency: 'USD' }).status, 'mismatch');
+
+  const acleda = parseSlip([{ text: 'ACLEDA mobile' }, { text: 'ចំនួនទឹកប្រាក់ ៤១០,០០០ រៀល' }, { text: 'លេខយោង: FT26318ABC12' }]);
+  assert.deepEqual(acleda.amounts, [{ value: 410000, currency: 'KHR' }]);
+  assert.equal(acleda.ref, 'FT26318ABC12');
+  assert.equal(matchSlip(acleda, { balance: 410000, currency: 'KHR' }).status, 'match');
+  // A dollar invoice paid in riel at the landlord's rate.
+  assert.equal(matchSlip(acleda, { balance: 100, currency: 'USD', rate: 4100 }).status, 'match');
+
+  const junk = parseSlip(['hello', '', 'no numbers here']);
+  assert.equal(matchSlip(junk, { balance: 10 }).status, 'unreadable');
+  const wing = parseSlip(['Wing Bank', 'Amount', '$ 25.50', '2026-11-14', '998877665544']);
+  assert.equal(wing.amounts[0].value, 25.5);
+  assert.equal(wing.ref, '998877665544');
+});

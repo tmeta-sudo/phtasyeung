@@ -1,5 +1,5 @@
 // Fill the Khmer lease template from the customer, room and property.
-import { dateKm, usd, usdInWords, labelOf, GENDERS, kmDigits } from '../shared/khmer.js';
+import { dateKm, labelOf, GENDERS, kmDigits, money, moneyInWords, getClientCurrency } from '../shared/khmer.js';
 
 export function contractValues({ tenant: t, room, settings, lease, addressOf, propertyAddress }) {
   const rent = Number(room?.rent) || 0;
@@ -23,13 +23,13 @@ export function contractValues({ tenant: t, room, settings, lease, addressOf, pr
     propertyAddress: dash(propertyAddress || settings.address),
     start: t.contract?.start ? dateKm(t.contract.start).replace('ថ្ងៃទី', '') : '……………',
     end: t.contract?.end ? dateKm(t.contract.end).replace('ថ្ងៃទី', '') : '……………',
-    rent: usd(rent, true),
-    rentWords: usdInWords(rent),
+    rent: money(rent, true),
+    rentWords: moneyInWords(rent, getClientCurrency()),
     depositMonths: kmDigits(dep),
-    deposit: usd(rent * dep, true),
+    deposit: money(rent * dep, true),
     prepaidMonths: kmDigits(pre),
-    prepaid: usd(rent * pre, true),
-    moveInTotal: usd(rent * (dep + pre), true),
+    prepaid: money(rent * pre, true),
+    moveInTotal: money(rent * (dep + pre), true),
   };
 }
 

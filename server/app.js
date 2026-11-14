@@ -8,16 +8,17 @@ import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent, migrateDoc, orgId } from './db.js';
+import { db, save, uid, now, logEvent, migrateDoc, orgId, fm as usdFmt, cur, newOrgDoc } from './db.js';
+import { convertCurrency } from './currency.js';
 
 setDocMigrator(migrateDoc);
-import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
+import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession, propertiesOf, addMembership, switchSessionOrg, createOrg } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
-import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
+import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
-  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, configureOwnBot,
+  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, setTenantMenuButton, clearTenantMenuButton, configureOwnBot,
   webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
@@ -29,7 +30,7 @@ import {
 } from './blob.js';
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
-import { normalizePhone, nowInCambodia, kmDigits, usd as usdFmt } from '../shared/khmer.js';
+import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -126,6 +127,7 @@ async function accountInfo(req) {
     telegram: u.telegram_id ? { name: u.telegram_name || '' } : null,
     platformLogin: !!process.env.TELEGRAM_BOT_TOKEN,
     role: req.session.role || 'owner',
+    home: req.session.orgId === req.session.homeOrg,
   };
 }
 
@@ -188,6 +190,8 @@ function cleanProfile(input, existing = {}, { admin }) {
       roomId: str(p.roomId, 30),
       contract: { start: date(p.contract?.start), end: date(p.contract?.end), deposit: money(p.contract?.deposit) },
       addons: cleanAddons(p.addons ?? existing.addons),
+      // Payday: the day of the month this tenant pays (and an optional second day to pay in two halves).
+      pay: (() => { const src = p.pay ?? existing.pay ?? {}; const d = (v) => { const x = Math.round(+v || 0); return x >= 1 && x <= 31 ? x : null; }; const day = d(src.day); return { day, day2: day ? d(src.day2) : null }; })(),
     });
   }
   return { ...existing, ...out };
@@ -199,8 +203,12 @@ function validateTenant(t) {
   if (t.contract?.start && t.contract?.end && t.contract.end < t.contract.start) return 'ថ្ងៃផុតកំណត់ត្រូវនៅក្រោយថ្ងៃចាប់ផ្តើម';
   if (t.roomId) {
     if (!db().rooms.some((r) => r.id === t.roomId)) return 'រកមិនឃើញបន្ទប់';
-    const other = db().tenants.find((x) => x.id !== t.id && x.status === 'active' && x.roomId === t.roomId);
-    if (t.status === 'active' && other) return `បន្ទប់ ${t.roomId} មានអ្នកជួលរួចហើយ (${other.nameKm || other.nameEn})`;
+    const room = db().rooms.find((r) => r.id === t.roomId);
+    const others = db().tenants.filter((x) => x.id !== t.id && x.status === 'active' && x.roomId === t.roomId);
+    const cap = Math.max(1, +room.capacity || 1);
+    if (t.status === 'active' && others.length >= cap) {
+      return cap === 1 ? `បន្ទប់ ${t.roomId} មានអ្នកជួលរួចហើយ (${others[0].nameKm || others[0].nameEn}) — បើជួលរួមគ្នា សូមកែបន្ទប់ ហើយដំឡើង «ចំនួនអ្នកស្នាក់នៅ»` : `បន្ទប់ ${t.roomId} ពេញហើយ (${cap} នាក់)`;
+    }
   }
   return '';
 }
@@ -218,12 +226,14 @@ function cleanRoom(p) {
     id: str(p.id, 30), building: str(p.building, 60), floor: str(p.floor, 10), rent: money(p.rent),
     water: Math.max(0, +p.water || 0), electric: Math.max(0, +p.electric || 0), note: str(p.note, 300),
     features: [...new Set((Array.isArray(p.features) ? p.features : []).filter((f) => FEATURE_IDS.has(f)))],
+    capacity: Math.min(20, Math.max(1, Math.round(+p.capacity || 1))),
+    ...(Array.isArray(p.photos) ? { photos: p.photos } : {}),
     extras: (Array.isArray(p.extras) ? p.extras : []).slice(0, 6).map((e) => ({ label: str(e.label, 60), amount: money(e.amount) })).filter((e) => e.label),
   };
 }
 
 app.post('/api/rooms', ...owner((req) => {
-  const room = cleanRoom(req.body || {});
+  const room = cleanRoom({ ...(req.body || {}), photos: undefined });
   if (!room.id) fail('សូមបញ្ចូលលេខបន្ទប់');
   if (db().rooms.length >= 500) fail('ចំនួនបន្ទប់អតិបរមា ៥០០');
   if (db().rooms.some((r) => r.id === room.id)) fail('លេខបន្ទប់នេះមានរួចហើយ');
@@ -235,7 +245,9 @@ app.post('/api/rooms', ...owner((req) => {
 app.put('/api/rooms/:id', ...owner((req) => {
   const i = db().rooms.findIndex((r) => r.id === req.params.id);
   if (i < 0) fail('រកមិនឃើញបន្ទប់', 404);
-  db().rooms[i] = { ...cleanRoom({ ...db().rooms[i], ...req.body }), id: req.params.id };
+  const curRoom = db().rooms[i];
+  if (Math.round(+req.body?.capacity || curRoom.capacity || 1) < tenantsOfRoom(curRoom.id).length) fail('ចំនួនអ្នកស្នាក់នៅតិចជាងអ្នកជួលបច្ចុប្បន្ន');
+  db().rooms[i] = { ...cleanRoom({ ...curRoom, ...req.body, photos: curRoom.photos }), id: req.params.id };
   save();
   return adminState(req);
 }));
@@ -281,18 +293,19 @@ app.delete('/api/tenants/:id', ...owner(async (req) => {
   return adminState(req);
 }));
 
-app.post('/api/tenants/:id/rotate', ...owner((req) => {
+app.post('/api/tenants/:id/rotate', ...owner(async (req) => {
   const t = findTenant(req.params.id);
   if (!t) fail('រកមិនឃើញអតិថិជន', 404);
-  if (req.body?.what === 'portal') t.portalToken = uid(18);
+  if (req.body?.what === 'portal') { t.portalToken = uid(18); await setTenantMenuButton(t); } // the button in Telegram follows the new link
   else t.linkCode = uid(6);
   save();
   return adminState(req);
 }));
 
-app.post('/api/tenants/:id/unlink-telegram', ...owner((req) => {
+app.post('/api/tenants/:id/unlink-telegram', ...owner(async (req) => {
   const t = findTenant(req.params.id);
   if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  await clearTenantMenuButton(t.telegram?.chatId);
   t.telegram = null;
   t.linkCode = uid(6);
   save();
@@ -440,6 +453,33 @@ app.put('/api/invoices/:id', ...owner(async (req) => {
   return adminState(req);
 }));
 
+// ---------- bank transfer screenshots (read in the landlord's browser, never on a server) ----------
+
+const findClaim = (inv, cid) => (inv?.claims || []).find((c) => c.id === cid);
+app.get('/api/invoices/:id/claims/:cid/photo', ...owner(async (req, res) => {
+  const c = findClaim(findInvoice(req.params.id), req.params.cid);
+  if (c?.telegramFileId) {
+    try { const f = await fetchTelegramFile(c.telegramFileId); res.setHeader('Content-Type', f.type); res.setHeader('Cache-Control', 'private, max-age=600'); return res.end(f.data); } catch { return res.status(404).end(); }
+  }
+  return sendStored(res, req.session.orgId, c?.file);
+}));
+/** Save what was read from the slip; tells the owner if the same transaction number was used before. */
+app.post('/api/invoices/:id/claims/:cid/slip', ...owner(async (req) => {
+  const inv = findInvoice(req.params.id);
+  const c = findClaim(inv, req.params.cid);
+  if (!c) fail('រកមិនឃើញ', 404);
+  const b = req.body || {};
+  c.slip = {
+    status: ['match', 'partial', 'mismatch', 'unreadable'].includes(b.status) ? b.status : 'unreadable',
+    amount: Math.max(0, +b.amount || 0), paid: Math.max(0, +b.paid || 0), currency: b.currency === 'KHR' ? 'KHR' : 'USD',
+    ref: str(b.ref, 30).replace(/[^A-Za-z0-9]/g, ''), bank: str(b.bank, 20), readAt: now(),
+  };
+  const dup = c.slip.ref && db().invoices.find((i) => (i.claims || []).some((x) => x !== c && x.slip?.ref === c.slip.ref) || (i.payments || []).some((pm) => pm.ref === c.slip.ref && i.id !== inv.id));
+  c.slip.duplicateOf = dup ? dup.number : '';
+  save();
+  return adminState(req);
+}));
+
 const PAY_METHODS = ['cash', 'bank', 'khqr', 'aba', 'acleda', 'wing', 'other'];
 
 app.post('/api/invoices/:id/payments', ...owner(async (req) => {
@@ -449,11 +489,11 @@ app.post('/api/invoices/:id/payments', ...owner(async (req) => {
   const via = PAY_METHODS.includes(req.body?.via) ? req.body.via : 'cash';
   const at = date(req.body?.date) ? `${req.body.date}T12:00:00+07:00` : now();
   const { full } = addPayment(inv, { amount: req.body?.amount, via, note: str(req.body?.note, 200), at });
+  if (req.body?.ref) inv.payments.at(-1).ref = str(req.body.ref, 30).replace(/[^A-Za-z0-9]/g, '');
   if (full) await confirmPayment(inv, via);
   else {
     logEvent('admin', `បានទទួលប្រាក់ខ្លះ ${usdFmt(+req.body.amount)} ពី ${inv.roomId} · នៅសល់ ${usdFmt(balanceOf(inv))}`, { invoiceId: inv.id });
-    const t = db().tenants.find((x) => x.id === inv.tenantId);
-    await notifyTenant(t, `✅ <b>បានទទួលប្រាក់ ${usdFmt(+req.body.amount)}</b>\n🧾 ${inv.number}\nនៅសល់: <b>${usdFmt(balanceOf(inv))}</b>`);
+    for (const t of payersOf(inv)) await notifyTenant(t, `✅ <b>បានទទួលប្រាក់ ${usdFmt(+req.body.amount)}</b>\n🧾 ${inv.number}\nនៅសល់: <b>${usdFmt(balanceOf(inv))}</b>`);
   }
   return adminState(req);
 }));
@@ -616,7 +656,12 @@ app.put('/api/settings', ...owner(async (req) => {
     if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
+  if (b.currency && ['USD', 'KHR'].includes(b.currency) && b.currency !== cur()) {
+    if (req.session.role !== 'owner') fail('មានតែម្ចាស់ផ្ទះទេដែលអាចប្តូររូបិយប័ណ្ណ', 403);
+    convertCurrency(b.currency);
+  }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (b.holidays) s.holidays = { ...(s.holidays || {}), pauseReminders: b.holidays.pauseReminders !== false, shiftDue: b.holidays.shiftDue !== false, greet: !!b.holidays.greet };
   if (b.listing) {
     const slug = String(b.listing.slug ?? s.listing?.slug ?? '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
     if (b.listing.enabled && slug.length < 3) fail('សូមដាក់ឈ្មោះតំណ (អក្សរឡាតាំង យ៉ាងហោចណាស់ ៣ តួ)');
@@ -710,6 +755,7 @@ app.get('/api/listing/:slug', async (req, res) => {
     return {
       property: { name: st.propertyName, nameEn: st.propertyNameEn, phone: st.listing.showPhone ? st.phone : '', coverUrl: st.coverUrl, address: [L.addressText || st.address].filter(Boolean).join(', '), lat: L.lat, lng: L.lng, khmerNumerals: st.khmerNumerals },
       intro: st.listing.intro,
+      currency: st.currency === 'KHR' ? 'KHR' : 'USD',
       rooms: vacantRooms().map((r) => ({ id: r.id, building: r.building, floor: r.floor, rent: r.rent, features: r.features || [], note: r.note, photos: (r.photos || []).map((p) => p.id) })),
       addons: (st.addons || []).map(({ icon, label, price }) => ({ icon, label, price })),
       deposit: { months: st.contract?.depositMonths, prepaid: st.contract?.prepaidMonths },
@@ -1077,6 +1123,32 @@ app.delete('/api/notices/:id', ...owner(async (req) => {
   return adminState(req);
 }));
 
+// ---------- several properties under one login ----------
+
+const propertyList = async (req) => (await propertiesOf(req.session.userId)).map((r) => ({ id: r.id, name: r.name, role: r.role, home: r.home, rooms: Number(r.rooms) || 0, current: r.id === req.session.orgId, suspended: r.suspended }));
+app.get('/api/properties', requireOwner, async (req, res) => res.json({ properties: await propertyList(req) }));
+app.post('/api/properties', requireOwner, async (req, res) => {
+  const name = str(req.body?.name, 80);
+  if (!name) fail('សូមបញ្ចូលឈ្មោះអចលនទ្រព្យ');
+  const mine = await propertiesOf(req.session.userId);
+  if (mine.length >= 10) fail('អចលនទ្រព្យអតិបរមា ១០');
+  // Start the new place with the same currency, prices and KHQR as the current one (less typing).
+  const base = await withOrg(req.session.orgId, () => { const st = db().settings; return { currency: st.currency, exchangeRate: st.exchangeRate, waterRate: st.waterRate, electricRate: st.electricRate, dueDays: st.dueDays, khqr: { ...st.khqr }, addons: st.addons, tiers: st.tiers, ownerName: st.ownerName, phone: st.phone, khmerNumerals: st.khmerNumerals }; });
+  const doc = newOrgDoc({ name, phone: base.phone });
+  Object.assign(doc.settings, { ...base, contract: { ...doc.settings.contract } });
+  const orgId = await createOrg(doc);
+  await addMembership(req.session.userId, orgId, 'owner');
+  await switchSessionOrg(cookies(req).py_session, orgId);
+  res.json({ ok: true, id: orgId });
+});
+app.post('/api/properties/switch', requireOwner, async (req, res) => {
+  const target = (await propertiesOf(req.session.userId)).find((r) => r.id === req.body?.id);
+  if (!target) fail('រកមិនឃើញអចលនទ្រព្យ', 404);
+  if (target.suspended) fail('អចលនទ្រព្យនេះត្រូវបានផ្អាក', 403);
+  await switchSessionOrg(cookies(req).py_session, target.id);
+  res.json({ ok: true });
+});
+
 // ---------- browser error reports (no login needed: the portal reports too) ----------
 
 app.post('/api/errors', async (req, res) => {
@@ -1128,13 +1200,22 @@ app.post('/api/backup/restore', ...owner(async (req) => {
 app.post('/api/backup/restore/finish', ...owner(async (req) => ({ ...(await adminState(req)), result: await cleanupOrphanFiles() })));
 
 app.post('/api/account/delete', requireOwner, async (req, res) => {
-  const { rows } = await q(`SELECT u.pass_hash, o.doc->'settings'->>'propertyName' AS name FROM users u JOIN orgs o ON o.id = u.org_id WHERE u.id = $1`, [req.session.userId]);
+  if (req.session.role !== 'owner') fail('មានតែម្ចាស់ផ្ទះទេ', 403);
+  const { rows } = await q(`SELECT u.pass_hash, (SELECT doc->'settings'->>'propertyName' FROM orgs WHERE id = $2) AS name FROM users u WHERE u.id = $1`, [req.session.userId, req.session.orgId]);
   if (!rows[0]) fail('រកមិនឃើញគណនី', 404);
   if (rows[0].pass_hash) {
     if (!verifyPassword(req.body?.password, rows[0].pass_hash)) fail('ពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
   } else if (String(req.body?.confirm || '').trim() !== rows[0].name) fail('ឈ្មោះមិនត្រូវគ្នា');
   const { rows: blobs } = await q("SELECT id FROM files WHERE org_id = $1 AND backend = 'r2'", [req.session.orgId]);
   for (const b of blobs) await deleteBlob(req.session.orgId, {}, b.id);
+  if (req.session.orgId !== req.session.homeOrg) {
+    // An extra property: remove just that place and go back to the main one.
+    await q('DELETE FROM orgs WHERE id = $1', [req.session.orgId]);
+    await switchSessionOrg(cookies(req).py_session, req.session.homeOrg);
+    return res.json({ ok: true, switched: true });
+  }
+  const extra = (await propertiesOf(req.session.userId)).filter((r) => !r.home && r.role === 'owner');
+  if (extra.length) fail(`សូមលុបអចលនទ្រព្យផ្សេងទៀតជាមុនសិន (${extra.map((r) => r.name).join(', ')})`);
   await q('DELETE FROM orgs WHERE id = $1', [req.session.orgId]); // cascades to users, sessions' users, files, lookups
   res.setHeader('Set-Cookie', 'py_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });
@@ -1190,15 +1271,16 @@ async function portalState(t) {
   return {
     profile,
     room: room ? { id: room.id, building: room.building, floor: room.floor, rent: room.rent, water: room.water, electric: room.electric } : null,
-    invoices: s.invoices.filter((i) => i.tenantId === t.id).sort((a, b) => b.month.localeCompare(a.month)).map(withQr),
+    invoices: s.invoices.filter((i) => invoiceIsFor(i, t)).sort((a, b) => b.month.localeCompare(a.month)).map(withQr),
     meters: s.meters.filter((m) => m.roomId === t.roomId).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12),
-    property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, waterRate: st.waterRate, electricRate: st.electricRate },
+    property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, currency: st.currency === 'KHR' ? 'KHR' : 'USD', exchangeRate: st.exchangeRate, waterRate: st.waterRate, electricRate: st.electricRate },
     telegram: { bot, linked: !!t.telegram?.chatId, link: bot ? `https://t.me/${bot}?start=${linkCode}` : '' },
     lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths, signed: t.lease.signature ? { name: t.lease.signature.name, at: t.lease.signature.at, outdated: !!t.lease.signature.outdated } : null, ownerSigned: !!st.contract?.ownerSignature } : null,
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
     autoConfirm: bakongEnabled(),
     today: nowInCambodia(),
+    roommates: tenantsOfRoom(t.roomId).filter((x) => x.id !== t.id).map((x) => ({ name: x.nameKm || x.nameEn })),
     myReading: (s.meterSubmissions || []).filter((x) => x.tenantId === t.id).at(-1) || null,
     sharedKinds: ['water', 'electric'].filter((k) => (st.sharedMeters || []).some((g) => g.kind === k && g.rooms.includes(t.roomId))),
     notices: (s.notices || []).filter((n) => n.rooms?.includes(t.roomId) && Date.now() - new Date(n.at).getTime() < 60 * 86400000).slice(0, 5).map(({ id, at, text }) => ({ id, at, text })),
@@ -1291,17 +1373,22 @@ app.get('/api/portal/:token/signature/:who', ...portal((req, res, t, org) => sen
 
 app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
-  if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (!inv || !invoiceIsFor(inv, t)) fail('រកមិនឃើញវិក្កយបត្រ', 404);
   const r = await checkInvoice(inv, { minIntervalMs: 4000 });
   return { status: inv.status, bakong: r !== 'skip' };
 }));
 
 app.post('/api/portal/:token/invoices/:id/claim', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
-  if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
-  if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') await claimPayment(inv, 'portal');
+  if (!inv || !invoiceIsFor(inv, t)) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') {
+    // Optional: the tenant attaches their bank transfer screenshot.
+    let proof;
+    if (req.file) { const { meta, error } = await storeImage(req.file, `slip ${inv.number}`); if (error) fail(error); proof = { file: meta }; }
+    await claimPayment(inv, 'portal', proof);
+  }
   return portalState(t);
-}));
+}, upload));
 
 // ---------- cron (Vercel Cron sends "Authorization: Bearer $CRON_SECRET") ----------
 

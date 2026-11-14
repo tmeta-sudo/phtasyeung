@@ -126,3 +126,6 @@
 .pt-sign { display: grid; gap: 8px; margin: 14px 0; }
 .pt-sign small { opacity: .7; }
 .pt-signed { color: #12804f; font-weight: 600; margin: 12px 0; }
+.pt-mates { display: block; opacity: .9; margin-top: 2px; }
+.pt-claim { display: flex; gap: 8px; align-items: center; }
+.pt-slip { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.06); font-size: 20px; cursor: pointer; }

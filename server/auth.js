@@ -47,7 +47,7 @@ export async function requireOwner(req, res, next) { // = require a signed-in te
   const role = s.role || 'owner';
   const need = requiredRole(req.method, req.route?.path);
   if (!atLeast(role, need)) return res.status(403).json({ error: 'អ្នកមិនមានសិទ្ធិធ្វើការនេះទេ — សូមសួរម្ចាស់ផ្ទះ' });
-  req.session = { userId: s.user_id, orgId: s.org_id, email: s.email, role, canReset: !!s.can_reset_until && new Date(s.can_reset_until) > new Date() };
+  req.session = { userId: s.user_id, orgId: s.org_id, homeOrg: s.home_org, email: s.email, role, canReset: !!s.can_reset_until && new Date(s.can_reset_until) > new Date() };
   // "Active" for platform statistics — at most one write per 10 minutes per landlord.
   q("UPDATE orgs SET last_active = now() WHERE id = $1 AND (last_active IS NULL OR last_active < now() - interval '10 minutes')", [s.org_id]).catch(() => {});
   next();

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from './api.js';
 import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
+import { setClientCurrency } from '../shared/khmer.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
 import { matchesQuery, greetingKm, num } from '../shared/khmer.js';
 import Home from './pages/Home.jsx';
@@ -23,6 +24,7 @@ import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Reports from './pages/Reports.jsx';
 import Help from './help/Help.jsx';
+import SimpleHome, { simpleMode } from './pages/SimpleHome.jsx';
 import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
@@ -203,6 +205,8 @@ function Admin({ onLogout }) {
   const [modal, setModal] = useState(null); // {type, ...}
   const [printing, setPrinting] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [simple, setSimple] = useState(simpleMode.get);
+  useEffect(() => { const on = () => setSimple(simpleMode.get()); window.addEventListener('py-simple', on); return () => window.removeEventListener('py-simple', on); }, []);
   const path = usePath();
   const toastTimer = useRef();
   useEffect(() => { if (!/^\/(feedback|news)/.test(path)) { try { sessionStorage.setItem('py-last-page', path); } catch { /* ignore */ } } }, [path]);
@@ -289,6 +293,7 @@ function Admin({ onLogout }) {
   }), [state, call, notify, load, print]);
 
   if (!state) return <div className="boot"><span className="spinner" /></div>;
+  setClientCurrency(state.settings.currency);
 
   const claimed = state.invoices.filter((i) => i.status === 'claimed').length;
   const missingId = state.tenants.filter((t) => t.status === 'active' && !t.files?.idFront).length;
@@ -321,7 +326,7 @@ function Admin({ onLogout }) {
   else if (section === '/news') page = <News />;
   else if (section === '/feedback') page = <Feedback />;
   else if (section === '/super') page = <Super />;
-  else page = <Home />;
+  else page = simple && role !== 'staff' ? <SimpleHome onFull={() => { simpleMode.set(false); setSimple(false); }} /> : <Home />;
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -471,9 +476,16 @@ function NewsButton({ path }) {
 }
 
 function ProfileMenu({ onLogout }) {
-  const { state } = useApp();
+  const { state, notify } = useApp();
   const pwa = usePwa();
   const [open, setOpen] = useState(false);
+  const [props, setProps] = useState(null);
+  useEffect(() => { if (open && !props) api('GET', '/api/properties').then((r) => setProps(r.properties)).catch(() => setProps([])); }, [open, props]);
+  const go = async (fn) => { try { await fn(); location.href = '/'; } catch (e) { notify(e.message, true); } };
+  const addProperty = () => {
+    const name = window.prompt('ឈ្មោះអចលនទ្រព្យថ្មី (ឧ. ផ្ទះជួលទី ២ សៀមរាប)');
+    if (name?.trim()) go(() => api('POST', '/api/properties', { name: name.trim() }));
+  };
   return (
     <div className="pop-wrap">
       <button className="profile-btn" onClick={() => setOpen((v) => !v)} aria-label="គណនី">
@@ -482,6 +494,17 @@ function ProfileMenu({ onLogout }) {
       {open && (
         <div className="dropdown right" onMouseLeave={() => setOpen(false)}>
           <p className="pad"><b>{greetingKm(state.today.hour)}!</b><br /><small className="muted">{state.account.email || (state.account.telegram ? `Telegram · ${state.account.telegram.name}` : '')} · {state.settings.propertyName}</small></p>
+          {props?.length > 0 && (
+            <div className="prop-list">
+              {props.map((p) => (
+                <button key={p.id} className={p.current ? 'current' : ''} onClick={() => !p.current && go(() => api('POST', '/api/properties/switch', { id: p.id }))}>
+                  <span className="logo sm">{(p.name || 'ផ').trim()[0]}</span><span><b>{p.name}</b><small>{p.rooms} បន្ទប់{p.current ? ' · កំពុងមើល' : ''}</small></span>
+                </button>
+              ))}
+              {state.account.role === 'owner' && <button className="add" onClick={addProperty}>＋ បន្ថែមអចលនទ្រព្យ</button>}
+            </div>
+          )}
+          <button onClick={() => { const on = !simpleMode.get(); simpleMode.set(on); window.dispatchEvent(new Event('py-simple')); setOpen(false); navigate('/'); }}><span>🔠</span> {simpleMode.get() ? 'របៀបពេញលេញ' : 'របៀបងាយ (អក្សរធំ)'}</button>
           <button onClick={() => { setOpen(false); navigate('/settings'); }}><Settings size={16} /> ការកំណត់</button>
           <button onClick={() => { setOpen(false); navigate('/news'); }}><Sparkles size={16} /> មានអ្វីថ្មី</button>
           <button onClick={() => { setOpen(false); navigate('/feedback?tab=new'); }}><Lightbulb size={16} /> ស្នើមុខងារ</button>

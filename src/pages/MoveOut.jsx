@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { DoorOpen, Plus, Trash2, Printer, Wallet, Check } from 'lucide-react';
 import { useApp, useFmt, Modal, Field } from '../ui.jsx';
-import { dateKm, usdInWords } from '../../shared/khmer.js';
+import { dateKm, money, moneyInWords, getClientCurrency, curSymbol } from '../../shared/khmer.js';
 
 const QUICK = ['សម្អាតបន្ទប់', 'ជួសជុលជញ្ជាំង / ថ្នាំ', 'ខូចខាតឧបករណ៍', 'សោ / កាតទ្វារបាត់', 'ថ្លៃទឹកភ្លើងចុងក្រោយ'];
 
 /** Printable Khmer settlement slip (both sides sign). */
 export function SettlementDoc({ t, s, property, k }) {
-  const { $ } = { $: (v) => `$${Number(v).toFixed(2)}` };
+  const $ = (v) => money(v, k);
   return (
     <div className="settle-doc">
       <h2>លិខិតទូទាត់ប្រាក់កក់ពេលចាកចេញ</h2>
@@ -28,7 +28,7 @@ export function SettlementDoc({ t, s, property, k }) {
           {s.owes > 0 && <tr className="owe"><td>អ្នកជួលនៅជំពាក់</td><td>{$(s.owes)}</td></tr>}
         </tfoot>
       </table>
-      {s.refund > 0 && <p className="words">ជាអក្សរ៖ {usdInWords(s.refund)}</p>}
+      {s.refund > 0 && <p className="words">ជាអក្សរ៖ {moneyInWords(s.refund, getClientCurrency())}</p>}
       <div className="signs"><div>ហត្ថលេខាម្ចាស់ផ្ទះ</div><div>ហត្ថលេខាអ្នកជួល</div></div>
     </div>
   );
@@ -78,7 +78,7 @@ export default function MoveOutModal({ t, onClose }) {
         {rows.map((r, i) => (
           <div key={i} className="extra-row">
             <input value={r.label} placeholder="ហេតុផល" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
-            <input type="number" inputMode="decimal" step="0.5" value={r.amount} placeholder="$" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
+            <input type="number" inputMode="decimal" step="0.5" value={r.amount} placeholder={curSymbol(getClientCurrency())} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
             <button type="button" className="icon-btn" aria-label="លុប" onClick={() => setRows(rows.filter((_, j) => j !== i))}><Trash2 size={15} /></button>
           </div>
         ))}
@@ -109,7 +109,7 @@ export function DepositCard({ t }) {
         <p className="muted">បានទូទាត់ពេលចាកចេញ {dateKm(t.moveOut.date, k)} · សងវិញ {$(t.moveOut.refund)}{t.moveOut.owes > 0 ? ` · នៅជំពាក់ ${$(t.moveOut.owes)}` : ''}</p>
       ) : edit ? (
         <form className="pay-form" onSubmit={async (e) => { e.preventDefault(); if (await call('PUT', `/api/tenants/${t.id}/deposit`, { ...f, held: +f.held }, 'បានរក្សាទុក')) setEdit(false); }}>
-          <input type="number" inputMode="decimal" step="0.01" min="0" value={f.held} onChange={(e) => setF({ ...f, held: e.target.value })} placeholder="$" aria-label="ចំនួន" />
+          <input type="number" inputMode="decimal" step="0.01" min="0" value={f.held} onChange={(e) => setF({ ...f, held: e.target.value })} placeholder={curSymbol(getClientCurrency())} aria-label="ចំនួន" />
           <input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="ថ្ងៃទទួល" />
           <div className="row-btns"><button type="button" className="btn ghost sm" onClick={() => setEdit(false)}>បោះបង់</button><button className="btn primary sm">រក្សាទុក</button></div>
         </form>

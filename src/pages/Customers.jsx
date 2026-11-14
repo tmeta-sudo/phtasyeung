@@ -11,7 +11,7 @@ import MoveOutModal, { DepositCard } from './MoveOut.jsx';
 import { lazy, Suspense } from 'react';
 
 const IdScanner = lazy(() => import('../ocr/IdScanner.jsx'));
-import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm } from '../../shared/khmer.js';
+import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm, money, curSymbol, getClientCurrency } from '../../shared/khmer.js';
 
 const FILTERS = [
   ['active', 'កំពុងជួល'], ['all', 'ទាំងអស់'], ['noid', 'ខ្វះអត្តសញ្ញាណប័ណ្ណ'], ['notg', 'មិនទាន់ភ្ជាប់ Telegram'],
@@ -194,6 +194,7 @@ export function CustomerDetail({ id }) {
                 <Info label="បន្ទប់" value={room ? `${room.id} · ${room.building} · ${$(room.rent)}/ខែ` : '—'} />
                 <Info label="រយៈពេល" value={t.contract?.start ? `${dateKm(t.contract.start, k)} — ${dateKm(t.contract.end, k) || '…'}` : ''} />
                 <Info label="ប្រាក់កក់" value={t.contract?.deposit ? $(t.contract.deposit) : ''} />
+                <Info label="ថ្ងៃបង់ប្រាក់" value={t.pay?.day ? `ថ្ងៃទី ${n(t.pay.day)}${t.pay.day2 ? ` និង ${n(t.pay.day2)} (២ លើក)` : ''} រៀងរាល់ខែ` : ''} />
                 <Info label="សេវាបន្ថែម" value={(t.addons || []).map((x) => { const a = state.settings.addons?.find((y) => y.id === x.id); return a ? `${a.icon} ${a.label}${x.qty > 1 ? ` ×${n(x.qty)}` : ''}` : ''; }).filter(Boolean).join(' · ')} />
                 {room?.features?.length > 0 && <Info label="បរិក្ខារ" value={<FeatureIcons ids={room.features} labels />} wide />}
               </dl>
@@ -300,7 +301,9 @@ export function CustomerForm({ tenant, preset, onClose }) {
   const [error, setError] = useState('');
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const setIn = (o, k, v) => setF((x) => ({ ...x, [o]: { ...x[o], [k]: v } }));
-  const occupied = new Set(state.tenants.filter((x) => x.status === 'active' && x.id !== tenant?.id).map((x) => x.roomId));
+  // A room is "full" when it already has as many tenants as its capacity (1 unless it is a shared room).
+  const livingIn = (id) => state.tenants.filter((x) => x.status === 'active' && x.id !== tenant?.id && x.roomId === id).length;
+  const occupied = { has: (id) => livingIn(id) >= (state.rooms.find((r) => r.id === id)?.capacity || 1) };
 
   const warnings = [];
   if (f.nameKm && !isKhmerName(f.nameKm)) warnings.push('ឈ្មោះខ្មែរគួរសរសេរជាអក្សរខ្មែរ');
@@ -373,10 +376,22 @@ export function CustomerForm({ tenant, preset, onClose }) {
           <legend>បន្ទប់ និងកិច្ចសន្យា</legend>
           <div className="form-grid">
             <Field label="ស្ថានភាព"><select value={f.status} onChange={(e) => set('status', e.target.value)}><option value="active">កំពុងជួល</option><option value="prospect">អ្នកចាប់អារម្មណ៍</option><option value="former">អតីតអ្នកជួល</option></select></Field>
-            <Field label="បន្ទប់"><select value={f.roomId} onChange={(e) => set('roomId', e.target.value)}><option value="">— គ្មាន —</option>{state.rooms.map((r) => <option key={r.id} value={r.id} disabled={occupied.has(r.id)}>{r.id} · {r.building}{occupied.has(r.id) ? ' (មានអ្នកជួល)' : ''}</option>)}</select></Field>
+            <Field label="បន្ទប់"><select value={f.roomId} onChange={(e) => set('roomId', e.target.value)}><option value="">— គ្មាន —</option>{state.rooms.map((r) => <option key={r.id} value={r.id} disabled={occupied.has(r.id)}>{r.id} · {r.building}{occupied.has(r.id) ? ' (ពេញ)' : livingIn(r.id) ? ` (រួមបន្ទប់ ${livingIn(r.id)}/${r.capacity})` : ''}</option>)}</select></Field>
             <Field label="ថ្ងៃចាប់ផ្តើម"><input type="date" value={f.contract.start} onChange={(e) => setIn('contract', 'start', e.target.value)} /></Field>
             <Field label="ថ្ងៃផុតកំណត់"><input type="date" value={f.contract.end} onChange={(e) => setIn('contract', 'end', e.target.value)} /></Field>
-            <Field label="ប្រាក់កក់ ($)"><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
+            <Field label={`ប្រាក់កក់ (${curSymbol(getClientCurrency())})`}><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
+            <Field label="ថ្ងៃបង់ប្រាក់រៀងរាល់ខែ (ថ្ងៃបើកប្រាក់ខែ)" hint="ទុកទំនេរ = តាមការកំណត់ទូទៅ។ រំលឹកចាប់ពីថ្ងៃនេះ មិនមែនមុនទេ។">
+              <select value={f.pay?.day || ''} onChange={(e) => set('pay', { ...(f.pay || {}), day: e.target.value ? +e.target.value : null, day2: e.target.value ? f.pay?.day2 || null : null })}>
+                <option value="">— តាមទូទៅ —</option>{Array.from({ length: 31 }, (_, i) => <option key={i + 1} value={i + 1}>ថ្ងៃទី {i + 1}</option>)}
+              </select>
+            </Field>
+            {f.pay?.day && (
+              <Field label="បង់ជា ២ លើក? ថ្ងៃទី ២" hint="សម្រាប់អ្នកបើកប្រាក់ខែ ២ ដង — បង់ពាក់កណ្តាលម្តង">
+                <select value={f.pay?.day2 || ''} onChange={(e) => set('pay', { ...f.pay, day2: e.target.value ? +e.target.value : null })}>
+                  <option value="">— បង់ម្តង —</option>{Array.from({ length: 31 }, (_, i) => i + 1).filter((d) => d !== f.pay.day).map((d) => <option key={d} value={d}>ថ្ងៃទី {d}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
         </fieldset>
@@ -389,7 +404,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
             const rent = +r?.rent || 0;
             const extras = (r?.extras || []).reduce((a, x) => a + (+x.amount || 0), 0);
             const add = addonsTotal(state.settings.addons, f.addons || []);
-            return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>${(rent + extras + add).toFixed(2)}</b><small>ថ្លៃជួល ${rent}{extras ? ` + ផ្សេងៗ $${extras}` : ''}{add ? ` + សេវា $${add}` : ''}</small></div> : null;
+            return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>{money(rent + extras + add)}</b><small>ថ្លៃជួល {money(rent)}{extras ? ` + ផ្សេងៗ ${money(extras)}` : ''}{add ? ` + សេវា ${money(add)}` : ''}</small></div> : null;
           })()}
         </fieldset>
         {scan && (

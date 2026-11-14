@@ -5,6 +5,7 @@ import { useApp, useFmt, Modal, StatusPill, Empty, invStatus } from '../ui.jsx';
 import InvoiceDoc, { invoiceProperty } from '../InvoiceDoc.jsx';
 import { nodeToPng, shareBlob } from '../exportImage.js';
 import { api } from '../api.js';
+import SlipCheck from '../SlipCheck.jsx';
 import { monthKm, matchesQuery, dateKm } from '../../shared/khmer.js';
 
 export default function Invoices() {
@@ -163,6 +164,7 @@ export function InvoiceModal({ id, onClose }) {
           </span>
         </div>
       )}
+      {inv.status !== 'paid' && lastClaim && (lastClaim.telegramFileId || lastClaim.file) && <SlipCheck inv={inv} claim={lastClaim} />}
       {editing ? (
         <div className="stack-form">
           {editing.map((it, i) => (
