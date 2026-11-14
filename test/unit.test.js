@@ -34,3 +34,13 @@ test('ID card: Khmer front lines and empty OCR lines do not crash', () => {
   assert.equal(r.fields.dob, '1990-02-15');
   assert.equal(r.fields.gender, 'female');
 });
+
+test('meter reading candidates: drum digits, decimal wheel, never below last month', async () => {
+  const { numberCandidates, rankReadings } = await import('../src/ocr/meterParse.js');
+  const best = (lines, prev) => rankReadings(numberCandidates(lines), prev).map((c) => c.value);
+  assert.equal(best([{ text: '0 4 5 2 3', confidence: 0.9 }], 4500)[0], 4523);
+  assert.ok(best([{ text: '0 4 5 2 3 7', confidence: 0.9 }], 4500).includes(4523), 'last red wheel is a decimal');
+  assert.equal(best([{ text: 'kWh 01234.5', confidence: 0.8 }], 1200)[0], 1234.5);
+  assert.deepEqual(best([{ text: '0950', confidence: 0.9 }], 1000), [], 'a reading below last month is never suggested');
+  assert.equal(best([{ text: '០១២៣៤', confidence: 0.9 }], 1200)[0], 1234, 'Khmer digits');
+});

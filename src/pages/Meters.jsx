@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Gauge, Droplets, Zap, Trash2, Check } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { monthKm } from '../../shared/khmer.js';
+import MeterPhoto from '../MeterPhoto.jsx';
+import { api, uploadFile } from '../api.js';
 
 export default function Meters() {
   const { state, call } = useApp();
@@ -15,10 +17,17 @@ export default function Meters() {
   const sharedDone = (g) => (state.sharedReadings || []).find((x) => x.groupId === g.id && x.month === month);
   const [gv, setGv] = useState({});
 
+  const { setState } = useApp();
   async function saveRow(r) {
     const v = rows[r.id] || {};
     const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric }, `បានកត់ ${r.id}`);
-    if (res) setRows((x) => ({ ...x, [r.id]: undefined }));
+    if (!res) return;
+    setRows((x) => ({ ...x, [r.id]: undefined }));
+    // Upload the meter photos as proof (after the reading exists).
+    const m = res.meters.find((x) => x.roomId === r.id && x.month === month);
+    for (const kind of ['water', 'electric']) {
+      if (m && v['photo_' + kind]) { try { setState(await uploadFile(`/api/meters/${m.id}/photo/${kind}`, v['photo_' + kind])); } catch { /* reading saved anyway */ } }
+    }
   }
 
   return (
@@ -40,16 +49,16 @@ export default function Meters() {
                 <span><b>{r.id}</b><small className="muted">{tenantIn(r.id)?.nameKm || 'ទំនេរ'}</small></span>
                 {m ? (
                   <>
-                    <span>{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small></span>
-                    <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small></span>
+                    <span>{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small>{m.photos?.water && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/water`} target="_blank" rel="noreferrer">📷</a>}</span>
+                    <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small>{m.photos?.electric && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/electric`} target="_blank" rel="noreferrer">📷</a>}</span>
                     <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/${m.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
                   </>
                 ) : (
                   <>
                     {sharedKind(r.id, 'water') ? <span className="mt-shared">💧 កុងទ័ររួម {sharedKind(r.id, 'water').name}</span>
-                      : <span className="mt-input"><small>ចាស់ {n(r.water)}</small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} required aria-label={`ទឹក ${r.id}`} /></span>}
+                      : <span className="mt-input"><small>ចាស់ {n(r.water)} <MeterPhoto previous={r.water} has={!!v.photo_water} onPick={(x) => set('water', x)} onPhoto={(f) => set('photo_water', f)} /></small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} required aria-label={`ទឹក ${r.id}`} /></span>}
                     {sharedKind(r.id, 'electric') ? <span className="mt-shared">⚡ កុងទ័ររួម {sharedKind(r.id, 'electric').name}</span>
-                      : <span className="mt-input"><small>ចាស់ {n(r.electric)}</small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} required aria-label={`ភ្លើង ${r.id}`} /></span>}
+                      : <span className="mt-input"><small>ចាស់ {n(r.electric)} <MeterPhoto previous={r.electric} has={!!v.photo_electric} onPick={(x) => set('electric', x)} onPhoto={(f) => set('photo_electric', f)} /></small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} required aria-label={`ភ្លើង ${r.id}`} /></span>}
                     <button className="icon-btn primary" aria-label="រក្សាទុក"><Check size={16} /></button>
                   </>
                 )}

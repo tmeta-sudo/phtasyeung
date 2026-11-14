@@ -12,6 +12,7 @@ const RULES = [
   ['GET', '/api/state', 'staff'],
   ['POST', '/api/meters', 'staff'],
   ['POST', '/api/meters/shared', 'staff'],
+  ['*', '/api/meters/:id/photo/:kind', 'staff'],
   ['DELETE', '/api/meters/shared/:id', 'manager'],
   ['DELETE', '/api/meters/:id', 'manager'],
   ['POST', '/api/tickets/:id/reply', 'staff'],

@@ -12,7 +12,7 @@ import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
 setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
-import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
+import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
@@ -318,6 +318,25 @@ app.get('/api/tenants/:id/files/:slot', ...owner((req, res) => sendStored(res, r
 
 // ---------- meters ----------
 
+// ---------- meter photos (proof of the reading) ----------
+
+const PHOTO_KINDS = ['water', 'electric', 'value'];
+function findReading(id) {
+  const s = db();
+  return s.meters.find((m) => m.id === id) || (s.sharedReadings || []).find((m) => m.id === id) || null;
+}
+app.post('/api/meters/:id/photo/:kind', ...owner(async (req) => {
+  const m = findReading(req.params.id);
+  if (!m || !PHOTO_KINDS.includes(req.params.kind)) fail('រកមិនឃើញ', 404);
+  const { meta, error } = await storeImage(req.file, `meter ${m.roomId || m.groupId} ${m.month} ${req.params.kind}`);
+  if (error) fail(error);
+  await removeFile(m.photos?.[req.params.kind]);
+  m.photos = { ...(m.photos || {}), [req.params.kind]: meta };
+  save();
+  return adminState(req);
+}, upload));
+app.get('/api/meters/:id/photo/:kind', ...owner((req, res) => sendStored(res, req.session.orgId, findReading(req.params.id)?.photos?.[req.params.kind])));
+
 app.post('/api/meters/shared', ...owner((req) => {
   const s = db();
   const g = (s.settings.sharedMeters || []).find((x) => x.id === req.body?.groupId);
@@ -368,7 +387,7 @@ app.post('/api/meters', ...owner((req) => {
   return adminState(req);
 }));
 
-app.delete('/api/meters/:id', ...owner((req) => {
+app.delete('/api/meters/:id', ...owner(async (req) => {
   const s = db();
   const m = s.meters.find((x) => x.id === req.params.id);
   if (!m) fail('រកមិនឃើញ', 404);
@@ -378,6 +397,7 @@ app.delete('/api/meters/:id', ...owner((req) => {
   const room = s.rooms.find((r) => r.id === m.roomId);
   if (room) { room.water = m.oldWater; room.electric = m.oldElectric; }
   s.meters = s.meters.filter((x) => x.id !== m.id);
+  for (const ph of Object.values(m.photos || {})) await removeFile(ph).catch(() => {});
   save();
   return adminState(req);
 }));
@@ -1091,6 +1111,11 @@ app.get('/api/portal/:token/files/:slot', ...portal((req, res, t, org) => {
 }));
 
 /** Polled by the portal while the KHQR is on screen: confirms automatically once Bakong sees the payment. */
+app.get('/api/portal/:token/meters/:id/photo/:kind', ...portal((req, res, t, org) => {
+  const m = db().meters.find((x) => x.id === req.params.id && x.roomId === t.roomId);
+  return sendStored(res, org, m?.photos?.[req.params.kind]);
+}));
+
 app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
   if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);

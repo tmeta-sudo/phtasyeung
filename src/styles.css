@@ -1174,3 +1174,10 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .addon-edit { display: grid; grid-template-columns: 44px minmax(0, 1fr) 72px 52px auto; gap: 6px; align-items: center; }
 .addon-edit input { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 9px 8px; background: var(--surface); color: var(--ink); font: inherit; }
 .addon-edit .ae-icon { text-align: center; }
+.meter-photo { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; vertical-align: middle; }
+.meter-photo .cam { width: 28px; height: 28px; background: var(--blue-soft); color: var(--blue); }
+.meter-photo .cam.has { background: var(--ok-soft); color: var(--ok); }
+.mp-status { font-size: 11px; color: var(--muted); }
+.mp-cands { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.mp-cands button { padding: 3px 9px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 12.5px; font-weight: 600; }
+.mp-thumb { margin-left: 6px; text-decoration: none; }
