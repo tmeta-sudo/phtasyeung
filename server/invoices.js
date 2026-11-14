@@ -14,6 +14,28 @@ function addDays(ymd, days) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Cost of `qty` units with EDC-style price bands: [{ upTo: 50, rate: 0.15 }, { upTo: null, rate: 0.2 }].
+ * No bands -> flat `rate`. Returns { amount, parts } where parts explain the bill.
+ */
+export function tieredCost(qty, tiers, rate) {
+  const q = Math.max(0, +qty || 0);
+  const bands = (tiers || []).filter((t) => +t.rate >= 0).sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+  if (!bands.length) return { amount: round2(q * (+rate || 0)), parts: [] };
+  let left = q; let from = 0; let amount = 0; const parts = [];
+  for (const b of bands) {
+    if (left <= 0) break;
+    const cap = b.upTo == null || b.upTo === '' ? Infinity : +b.upTo;
+    const take = Math.min(left, cap - from);
+    if (take > 0) { amount += take * +b.rate; parts.push({ qty: round2(take), rate: +b.rate }); left -= take; }
+    from = cap;
+  }
+  if (left > 0) { const last = bands.at(-1); amount += left * +last.rate; parts.push({ qty: round2(left), rate: +last.rate }); }
+  return { amount: round2(amount), parts };
+}
+
+const tierNote = (parts) => (parts.length > 1 ? parts.map((p) => `${p.qty}x$${p.rate}`).join(' + ') : '');
+
 /** Money received so far on an invoice (all recorded payments). */
 export const paidSoFar = (inv) => {
   // Invoices paid before payments were recorded one by one count as fully paid.
@@ -57,11 +79,27 @@ export function generateInvoices(month, actor = 'admin') {
     if (s.invoices.some((i) => i.roomId === room.id && i.month === month)) continue;
     const meter = s.meters.find((m) => m.roomId === room.id && m.month === month);
     const items = [{ key: 'rent', label: 'ថ្លៃជួលបន្ទប់', qty: 1, unit: 'ខែ', rate: +room.rent || 0, amount: +room.rent || 0 }];
-    if (meter) {
-      const w = Math.max(0, meter.water - meter.oldWater);
-      const e = Math.max(0, meter.electric - meter.oldElectric);
-      items.push({ key: 'water', label: 'ថ្លៃទឹក', qty: w, unit: 'm³', rate: +settings.waterRate, amount: w * settings.waterRate, from: meter.oldWater, to: meter.water });
-      items.push({ key: 'electric', label: 'ថ្លៃភ្លើង', qty: e, unit: 'kWh', rate: +settings.electricRate, amount: e * settings.electricRate, from: meter.oldElectric, to: meter.electric });
+    const tiers = settings.tiers || {};
+    const sharedOf = (kind) => (settings.sharedMeters || []).find((g) => g.kind === kind && (g.rooms || []).includes(room.id));
+    for (const [kind, label, unit, rateKey, oldKey] of [['water', 'ថ្លៃទឹក', 'm³', 'waterRate', 'oldWater'], ['electric', 'ថ្លៃភ្លើង', 'kWh', 'electricRate', 'oldElectric']]) {
+      const g = sharedOf(kind);
+      if (g) {
+        // One meter for several rooms: price the whole usage, then split it equally between the rented rooms.
+        const read = (s.sharedReadings || []).find((x) => x.groupId === g.id && x.month === month);
+        if (!read) continue;
+        const rented = g.rooms.filter((id) => tenantOfRoom(id));
+        const parts = Math.max(1, rented.length);
+        const used = Math.max(0, read.value - read.old);
+        const c = tieredCost(used, tiers[kind], settings[rateKey]);
+        const note = tierNote(c.parts);
+        items.push({ key: kind, label: `${label} (កុងទ័ររួម ${g.name} ÷ ${kmDigits(parts)})`, qty: round2(used / parts), unit, rate: note ? undefined : +settings[rateKey], amount: round2(c.amount / parts), from: read.old, to: read.value, shared: g.id, note });
+        continue;
+      }
+      if (!meter) continue;
+      const used = Math.max(0, meter[kind] - meter[oldKey]);
+      const c = tieredCost(used, tiers[kind], settings[rateKey]);
+      const note = tierNote(c.parts);
+      items.push({ key: kind, label, qty: used, unit, rate: note ? undefined : +settings[rateKey], amount: c.amount, from: meter[oldKey], to: meter[kind], note });
     }
     for (const extra of room.extras || []) {
       if (extra.label && +extra.amount) items.push({ key: 'extra', label: extra.label, qty: 1, unit: 'ខែ', rate: +extra.amount, amount: +extra.amount });
@@ -195,7 +233,7 @@ export function invoiceTelegramHtml(inv, { reminder = false, hasQr = false } = {
   lines.push('');
   for (const it of inv.items) {
     const detail = it.key === 'water' || it.key === 'electric'
-      ? ` (${kmDigits(it.from)}→${kmDigits(it.to)} = ${kmDigits(it.qty)} ${it.unit})`
+      ? ` (${kmDigits(it.from)}→${kmDigits(it.to)} = ${kmDigits(it.qty)} ${it.unit}${it.note ? `; ${it.note}` : ''})`
       : '';
     lines.push(`• ${esc(it.label)}${detail}: <b>${usd(it.amount)}</b>`);
   }

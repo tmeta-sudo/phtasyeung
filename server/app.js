@@ -143,6 +143,7 @@ async function fullState(req) {
     tickets: (s.tickets || []).slice(-300),
     notices: (s.notices || []).slice(0, 30),
     expenses: (s.expenses || []).slice(-2000),
+    sharedReadings: (s.sharedReadings || []).slice(-600),
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
@@ -302,12 +303,43 @@ app.get('/api/tenants/:id/files/:slot', ...owner((req, res) => sendStored(res, r
 
 // ---------- meters ----------
 
+app.post('/api/meters/shared', ...owner((req) => {
+  const s = db();
+  const g = (s.settings.sharedMeters || []).find((x) => x.id === req.body?.groupId);
+  const m = month(req.body?.month);
+  const value = Number(req.body?.value);
+  if (!g || !m) fail('សូមជ្រើសរើសកុងទ័ររួម និងខែ');
+  if (!Number.isFinite(value) || value < g.reading) fail(`លេខថ្មីត្រូវធំជាង ឬស្មើលេខចាស់ (${g.reading})`);
+  s.sharedReadings = s.sharedReadings || [];
+  if (s.sharedReadings.some((x) => x.groupId === g.id && x.month === m)) fail('កុងទ័រនេះបានកត់សម្រាប់ខែនេះរួចហើយ');
+  if (s.invoices.some((i) => i.month === m && g.rooms.includes(i.roomId))) fail('ខែនេះមានវិក្កយបត្ររួចហើយសម្រាប់បន្ទប់ក្នុងក្រុមនេះ');
+  s.sharedReadings.push({ id: uid(), groupId: g.id, month: m, old: g.reading, value, at: now(), photo: null });
+  g.reading = value;
+  save();
+  return adminState(req);
+}));
+
+app.delete('/api/meters/shared/:id', ...owner((req) => {
+  const s = db();
+  const r = (s.sharedReadings || []).find((x) => x.id === req.params.id);
+  if (!r) fail('រកមិនឃើញ', 404);
+  const g = (s.settings.sharedMeters || []).find((x) => x.id === r.groupId);
+  const latest = s.sharedReadings.filter((x) => x.groupId === r.groupId).sort((a, b) => b.month.localeCompare(a.month))[0];
+  if (latest.id !== r.id) fail('អាចលុបបានតែកំណត់ត្រាចុងក្រោយបង្អស់');
+  if (g) g.reading = r.old;
+  s.sharedReadings = s.sharedReadings.filter((x) => x.id !== r.id);
+  save();
+  return adminState(req);
+}));
+
 app.post('/api/meters', ...owner((req) => {
   const s = db();
   const room = s.rooms.find((r) => r.id === req.body?.roomId);
   const m = month(req.body?.month);
-  const water = Number(req.body?.water);
-  const electric = Number(req.body?.electric);
+  // A kind measured by a shared meter is not read per room: keep the old number.
+  const inShared = (kind) => (s.settings.sharedMeters || []).some((g) => g.kind === kind && g.rooms.includes(room?.id));
+  const water = inShared('water') && (req.body?.water === '' || req.body?.water == null) ? room?.water : Number(req.body?.water);
+  const electric = inShared('electric') && (req.body?.electric === '' || req.body?.electric == null) ? room?.electric : Number(req.body?.electric);
   if (!room || !m) fail('សូមជ្រើសរើសបន្ទប់ និងខែ');
   if (!Number.isFinite(water) || !Number.isFinite(electric) || water < room.water || electric < room.electric) {
     fail(`លេខថ្មីត្រូវធំជាង ឬស្មើលេខចាស់ (ទឹក ${room.water}, ភ្លើង ${room.electric})`);
@@ -538,6 +570,23 @@ app.put('/api/settings', ...owner(async (req) => {
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (b.tiers) {
+    const clean = (list) => (Array.isArray(list) ? list : []).slice(0, 8)
+      .map((t) => ({ upTo: t.upTo === '' || t.upTo == null ? null : Math.max(0, +t.upTo || 0), rate: Math.max(0, Math.round((+t.rate || 0) * 10000) / 10000) }))
+      .filter((t) => t.rate > 0);
+    s.tiers = { electric: clean(b.tiers.electric), water: clean(b.tiers.water) };
+  }
+  if (Array.isArray(b.sharedMeters)) {
+    const roomIds = new Set(db().rooms.map((r) => r.id));
+    const old = new Map((s.sharedMeters || []).map((g) => [g.id, g]));
+    s.sharedMeters = b.sharedMeters.slice(0, 50).map((g) => ({
+      id: /^[\w-]{1,20}$/.test(g.id || '') ? g.id : 'S' + uid(4),
+      name: str(g.name, 40) || 'កុងទ័ររួម',
+      kind: g.kind === 'water' ? 'water' : 'electric',
+      rooms: [...new Set((g.rooms || []).map(String).filter((id) => roomIds.has(id)))],
+      reading: Math.max(0, +(g.reading ?? old.get(g.id)?.reading ?? 0) || 0),
+    })).filter((g) => g.rooms.length >= 2);
+  }
   if (b.lateFee) {
     s.lateFee = {
       enabled: !!b.lateFee.enabled,

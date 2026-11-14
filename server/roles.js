@@ -11,6 +11,8 @@ const RULES = [
   // [method, path (Express route pattern, or prefix ending in *), minimum role]
   ['GET', '/api/state', 'staff'],
   ['POST', '/api/meters', 'staff'],
+  ['POST', '/api/meters/shared', 'staff'],
+  ['DELETE', '/api/meters/shared/:id', 'manager'],
   ['DELETE', '/api/meters/:id', 'manager'],
   ['POST', '/api/tickets/:id/reply', 'staff'],
   ['GET', '/api/tickets/:id/photo/:i', 'staff'],
@@ -45,7 +47,7 @@ export function requiredRole(method, routePath) {
 }
 
 /** Settings a manager may change (the rest stay with the owner). */
-export const MANAGER_SETTINGS = new Set(['carryOver', 'lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
+export const MANAGER_SETTINGS = new Set(['tiers', 'sharedMeters', 'carryOver', 'lateFee', 'invoiceDesign', 'waterRate', 'electricRate', 'exchangeRate', 'dueDays', 'khmerNumerals']);
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
 
@@ -54,7 +56,7 @@ export function staffView(st) {
   const s = st.settings || {};
   return {
     ...st,
-    rooms: st.rooms.map((r) => pick(r, ['id', 'building', 'floor', 'note'])).map((r) => ({ ...r, rent: 0, extras: [] })),
+    rooms: st.rooms.map((r) => pick(r, ['id', 'building', 'floor', 'note', 'water', 'electric'])).map((r) => ({ ...r, rent: 0, extras: [] })),
     tenants: st.tenants.filter((t) => t.status === 'active').map((t) => ({
       ...pick(t, ['id', 'nameKm', 'nameEn', 'phone', 'roomId', 'status', 'gender']),
       files: {},
@@ -68,6 +70,7 @@ export function staffView(st) {
       ...pick(s, ['propertyName', 'propertyNameEn', 'address', 'phone', 'khmerNumerals', 'location', 'theme']),
       khqr: {}, telegram: { adminChats: [] }, bakong: { enabled: false }, backup: {}, auto: {}, contract: {},
       waterRate: 0, electricRate: 0, exchangeRate: s.exchangeRate, invoiceDesign: s.invoiceDesign,
+      sharedMeters: (s.sharedMeters || []).map(({ id, name, kind, rooms, reading }) => ({ id, name, kind, rooms, reading })), tiers: { electric: [], water: [] },
     },
     bot: { ok: !!st.bot?.ok, username: st.bot?.username || '' },
   };
