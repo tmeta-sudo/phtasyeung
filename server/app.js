@@ -13,13 +13,13 @@ import { convertCurrency } from './currency.js';
 
 setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession, propertiesOf, addMembership, switchSessionOrg, createOrg } from './store.js';
-import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
+import { securityRoutes, authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, setTenantMenuButton, clearTenantMenuButton, configureOwnBot,
-  webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
+  webhookRoute, registerAllWebhooks, sendResetCode, sendSecurityAlert, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
@@ -31,6 +31,7 @@ import {
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
 import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
+import { securityHeaders, sameOriginWrites } from './security.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -39,29 +40,15 @@ app.disable('x-powered-by');
 const jsonSmall = express.json({ limit: '2mb' });
 const jsonLarge = express.json({ limit: '12mb' });
 app.use((req, res, next) => (req.path === '/api/backup/restore' ? jsonLarge : jsonSmall)(req, res, next));
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
-  next();
-});
-// Cross-site write guard (alongside SameSite cookies). Telegram webhooks carry no Origin.
-app.use('/api', (req, res, next) => {
-  if (req.method === 'GET') return next();
-  const origin = req.headers.origin;
-  if (origin) {
-    let host = '';
-    try { host = new URL(origin).host; } catch { /* invalid */ }
-    if (host !== req.headers.host) return res.status(403).json({ error: 'Origin not allowed' });
-  }
-  next();
-});
+app.use(securityHeaders);
+// Cross-site write guard (alongside SameSite cookies). Telegram webhooks and the cron carry no Origin.
+app.use((req, res, next) => (req.path.startsWith('/api/') ? sameOriginWrites(req, res, next) : next()));
 app.use('/api', (req, res, next) => init().then(() => next(), next));
 // Serverless: register the platform bot's webhook on the first request of each instance.
 if (process.env.VERCEL) app.use('/api', (req, res, next) => { ensurePlatformWebhook().catch(() => {}); next(); });
 
-authRoutes(app, { sendResetCode, botName: () => platformBotName() });
+authRoutes(app, { sendResetCode, sendSecurityAlert, botName: () => platformBotName() });
+securityRoutes(app);
 teamRoutes(app);
 configureTgLogin({ api: tgApi, botName: platformBotName, appUrl, ensureWebhook: () => ensurePlatformWebhook() });
 tgLoginRoutes(app);
@@ -732,6 +719,37 @@ app.put('/api/settings', ...owner(async (req) => {
 
 // ---------- room photos (for the public listing) ----------
 
+// Cover photo of the property (home screen, tenant page, vacant-rooms page): upload from the phone.
+app.post('/api/settings/cover', ...owner(async (req) => {
+  const { meta, error } = await storeImage(req.file, 'cover');
+  if (error) fail(error);
+  const s = db().settings;
+  if (s.cover) await removeFile(s.cover).catch(() => {});
+  s.cover = meta;
+  s.coverUrl = `/api/cover/${orgId()}/${meta.id}`;
+  save();
+  return adminState(req);
+}, upload));
+app.delete('/api/settings/cover', ...owner(async (req) => {
+  const s = db().settings;
+  if (s.cover) await removeFile(s.cover).catch(() => {});
+  s.cover = null;
+  s.coverUrl = '';
+  save();
+  return adminState(req);
+}));
+// Public on purpose: the cover is shown on the tenant page and the vacant-rooms page. Each upload gets a new id.
+app.get('/api/cover/:org/:id', async (req, res) => {
+  const org = str(req.params.org, 40);
+  const { rows } = await q('SELECT 1 FROM orgs WHERE id = $1 AND NOT suspended', [org]);
+  if (!rows.length) return res.status(404).end();
+  await withOrg(org, async () => {
+    const c = db().settings.cover;
+    if (!c || c.id !== req.params.id) return res.status(404).end();
+    await sendStored(res, org, c);
+  });
+});
+
 app.post('/api/rooms/:id/photos', ...owner(async (req) => {
   const room = db().rooms.find((r) => r.id === req.params.id);
   if (!room) fail('រកមិនឃើញបន្ទប់', 404);
@@ -758,6 +776,9 @@ app.get('/api/rooms/:id/photos/:pid', ...owner((req, res) => sendStored(res, req
 async function listingOrg(slug) {
   const ids = await findOrgs('listing', String(slug || '').toLowerCase());
   if (ids.length !== 1) fail('រកមិនឃើញទំព័រនេះ', 404);
+  // Hidden by the platform owner after reports (fake or misleading listing).
+  const { rows } = await q('SELECT listing_hidden, suspended FROM orgs WHERE id = $1', [ids[0]]);
+  if (!rows[0] || rows[0].listing_hidden || rows[0].suspended) fail('រកមិនឃើញទំព័រនេះ', 404);
   return ids[0];
 }
 const vacantRooms = () => db().rooms.filter((r) => !tenantOfRoom(r.id));
@@ -796,7 +817,7 @@ let mapCache = { at: 0, data: null };
 async function publicMap() {
   if (mapCache.data && Date.now() - mapCache.at < Number(process.env.MAP_CACHE_MS ?? 60000)) return mapCache.data;
   const { rows } = await q(`SELECT o.doc FROM orgs o
-    WHERE NOT o.suspended AND o.doc->'settings'->'listing'->>'enabled' = 'true'
+    WHERE NOT o.suspended AND NOT o.listing_hidden AND o.doc->'settings'->'listing'->>'enabled' = 'true'
       AND COALESCE(o.doc->'settings'->'listing'->>'onMap', 'true') <> 'false'
       AND o.doc->'settings'->'location'->>'lat' IS NOT NULL LIMIT 5000`);
   const places = [];
@@ -828,6 +849,16 @@ app.get('/api/map', async (req, res) => {
   if (!(await rateLimit(`map:${req.ip}`, 120, 600))) fail('ព្យាយាមច្រើនដងពេក', 429);
   res.setHeader('Cache-Control', 'public, max-age=60');
   res.json(await publicMap());
+});
+
+// Anyone can flag a listing (fake, scam, wrong price, already rented). The platform owner reviews it.
+export const REPORT_REASONS = ['fake', 'scam', 'price', 'taken', 'other'];
+app.post('/api/listing/:slug/report', async (req, res) => {
+  if (!(await rateLimit(`report:${req.ip}`, 5, 3600))) fail('ព្យាយាមច្រើនដងពេក', 429);
+  const org = await listingOrg(req.params.slug);
+  const reason = REPORT_REASONS.includes(req.body?.reason) ? req.body.reason : 'other';
+  await q('INSERT INTO listing_reports (id, org_id, reason, note) VALUES ($1, $2, $3, $4)', [uid(12), org, reason, str(req.body?.note, 500)]);
+  res.json({ ok: true });
 });
 
 app.post('/api/listing/:slug/inquiry', async (req, res) => {

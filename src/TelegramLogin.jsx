@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Send, CheckCircle2, XCircle, RefreshCw, Copy } from 'lucide-react';
 import { api } from './api.js';
+import TwoFactorPrompt from './TwoFactor.jsx';
 import { QR } from './ui.jsx';
 
 const isMobile = () => /android|iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -9,7 +10,7 @@ const isMobile = () => /android|iphone|ipad|ipod/i.test(navigator.userAgent);
  * Sign in / sign up / link via the platform Telegram bot.
  * mode: 'login' | 'signup' | 'link'. onDone() is called once the bot approves.
  */
-export default function TelegramLogin({ mode = 'login', extra = {}, onDone, onCancel }) {
+export default function TelegramLogin({ mode = 'login', extra = {}, onDone, onCancel, onTwoFactor }) {
   const [flow, setFlow] = useState(null); // { token, link }
   const [status, setStatus] = useState('starting');
   const [error, setError] = useState('');
@@ -38,6 +39,7 @@ export default function TelegramLogin({ mode = 'login', extra = {}, onDone, onCa
       try {
         const r = await api('GET', `/api/auth/telegram/poll?token=${encodeURIComponent(flow.token)}`);
         if (!alive) return;
+        if (r.status === 'ok' && r.twoFactor && onTwoFactor) { onTwoFactor(r.ticket); return; }
         if (r.status === 'ok') { setStatus('ok'); setTimeout(onDone, 600); return; }
         if (r.status !== 'pending') { setStatus(r.status); return; }
       } catch { /* keep polling */ }
@@ -93,13 +95,15 @@ export default function TelegramLogin({ mode = 'login', extra = {}, onDone, onCa
 /** /auth/magic?t=… — one-time recovery link from the bot. */
 export function MagicLogin() {
   const [error, setError] = useState('');
+  const [ticket, setTicket] = useState('');
   useEffect(() => {
     const token = new URLSearchParams(location.search).get('t') || '';
     history.replaceState({}, '', '/auth/magic'); // keep the token out of history
     api('POST', '/api/auth/magic', { token })
-      .then(() => { location.replace('/settings?recovered=1'); })
+      .then((r) => { if (r.twoFactor) setTicket(r.ticket); else location.replace('/settings?recovered=1'); })
       .catch((e) => setError(e.message));
   }, []);
+  if (ticket) return <div className="boot"><div className="login-card tf-card"><TwoFactorPrompt ticket={ticket} onDone={() => location.replace('/settings?recovered=1')} /></div></div>;
   return (
     <div className="boot">
       <div className="tg-state">

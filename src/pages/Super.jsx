@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap, AlertOctagon,
+  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap, AlertOctagon, Flag,
 } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { api } from '../api.js';
 import { StatusTag, FB_STATUS, NEWS_KIND } from './Feedback.jsx';
 import { usd } from '../../shared/khmer.js';
 
-const TABS = [['overview', 'ទិដ្ឋភាពទូទៅ', Shield], ['landlords', 'ម្ចាស់ផ្ទះ', Users], ['news', 'ដំណឹង / មុខងារថ្មី', Megaphone], ['feedback', 'សំណើ & បញ្ហា', Lightbulb], ['errors', 'កំហុសប្រព័ន្ធ', AlertOctagon], ['audit', 'កំណត់ហេតុ', History]];
+const TABS = [['overview', 'ទិដ្ឋភាពទូទៅ', Shield], ['landlords', 'ម្ចាស់ផ្ទះ', Users], ['news', 'ដំណឹង / មុខងារថ្មី', Megaphone], ['feedback', 'សំណើ & បញ្ហា', Lightbulb], ['reports', 'របាយការណ៍ទំព័រ', Flag], ['errors', 'កំហុសប្រព័ន្ធ', AlertOctagon], ['audit', 'កំណត់ហេតុ', History]];
 const bytes = (b) => (b > 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB');
 const ago = (d) => {
   if (!d) return 'មិនធ្លាប់';
@@ -32,6 +32,7 @@ export default function Super() {
       {tab === 'landlords' && <Landlords />}
       {tab === 'news' && <NewsAdmin />}
       {tab === 'feedback' && <FeedbackAdmin />}
+      {tab === 'reports' && <Reports />}
       {tab === 'errors' && <Errors />}
       {tab === 'audit' && <Audit />}
     </>
@@ -60,6 +61,7 @@ function Overview({ onTab }) {
         <Kpi icon={Building2} label="បន្ទប់ / អតិថិជន" value={`${n(s.usage.rooms)} / ${n(s.usage.tenants)}`} sub={`${n(s.usage.tenantsOnTelegram)} អតិថិជនភ្ជាប់ Telegram`} />
         <Kpi icon={ReceiptText} label={`វិក្កយបត្រ ${s.month}`} value={usd(s.thisMonth.billed, true)} sub={`បានបង់ ${n(pct(s.thisMonth.paid, s.thisMonth.billed))}% · ${n(s.thisMonth.invoices)} វិក្កយបត្រ`} tone="dark" />
       </div>
+      {s.security && <SecurityChecklist s={s.security} />}
       <div className="super-grid">
         <section className="card">
           <h3 className="sec-title"><Users size={17} /> ការចុះឈ្មោះ ៣០ ថ្ងៃ</h3>
@@ -343,6 +345,63 @@ function Audit() {
         {data?.items.map((a) => <div key={a.id} className="row static"><span><b>{a.action}</b><small className="muted">{a.actor} · {a.target} {a.detail && `· ${a.detail}`}</small></span><small className="muted">{fmtDate(a.at)}</small></div>)}
       </div>
       {data && !data.items.length && <Empty icon={History} title="មិនទាន់មានកំណត់ហេតុ" />}
+    </section>
+  );
+}
+
+const REPORT_KM = { fake: 'ក្លែងក្លាយ', scam: 'បោកប្រាស់', price: 'តម្លៃ/រូបមិនពិត', taken: 'មានអ្នកជួលហើយ', other: 'ផ្សេងៗ' };
+
+/** People's reports about public vacant-room pages and the map. Hide a page, or dismiss the reports. */
+function Reports() {
+  const { notify } = useApp();
+  const { n } = useFmt();
+  const [data, reload] = useLoad('/api/super/reports');
+  const act = async (id, what, body = {}) => {
+    try { await api('POST', `/api/super/reports/${id}/${what}`, body); reload(); notify('បានរក្សាទុក'); } catch (e) { notify(e.message, true); }
+  };
+  return (
+    <section className="card">
+      <p className="muted small">អ្នករកបន្ទប់ចុច «⚑ រាយការណ៍» នៅលើទំព័របន្ទប់ទំនេរ។ លាក់ទំព័រ = បាត់ពីផែនទី និងតំណ /v/… (ម្ចាស់ផ្ទះទទួលដំណឹង)។</p>
+      <div className="rows">
+        {data?.items.map((r) => (
+          <div key={r.id} className="err-row">
+            <div className="row">
+              <span className="err-src browser">{n(r.count)}</span>
+              <span className="err-msg">
+                <b>{r.name || r.id}</b> {r.hidden && <span className="pill red"><i />បានលាក់</span>}
+                <small className="muted">{r.items.map((x) => REPORT_KM[x.reason] || x.reason).join(' · ')}</small>
+                {r.items.filter((x) => x.note).slice(0, 3).map((x, i) => <small key={i} className="muted">“{x.note}”</small>)}
+              </span>
+            </div>
+            <div className="row-btns">
+              {r.slug && <a className="btn ghost sm" href={`/v/${r.slug}`} target="_blank" rel="noreferrer">មើលទំព័រ</a>}
+              {r.hidden
+                ? <button className="btn ghost sm" onClick={() => act(r.id, 'hide', { hidden: false })}>បង្ហាញវិញ</button>
+                : <button className="btn danger sm" onClick={() => window.confirm(`លាក់ទំព័រ «${r.name}» ពីសាធារណៈ?`) && act(r.id, 'hide', { hidden: true, reason: r.items[0]?.reason })}>លាក់ទំព័រ</button>}
+              <button className="btn ghost sm" onClick={() => act(r.id, 'dismiss')}>មិនអីទេ</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {data && !data.items.length && <Empty icon={Flag} title="គ្មានរបាយការណ៍ទេ" />}
+    </section>
+  );
+}
+
+/** What the platform needs to be safe, at a glance. Values of secrets are never sent, only whether they are set. */
+function SecurityChecklist({ s }) {
+  const { n } = useFmt();
+  const items = [
+    [s.appSecret, 'APP_SECRET (≥ 24 តួ)', 'អ៊ិនគ្រីប token, 2FA និងសំបុត្រចូល — កំណត់នៅ Vercel → Environment Variables'],
+    [s.cronSecret, 'CRON_SECRET (≥ 24 តួ)', 'ការពារការងារប្រចាំថ្ងៃពីការហៅដោយអ្នកផ្សេង'],
+    [s.https, 'HTTPS', 'Vercel ផ្តល់ដោយស្វ័យប្រវត្តិ'],
+    [s.superTwoFactor, '2FA សម្រាប់អ្នក', 'ផ្ទាំងនេះត្រូវការការចូល ២ ជំហាន'],
+  ];
+  return (
+    <section className="card sec-check">
+      <h3 className="sec-title"><Shield size={17} /> សុវត្ថិភាពប្រព័ន្ធ</h3>
+      <div className="rows">{items.map(([ok, label, hint]) => <div key={label} className="row"><span>{ok ? '✅' : '⚠️'}</span><span><b>{label}</b><small className="muted">{hint}</small></span></div>)}</div>
+      <small className="muted">អ្នកប្រើបើក 2FA៖ {n(s.usersWith2fa)}/{n(s.users)}</small>
     </section>
   );
 }

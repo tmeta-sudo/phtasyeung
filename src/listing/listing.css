@@ -87,3 +87,18 @@
 .mpg-actions .ls-btn.light { background: var(--ls-bg); color: var(--ls-ink); }
 .mpg .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.mpg-top { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.mpg-filters { grid-column: 1 / -1; }
+.mpg-search { display: flex; align-items: center; gap: 6px; min-width: 0; background: var(--ls-bg); border: 1px solid var(--ls-line); border-radius: 999px; padding: 0 6px 0 12px; height: 40px; color: var(--ls-muted); }
+.mpg-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ls-ink); font: inherit; font-size: 14px; outline: none; }
+.mpg-share { border: 0; background: var(--ls-card); color: var(--ls-ink); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+.mpg-search .spinner.sm { width: 18px; height: 18px; }
+.mpg-toast { position: fixed; z-index: 700; left: 50%; top: 130px; transform: translateX(-50%); background: #0d1424; color: #fff; padding: 9px 14px; border-radius: 12px; font-size: 13.5px; max-width: 90vw; overflow-wrap: anywhere; }
+@media (max-width: 420px) { .mpg-brand small { display: none; } .mpg-brand b { font-size: 15px; } }
+
+.ls-report { border: 0; background: none; color: inherit; font: inherit; opacity: .7; cursor: pointer; padding: 0; }
+.ls-reasons { display: grid; gap: 6px; }
+.ls-reasons label { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ls-line); cursor: pointer; }
+.ls-reasons label.on { border-color: var(--ls-blue); background: color-mix(in srgb, var(--ls-blue) 8%, transparent); }
+.ls-safe { font-size: 13px; color: var(--ls-muted); margin: 0; }

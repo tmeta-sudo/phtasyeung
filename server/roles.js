@@ -27,6 +27,9 @@ const RULES = [
   ['*', '/api/feedback*', 'staff'],
   ['*', '/api/super/*', 'staff'], // the super-admin check itself is separate
   ['POST', '/api/auth/password', 'staff'],
+  ['*', '/api/account/security', 'staff'],
+  ['*', '/api/account/2fa/*', 'staff'],
+  ['*', '/api/account/sessions/*', 'staff'],
   ['POST', '/api/auth/telegram/unlink', 'staff'],
   ['GET', '/api/team/me', 'staff'],
   ['GET', '/api/properties', 'staff'],

@@ -34,7 +34,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 | Nothing | Reminds unpaid tenants — from their payday, never on public holidays |
 | Nothing (with a Bakong token) | Confirms KHQR payments with Bakong and sends the receipt |
 | Taps ✅ on a bank screenshot | Reads the amount and transaction number from the screenshot and warns about reused slips |
-| Nothing | Sends the landlord last month's summary (collected, owed, costs, empty rooms) and warns 30 and 7 days before a contract ends |
+| Nothing | Sends the landlord last month's summary (collected, owed, costs, empty rooms) and warns 30 and 7 days before a contract ends, and before an ID card expires |
 | Nothing | Adds the late fee once, carries unpaid balance to next month, repeats monthly expenses, backs up to Telegram weekly |
 
 ## Features
@@ -62,7 +62,9 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - A private page per tenant (no app to install) that also **opens inside Telegram**.
 - Announcements to everyone, one building, or chosen rooms.
 - A **public vacant-rooms page** to share on Facebook and Telegram; inquiries arrive in the Inbox.
-- A **public map of vacant rooms** (`/map`) from every landlord who opts in: price pins, filters for price, air-con, hot water and Wi-Fi, "near me", and a list view. Only empty rooms are shown, never tenant details.
+- **Cover photo** of the property changed straight from the phone (home screen → 📷).
+- **Returning tenants**: typing a phone or ID number already on file shows that person's history, and any money still owed.
+- A **public map of vacant rooms** (`/map`) from every landlord who opts in: price pins, filters for price, air-con, hot water and Wi-Fi, "near me", search by area (e.g. ទួលគោក), a list view, and links that keep the filters for sharing. Anyone can report a fake or misleading listing; the platform owner can hide it. Only empty rooms are shown, never tenant details.
 
 ### Made for Cambodia
 - Khmer interface, Khmer numerals, Chhankitek lunar date, and public holidays: due dates move off holidays, reminders pause, and optional greetings go out for Khmer New Year, Pchum Ben and the Water Festival.
@@ -97,7 +99,7 @@ npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm test           # 67 tests: embedded database, fake Telegram, Bakong and push services
+npm test           # 76 tests: embedded database, fake Telegram, Bakong and push services
 npm run build && npm start
 ```
 
@@ -134,7 +136,11 @@ See [`.env.example`](.env.example) for the full list. Never commit secrets.
 
 - ID cards, bank slips, meter photos and signatures are private files: only that landlord (and the tenant concerned) can open them.
 - OCR runs on the user's device. Photos are not sent to any OCR service.
-- Passwords are hashed with scrypt; sessions are httpOnly cookies; sign-in, sign-up and public forms are rate limited.
+- Passwords are hashed with scrypt and common passwords are refused; sessions are 256-bit tokens kept only as hashes in httpOnly cookies; sign-in, sign-up, 2FA codes and public forms are rate limited.
+- **Two-factor sign-in** (any authenticator app) with one-time recovery codes; it also applies after Telegram sign-in. The platform-owner console requires it.
+- Every user sees their signed-in devices and can sign them out; a Telegram/phone alert is sent when an account is opened from a new device.
+- Strict Content-Security-Policy, HSTS and cross-site request checks on every change. `npm audit` is clean.
+- Details and how to report a problem: [SECURITY.md](SECURITY.md).
 - Every signed-in route is checked against a role table that denies by default.
 - The platform owner manages the system, not landlords' data; there is no "download everyone's data" function.
 
@@ -164,4 +170,13 @@ Full list with licences: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Licence
 
-Third-party components keep their own licences (see the notices file). **The licence for this project's own code has not been chosen yet**, so until the owner adds a `LICENSE` file, all rights are reserved.
+Copyright © 2026 the ផ្ទះយើង (Phteah Yeung) authors.
+
+This project's own code is free software under the **GNU Affero General Public License v3.0 or later** ([`LICENSE`](LICENSE)).
+
+In plain words:
+- Anyone may use, study, change and share it, including to run their own rental service.
+- If someone **changes the code and runs it as a service for others** (a website or app people use over the internet), they must publish their changed source code under the same licence. Nobody can take this project, improve it privately, and sell it as a closed product.
+- It comes with no warranty.
+
+Third-party components keep their own licences (see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)); all of them are compatible with the AGPL. The names "ផ្ទះយើង" / "Phteah Yeung" and the logo are not licensed for use by other services, so forks should use their own name.

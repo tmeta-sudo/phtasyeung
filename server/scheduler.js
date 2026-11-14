@@ -170,12 +170,23 @@ export async function contractAlerts(today = nowInCambodia().ymd) {
     t.contractAlerts = [...(t.contractAlerts || []).filter((k) => k.endsWith(t.contract.end)), key, ...(step === 7 ? [`30:${t.contract.end}`] : [])];
     due.push({ t, days });
   }
-  if (!due.length) return 0;
+  // ID cards that expire within 30 days (once per card): the landlord asks for the new one.
+  const ids = [];
+  for (const t of s.tenants.filter((x) => x.status === 'active' && x.idExpiry)) {
+    const days = daysUntil(today, t.idExpiry);
+    if (days < -1 || days > 30 || t.idAlert === t.idExpiry) continue;
+    t.idAlert = t.idExpiry;
+    ids.push({ t, days });
+  }
+  if (!due.length && !ids.length) return 0;
   save();
-  const lines = due.sort((a, b) => a.days - b.days).map(({ t, days }) => `• ${t.roomId || '—'} ${t.nameKm || t.nameEn} — ${days ? `នៅសល់ ${kmDigits(days)} ថ្ងៃ` : 'ថ្ងៃនេះ'} (${dateKm(t.contract.end)})`);
-  await notifyAdmins(`📄 <b>កិច្ចសន្យាជិតផុតកំណត់</b>\n🏠 ${s.settings.propertyName}\n${lines.join('\n')}\n\nសូមនិយាយជាមួយអតិថិជន ថាតើបន្តជួល ឬចាកចេញ។`, {}, { url: '/customers', tag: 'contracts' });
-  logEvent('auto', `រំលឹកកិច្ចសន្យាជិតផុត ${kmDigits(due.length)}`);
-  return due.length;
+  const left = (days) => (days > 0 ? `នៅសល់ ${kmDigits(days)} ថ្ងៃ` : days === 0 ? 'ថ្ងៃនេះ' : 'ផុតហើយ');
+  const parts = [];
+  if (due.length) parts.push(`📄 <b>កិច្ចសន្យាជិតផុតកំណត់</b>\n${due.sort((a, b) => a.days - b.days).map(({ t, days }) => `• ${t.roomId || '—'} ${t.nameKm || t.nameEn} — ${left(days)} (${dateKm(t.contract.end)})`).join('\n')}\nសូមនិយាយជាមួយអតិថិជន ថាតើបន្តជួល ឬចាកចេញ។`);
+  if (ids.length) parts.push(`🪪 <b>អត្តសញ្ញាណប័ណ្ណជិតផុតកំណត់</b>\n${ids.map(({ t, days }) => `• ${t.roomId || '—'} ${t.nameKm || t.nameEn} — ${left(days)} (${dateKm(t.idExpiry)})`).join('\n')}\nសូមស្នើរូបថតប័ណ្ណថ្មី ហើយស្កេនបញ្ចូលវិញ។`);
+  await notifyAdmins(`🏠 ${s.settings.propertyName}\n\n${parts.join('\n\n')}`, {}, { url: '/customers', tag: 'contracts' });
+  logEvent('auto', `រំលឹកកិច្ចសន្យា ${kmDigits(due.length)} · អត្តសញ្ញាណប័ណ្ណ ${kmDigits(ids.length)}`);
+  return due.length + ids.length;
 }
 
 /** On the first days of a month: last month in one message (billed, collected, still owed, costs, empty rooms). */

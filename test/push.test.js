@@ -67,7 +67,7 @@ test('password reset codes go to Telegram only, never to push', async () => {
   const c = client(env.url);
   const { q } = await import('../server/store.js');
   await q("DELETE FROM rate_limits WHERE key LIKE 'signup:%' OR key LIKE 'forgot:%'");
-  await c.post('/api/auth/signup', { email, password: 'password123', propertyName: 'Reset House' });
+  await c.post('/api/auth/signup', { email, password: 'lotus-river-2026', propertyName: 'Reset House' });
   await c.post('/api/push/subscribe', { subscription: push.sub('reset') });
   const { listOrgIds, withOrg } = await import('../server/store.js');
   const { db, save } = await import('../server/db.js');

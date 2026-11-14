@@ -13,7 +13,7 @@ async function join(owner, role) {
   const info = await c.get(`/api/join/${inv.token}`);
   assert.equal(info.role, role);
   n += 1;
-  await c.post(`/api/join/${inv.token}`, { email: `${role}${n}-${Date.now()}@example.com`, password: 'password123' });
+  await c.post(`/api/join/${inv.token}`, { email: `${role}${n}-${Date.now()}@example.com`, password: 'lotus-river-2026' });
   return { c, token: inv.token };
 }
 
@@ -22,7 +22,7 @@ test('invite links work once and only for manager/staff', async () => {
   await assert.rejects(owner.post('/api/team/invites', { role: 'owner' }), /400/);
   const { token } = await join(owner, 'staff');
   await assert.rejects(client(env.url).get(`/api/join/${token}`), /404/);
-  await assert.rejects(client(env.url).post(`/api/join/${token}`, { email: 'again@example.com', password: 'password123' }), /404/);
+  await assert.rejects(client(env.url).post(`/api/join/${token}`, { email: 'again@example.com', password: 'lotus-river-2026' }), /404/);
   const t = await owner.get('/api/team');
   assert.equal(t.members.length, 2);
   assert.deepEqual(t.members.map((m) => m.role).sort(), ['owner', 'staff']);
