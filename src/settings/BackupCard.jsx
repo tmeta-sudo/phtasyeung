@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import { DatabaseBackup, Download, Send, Upload, Lock, ShieldCheck, Loader2, AlertTriangle } from 'lucide-react';
-import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { useApp, useFmt } from '../ui.jsx';
 import { api, uploadFile } from '../api.js';
 import { downloadBlob } from '../exportImage.js';
@@ -56,7 +55,7 @@ export default function BackupCard() {
     setBusy('dl');
     try {
       setProgress('កំពុងរៀបចំទិន្នន័យ…');
-      const data = await api('GET', '/api/account/export');
+      const [data, { zipSync, strToU8 }] = await Promise.all([api('GET', '/api/account/export'), import('fflate')]);
       const entries = { 'data.json': strToU8(JSON.stringify(data, null, 1)) };
       const docs = data.tenants.flatMap((t) => Object.entries(t.files || {}).map(([slot, m]) => ({ t, slot, m })));
       for (const [i, d] of docs.entries()) {
@@ -85,6 +84,7 @@ export default function BackupCard() {
         setProgress('កំពុងដោះសោ…');
         bytes = await decrypt(bytes, p);
       }
+      const { unzipSync, strFromU8 } = await import('fflate');
       let files = {};
       let data;
       if (bytes[0] === 0x7b) data = JSON.parse(strFromU8(bytes)); // plain JSON export

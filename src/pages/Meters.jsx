@@ -21,6 +21,21 @@ export default function Meters() {
   const { setState, notify } = useApp();
   const waiting = queued().length;
   const role = state.account?.role || 'owner';
+  // After a room is saved, put the cursor in the next room that still needs a reading.
+  const focusNext = (id) => setTimeout(() => {
+    const forms = [...document.querySelectorAll('form.mt-row[data-room]')];
+    const i = forms.findIndex((f) => f.dataset.room === id);
+    const next = [...forms.slice(i + 1), ...forms.slice(0, Math.max(0, i))].find((f) => !f.classList.contains('done') && f.dataset.room !== id);
+    const input = next?.querySelector('input[type=number]');
+    if (input) { input.focus({ preventScroll: true }); next.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  }, 80);
+  // Enter in the water box goes to the electricity box instead of saving half a reading.
+  const enterToNext = (e) => {
+    if (e.key !== 'Enter') return;
+    const inputs = [...e.currentTarget.form.querySelectorAll('input[type=number]')];
+    const i = inputs.indexOf(e.currentTarget);
+    if (i < inputs.length - 1) { e.preventDefault(); inputs[i + 1].focus(); }
+  };
   async function saveRow(r) {
     const v = rows[r.id] || {};
     if (navigator.onLine === false || state.offline) {
@@ -30,11 +45,13 @@ export default function Meters() {
       const c = cachedState();
       if (c) setState({ ...c, offline: true });
       notify(`📴 បានរក្សាទុកក្នុងទូរស័ព្ទ (${n2}) — នឹងផ្ញើពេលមានអ៊ីនធឺណិត`);
+      focusNext(r.id);
       return;
     }
     const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric }, `បានកត់ ${r.id}`);
     if (!res) return;
     setRows((x) => ({ ...x, [r.id]: undefined }));
+    focusNext(r.id);
     // Upload the meter photos as proof (after the reading exists).
     const m = res.meters.find((x) => x.roomId === r.id && x.month === month);
     for (const kind of ['water', 'electric']) {
@@ -78,7 +95,7 @@ export default function Meters() {
             const v = rows[r.id] || {};
             const set = (key, val) => setRows((x) => ({ ...x, [r.id]: { ...v, [key]: val } }));
             return (
-              <form key={r.id} className={'mt-row ' + (m ? 'done' : '')} onSubmit={(e) => { e.preventDefault(); saveRow(r); }}>
+              <form key={r.id} data-room={r.id} className={'mt-row ' + (m ? 'done' : '')} onSubmit={(e) => { e.preventDefault(); saveRow(r); }}>
                 <span><b>{r.id}</b><small className="muted">{tenantIn(r.id)?.nameKm || 'ទំនេរ'}</small></span>
                 {m ? (
                   <>
@@ -89,9 +106,9 @@ export default function Meters() {
                 ) : (
                   <>
                     {sharedKind(r.id, 'water') ? <span className="mt-shared">💧 កុងទ័ររួម {sharedKind(r.id, 'water').name}</span>
-                      : <span className="mt-input"><small>ចាស់ {n(r.water)} <MeterPhoto previous={r.water} has={!!v.photo_water} onPick={(x) => set('water', x)} onPhoto={(f) => set('photo_water', f)} /></small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} required aria-label={`ទឹក ${r.id}`} /></span>}
+                      : <span className="mt-input"><small>ចាស់ {n(r.water)} <MeterPhoto previous={r.water} has={!!v.photo_water} onPick={(x) => set('water', x)} onPhoto={(f) => set('photo_water', f)} /></small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} onKeyDown={enterToNext} enterKeyHint="next" required aria-label={`ទឹក ${r.id}`} /></span>}
                     {sharedKind(r.id, 'electric') ? <span className="mt-shared">⚡ កុងទ័ររួម {sharedKind(r.id, 'electric').name}</span>
-                      : <span className="mt-input"><small>ចាស់ {n(r.electric)} <MeterPhoto previous={r.electric} has={!!v.photo_electric} onPick={(x) => set('electric', x)} onPhoto={(f) => set('photo_electric', f)} /></small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} required aria-label={`ភ្លើង ${r.id}`} /></span>}
+                      : <span className="mt-input"><small>ចាស់ {n(r.electric)} <MeterPhoto previous={r.electric} has={!!v.photo_electric} onPick={(x) => set('electric', x)} onPhoto={(f) => set('photo_electric', f)} /></small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} enterKeyHint="done" required aria-label={`ភ្លើង ${r.id}`} /></span>}
                     <button className="icon-btn primary" aria-label="រក្សាទុក"><Check size={16} /></button>
                   </>
                 )}

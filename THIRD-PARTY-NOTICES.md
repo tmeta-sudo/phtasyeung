@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | [khmernumber](https://www.npmjs.com/package/khmernumber) 0.1.0 | Seanghay Yath | MIT | Khmer ↔ Latin digits |
 | [khmerword](https://www.npmjs.com/package/khmerword) 0.2.0 | Seanghay Yath | MIT | Amounts in Khmer words |
-| [split-khmer](https://www.npmjs.com/package/split-khmer) 1.0.1 | Seanghay Yath | MIT | Khmer-aware search |
+| [split-khmer](https://www.npmjs.com/package/split-khmer) | Seanghay Yath | MIT | Khmer word splitting for search (its approach is reimplemented in `shared/khmer.js`; the package is no longer installed) |
 | [is-khmer](https://www.npmjs.com/package/is-khmer) 1.0.1 | Seanghay Yath | Apache-2.0 | Detecting Khmer text |
 | [pumi](https://www.npmjs.com/package/pumi) 1.0.3 | Seanghay Yath | MIT | Provinces, districts, communes, villages |
 | [khmer-chhankitek-calendar](https://github.com/chochkimhour/khmer-chhankitek-calendar) 1.2.2 | Choch Kimhour | MIT | Lunar dates and public holidays |

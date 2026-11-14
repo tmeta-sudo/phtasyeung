@@ -6,7 +6,6 @@
 //   khmer-normalizer (Unicode L2/22-290 Khmer encoding)    — Keyman / SIL
 import { toKhmer, toASCII } from 'khmernumber';
 import { integer as khmerInteger } from 'khmerword/index.js';
-import { split as splitKhmer } from 'split-khmer';
 import { containsKhmer, isKhmerWithWhitespace } from 'is-khmer';
 import { khnormal } from 'khmer-normalizer';
 import {
@@ -166,8 +165,22 @@ export function normalizeText(value) {
   return asciiDigits(s).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+// Khmer word splitting, following split-khmer by Seanghay Yath (MIT): each run of Khmer
+// letters is segmented with the platform's Khmer dictionary (Intl.Segmenter).
+let segmenter;
+function splitKhmer(text) {
+  segmenter ||= new Intl.Segmenter('km', { granularity: 'word' });
+  const out = [];
+  for (const part of text.replace(/\u200b/g, '').split(/([\u1780-\u17ff]+)/)) {
+    if (!part) continue;
+    if (/^[\u1780-\u17ff]/.test(part)) for (const s of segmenter.segment(part)) out.push(s.segment);
+    else out.push(part);
+  }
+  return out;
+}
+
 /** Break a query into words; Khmer runs (written without spaces) are split with
- *  split-khmer's dictionary segmentation. */
+ *  dictionary segmentation (see splitKhmer). */
 export function tokenize(value) {
   const words = [];
   for (const chunk of normalizeText(value).split(' ')) {

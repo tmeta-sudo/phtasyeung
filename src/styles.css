@@ -1287,3 +1287,14 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .sh-empty { margin: 4px 0; font-size: 18px; }
 .sh-more { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px; color: var(--blue); font-weight: 700; font-size: 17px; }
 .sh-full { justify-self: center; color: var(--muted); padding: 12px; font-size: 15px; text-decoration: underline; }
+
+.page-loading { min-height: 50vh; display: grid; place-items: center; }
+
+.inv-row.picked { background: color-mix(in srgb, var(--blue, #1f5bff) 9%, transparent); }
+.inv-row:disabled { opacity: .45; }
+.bulk-bar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 30; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px; margin-top: 10px; border-radius: 18px; background: var(--card, #fff); box-shadow: 0 8px 28px rgba(13,20,36,.18); }
+.bulk-bar select { width: auto; flex: 0 0 auto; }
+.bulk-bar .btn.primary { flex: 1 1 180px; }
+.inv-row.picking .tg-state, .inv-row.picking .pill { display: none; }
+.inv-row.picking > span:nth-child(2) small { display: none; }
+.room-tag.tag-on { background: var(--blue, #1f5bff); color: #fff; }

@@ -14,6 +14,16 @@ export default function Invoices() {
   const [month, setMonth] = useState(state.today.ym);
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState([]);
+  const [via, setVia] = useState('cash');
+  const pickable = (i) => i.status !== 'paid';
+  const togglePick = (id) => setPicked((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+  const pickedTotal = state.invoices.filter((i) => picked.includes(i.id)).reduce((a, i) => a + (i.balance ?? i.total), 0);
+  async function payPicked() {
+    if (!window.confirm(`បញ្ជាក់ថាបានបង់ ${n(picked.length)} វិក្កយបត្រ (${$(pickedTotal)}) ដោយ ${PAY_VIA[via]}?\nអតិថិជននឹងទទួលបានបង្កាន់ដៃតាម Telegram។`)) return;
+    if (await call('POST', '/api/invoices/bulk-pay', { ids: picked, via }, (r) => `✅ បានបញ្ជាក់ ${n(r.bulkPaid)} វិក្កយបត្រ`)) { setPicked([]); setPicking(false); }
+  }
   const all = state.invoices.filter((i) => i.month === month);
   const list = useMemo(() => all.filter((i) => (filter === 'all' || invStatus(i) === filter) && matchesQuery([i.name, i.roomId, i.number], q))
     .sort((a, b) => a.roomId.localeCompare(b.roomId)), [all, filter, q]);
@@ -72,13 +82,14 @@ export default function Invoices() {
           <button key={key} className={'tab-chip ' + (filter === key ? 'active' : '')} onClick={() => setFilter(key)}>{label} <em>{n(key === 'all' ? all.length : all.filter((i) => invStatus(i) === key).length)}</em></button>
         ))}
         <div className="search-pill grow"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ស្វែងរក…" aria-label="ស្វែងរកវិក្កយបត្រ" /></div>
+        {all.some(pickable) && <button className={'tab-chip ' + (picking ? 'active' : '')} onClick={() => { setPicking((v) => !v); setPicked([]); }}>{picking ? 'បោះបង់' : '☑️ ជ្រើសច្រើន'}</button>}
       </div>
 
       <section className="card">
         <div className="rows">
           {list.map((i) => (
-            <button key={i.id} className="row inv-row" onClick={() => openInvoice(i.id)}>
-              <span className="room-tag">{i.roomId}</span>
+            <button key={i.id} className={'row inv-row' + (picking ? ' picking' : '') + (picked.includes(i.id) ? ' picked' : '')} disabled={picking && !pickable(i)} onClick={() => (picking ? togglePick(i.id) : openInvoice(i.id))}>
+              <span className={'room-tag' + (picking && picked.includes(i.id) ? ' tag-on' : '')}>{picking && (picked.includes(i.id) ? '✓ ' : '○ ')}{i.roomId}</span>
               <span><b>{i.name}</b><small className="muted">{i.number} · ផុត {dateKm(i.dueDate, k).replace('ថ្ងៃទី', '')}{!i.hasMeter ? ' · គ្មានកុងទ័រ' : ''}</small></span>
               <span className="tg-state">{i.sentAt ? <span title="បានផ្ញើ Telegram">✈️ {i.reminders?.length ? `+${n(i.reminders.length)}` : ''}</span> : i.sendError ? <span className="danger-text" title={i.sendError}>⚠️</span> : ''}</span>
               <b>{$(i.total)}</b>
@@ -86,6 +97,13 @@ export default function Invoices() {
             </button>
           ))}
         </div>
+        {picking && (
+          <div className="bulk-bar">
+            <button className="btn ghost sm" onClick={() => setPicked(picked.length ? [] : list.filter(pickable).map((i) => i.id))}>{picked.length ? 'ដកចេញទាំងអស់' : 'ជ្រើសទាំងអស់'}</button>
+            <select value={via} onChange={(e) => setVia(e.target.value)} aria-label="បង់តាម">{['cash', 'aba', 'acleda', 'wing', 'khqr', 'bank'].map((k2) => <option key={k2} value={k2}>{PAY_VIA[k2]}</option>)}</select>
+            <button className="btn primary" disabled={!picked.length} onClick={payPicked}>✅ បានបង់ {n(picked.length)} · {$(pickedTotal)}</button>
+          </div>
+        )}
         {!list.length && <Empty icon={ReceiptText} title="មិនទាន់មានវិក្កយបត្រ">ចុច «បង្កើត» ដើម្បីបង្កើតវិក្កយបត្រសម្រាប់គ្រប់បន្ទប់ដែលមានអ្នកជួល។ កត់កុងទ័រជាមុនសិន ដើម្បីគិតថ្លៃទឹក និងភ្លើង។</Empty>}
       </section>
     </>

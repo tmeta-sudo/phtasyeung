@@ -1,8 +1,7 @@
 // Turn a DOM node (invoice, contract) into a PNG — for downloading, sharing or sending to Telegram.
-import { toBlob } from 'html-to-image';
 
 export async function nodeToPng(node, { pixelRatio = 2, background = '#ffffff' } = {}) {
-  await document.fonts?.ready;
+  const [{ toBlob }] = await Promise.all([import('html-to-image'), document.fonts?.ready]);
   return toBlob(node, {
     pixelRatio, cacheBust: true, backgroundColor: background,
     filter: (n) => !(n instanceof HTMLElement && n.dataset.noexport !== undefined),

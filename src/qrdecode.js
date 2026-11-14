@@ -1,5 +1,4 @@
 // Read a QR code from an image file (photo or screenshot of a bank app).
-import jsQR from 'jsqr';
 
 export async function decodeQrFromFile(file) {
   const bmp = await createImageBitmap(file);
@@ -9,6 +8,7 @@ export async function decodeQrFromFile(file) {
       if (codes[0]?.rawValue) return codes[0].rawValue;
     } catch { /* fall back to jsQR */ }
   }
+  const { default: jsQR } = await import('jsqr');
   // Try a few scales: screenshots are large, photos can be blurry.
   for (const max of [1400, 900, 2000, 600]) {
     const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));

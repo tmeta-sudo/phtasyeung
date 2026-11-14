@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import QRCode from 'qrcode';
 import { X, Check, AlertTriangle } from 'lucide-react';
 import { usd, num, normalizeText, fmtMoney, curSymbol } from '../shared/khmer.js';
 
@@ -77,8 +76,8 @@ export function QR({ value, size = 160, className = '', dark = '#0b1220', label 
   useEffect(() => {
     let live = true;
     if (!value) { setSvg(''); return undefined; }
-    QRCode.toString(value, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark, light: '#ffffff' } })
-      .then((s) => live && setSvg(s)).catch(() => live && setSvg(''));
+    import('qrcode').then(({ default: QRCode }) => QRCode.toString(value, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark, light: '#ffffff' } })
+      .then((s) => live && setSvg(s))).catch(() => live && setSvg(''));
     return () => { live = false; };
   }, [value, dark]);
   if (!value) return <div className={'qr qr-empty ' + className} style={{ width: size, height: size }}>QR</div>;

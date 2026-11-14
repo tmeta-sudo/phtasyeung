@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './fonts.js';
 import './styles.css';
 import { usePath } from './ui.jsx';
+import { fetchEarly } from './api.js';
 import { setupPwa } from './pwa.js';
 import { applyTheme } from './theme.jsx';
 import { installErrorReporting, reportError } from './errorReport.js';
@@ -25,6 +26,13 @@ const MapPage = lazy(() => import('./listing/MapPage.jsx'));
 const Magic = lazy(() => import('./TelegramLogin.jsx').then((m) => ({ default: m.MagicLogin })));
 
 const authHint = () => { try { return localStorage.getItem('py-authed') === '1'; } catch { return false; } };
+
+// Signed in on this phone before and opening the app: fetch the account and its data right away,
+// in parallel with downloading the app code, instead of one after the other.
+if (authHint() && !/^\/(p|v|map|join|auth)\b/.test(location.pathname) && navigator.onLine !== false) {
+  fetchEarly('/api/auth/state');
+  fetchEarly('/api/state');
+}
 
 function Root() {
   const path = usePath();
