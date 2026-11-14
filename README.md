@@ -1,67 +1,164 @@
-# ផ្ទះយើង — Phteah Yeung
+<div align="center">
 
-Khmer-first rental management: rooms, customers with full profiles and ID cards, meter readings, **automatic monthly invoices sent to each customer's Telegram with a KHQR payment code**, QR-code controls, and a mobile self-service portal for customers.
+<img src="public/icons/icon-192.png" width="88" alt="" />
 
-## What's inside
+# ផ្ទះយើង · Phteah Yeung
 
-| Area | What it does |
+**កម្មវិធីគ្រប់គ្រងផ្ទះជួល សម្រាប់ម្ចាស់ផ្ទះខ្មែរ — ឥតគិតថ្លៃ ងាយស្រួល និងធ្វើការដោយស្វ័យប្រវត្តិ**
+
+Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR at the centre, and most of the monthly work done automatically.
+
+</div>
+
+<p align="center">
+  <img src="docs/screenshots/home.png" width="23%" alt="Dashboard" />
+  <img src="docs/screenshots/simple.png" width="23%" alt="Simple mode" />
+  <img src="docs/screenshots/invoice-riel.png" width="23%" alt="Invoice in riel" />
+  <img src="docs/screenshots/portal-pay.png" width="23%" alt="Tenant pays by KHQR" />
+</p>
+
+## សង្ខេបជាភាសាខ្មែរ
+
+- **ម្តងក្នុងមួយខែ ៥ នាទី៖** កត់កុងទ័រ → ប្រព័ន្ធចេញវិក្កយបត្រ ផ្ញើតាម Telegram ជាមួយ KHQR ហើយរំលឹកអ្នកមិនទាន់បង់ដោយខ្លួនឯង។
+- **លុយជារៀល ឬដុល្លារ** · បង់ខ្លះ · ប្រាក់កក់ · ថ្លៃបង់យឺត · ថ្ងៃបង់តាមថ្ងៃបើកប្រាក់ខែ។
+- **អតិថិជន៖** ស្កេនអត្តសញ្ញាណប័ណ្ណ កិច្ចសន្យាចុះហត្ថលេខាលើទូរស័ព្ទ ជួលរួមគ្នា និងគេហទំព័រផ្ទាល់ខ្លួន (បើកក្នុង Telegram)។
+- **ទិន្នន័យជារបស់ម្ចាស់ផ្ទះ៖** បម្រុងទុកចុចម្តង នាំចេញ ឬលុបបានគ្រប់ពេល។
+- ការណែនាំជាភាសាខ្មែរមាននៅក្នុងកម្មវិធី៖ ចុច ❓ លើអេក្រង់ណាមួយ។
+
+## What a landlord does, and what the app does for them
+
+| The landlord | The app, automatically |
 | --- | --- |
-| **Telegram auto-invoice** | On the day and hour you choose (Phnom Penh time) it creates invoices for every occupied room (rent + water + electricity + extra charges) and sends each one to the customer's Telegram as a KHQR image with a Khmer summary. Reminders are sent every *N* days until the invoice is paid. |
-| **Payment confirmation** | The customer taps **«ខ្ញុំបានបង់ប្រាក់»** or sends a photo of their ABA/ACLEDA/Wing receipt to the bot. You get the claim, with the photo, in your own Telegram and confirm with one tap. The customer then receives a receipt. |
-| **KHQR** | Uses NBC Bakong's KHQR standard. Every invoice gets a QR code with the amount and invoice number already filled in, which any Cambodian banking app can scan. |
-| **Customers** | Full profile: Khmer and Latin names, gender, date of birth, phones, email, occupation, ID type/number/issue/expiry dates, **ID card front and back images**, profile photo, signed contract (image/PDF), permanent address (province → district → commune → village), emergency contact, room, contract dates, deposit and private notes. |
-| **Customer portal** | Each customer has a private link/QR that opens a mobile app where they can see their bills, pay by KHQR, report a payment, connect Telegram, edit their own info and upload their ID card. |
-| **QR control** | Scan with the in-app camera scanner (or any phone camera for the door stickers):<br>• room door sticker → record meter / open customer / open unpaid bill<br>• KHQR or invoice → mark paid / send reminder<br>• customer QR → open profile<br>Printable door stickers, Telegram link sheets and welcome cards. |
-| **Khmer support** | Khmer UI, Khmer numerals (toggle), amounts in Khmer words (`ប្រាំរយដប់បួនដុល្លារ…`), Riel conversion, Khmer month names, **Chhankitek lunar date** and Cambodian public holidays, Khmer-aware search (Unicode normalisation + word segmentation), Cambodian phone validation (`+855` → `0xx xxx xxx`), Moul headings on printed invoices. |
-| **Other** | Rooms with extra monthly charges, bulk meter entry, invoice edit (extra fees and discounts), Excel/CSV export, print-all, maintenance and lead tasks, live activity feed, import from the old browser-only version. |
+| Reads the meters (or lets tenants send them, or photographs them) | Creates each room's invoice: rent, water, electricity (flat or tiered), add-ons, old balance |
+| Nothing | Sends every invoice to the tenant's Telegram with a KHQR for the exact amount, on the chosen day |
+| Nothing | Reminds unpaid tenants — from their payday, never on public holidays |
+| Nothing (with a Bakong token) | Confirms KHQR payments with Bakong and sends the receipt |
+| Taps ✅ on a bank screenshot | Reads the amount and transaction number from the screenshot and warns about reused slips |
+| Nothing | Adds the late fee once, carries unpaid balance to next month, repeats monthly expenses, backs up to Telegram weekly |
 
-## Built with work by Khmer developers
+## Features
 
-| Package | Author | Used for |
+### Money
+- **Riel or dollars.** One billing currency per landlord; everything converts in one step. Riel is rounded to 100 ៛, the KHQR is issued in the same currency, and invoices show the other currency and the amount in Khmer words.
+- **KHQR on every invoice**, generated from the landlord's own bank KHQR (personal or merchant).
+- **Automatic confirmation** through the NBC Bakong Open API: an invoice is marked paid only when the money reached the landlord's account, in the right currency and amount.
+- **Bank screenshot reading** (ABA, ACLEDA, Wing…) on the landlord's device.
+- **Partial payments**, balance carried forward, **deposits and move-out settlement** with a printable Khmer slip.
+- **Payday due dates**: a due day per tenant, optionally in two halves.
+- **Expenses and profit**, with monthly expenses that repeat by themselves.
+
+### Rooms and meters
+- 3D building designer, room features (air-con, hot water…), photos, and **shared rooms** with several tenants on one bill.
+- **Meter photos**: the phone reads the number; the photo is kept as proof.
+- **Tenants send their own readings** by bot or portal; normal readings can be approved automatically.
+- **Works offline** for meter reading; readings sync when the signal returns.
+- Tiered prices (EDC-style bands) and meters shared between rooms.
+
+### Tenants
+- Full profile with **Khmer ID card OCR** on the device (Chakkhu), auto-cropped and straightened.
+- Khmer contract with **finger signature**; move-in invoice for deposit + prepaid rent.
+- A private page per tenant (no app to install) that also **opens inside Telegram**.
+- Announcements to everyone, one building, or chosen rooms.
+- A **public vacant-rooms page** to share on Facebook and Telegram; inquiries arrive in the Inbox.
+
+### Made for Cambodia
+- Khmer interface, Khmer numerals, Chhankitek lunar date, and public holidays: due dates move off holidays, reminders pause, and optional greetings go out for Khmer New Year, Pchum Ben and the Water Festival.
+- Address picker down to the village (pumi), map pin, and a Google Maps link on invoices.
+- **Printable resident list** for the village chief or commune police, and a **yearly rental income summary**.
+- **Simple mode**: large text and four big actions for landlords who want only the essentials.
+
+### Running it as a platform
+- Free signup; each landlord's data is separate. **Several properties** under one login.
+- **Team roles**: owner, manager, staff (staff never see money or ID cards).
+- Web Push and Telegram notifications, installable PWA, dark mode.
+- One-click **backup and restore**, optional storage in the landlord's own Google Drive or Cloudflare R2.
+- Super admin: statistics, announcements, feature requests, and an error log with personal data removed.
+
+<p align="center">
+  <img src="docs/screenshots/meters.png" width="23%" alt="Meter reading" />
+  <img src="docs/screenshots/addons.png" width="23%" alt="Add-ons on the tenant form" />
+  <img src="docs/screenshots/listing.png" width="23%" alt="Public vacant rooms page" />
+  <img src="docs/screenshots/help.png" width="23%" alt="Khmer help centre" />
+</p>
+<p align="center"><img src="docs/screenshots/reports-desktop.png" width="92%" alt="Reports on desktop" /></p>
+
+Screenshots are generated from a demo account with invented names.
+
+## Run it on your computer
+
+Requires Node.js 22 or newer. No database to install: an embedded one is created under `./data`.
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+```
+
+```bash
+npm test           # 63 tests: embedded database, fake Telegram, Bakong and push services
+npm run build && npm start
+```
+
+## Deploy free: Vercel + Neon
+
+1. Create a Postgres database at [neon.tech](https://neon.tech) and copy the **pooled** connection string.
+2. Import this repository in [Vercel](https://vercel.com).
+3. Add environment variables (Project → Settings → Environment Variables), then redeploy:
+
+| Variable | Needed | Purpose |
 | --- | --- | --- |
-| [`khmernumber`](https://github.com/seanghay/khmernumber), [`khmerword`](https://github.com/seanghay/khmerword), [`split-khmer`](https://github.com/seanghay/split-khmer), [`is-khmer`](https://github.com/seanghay/is-khmer), [`pumi`](https://github.com/seanghay/pumi-js) | **Seanghay Yath** | Khmer digits, amounts in words, word segmentation for search, Khmer-script validation, Cambodian administrative divisions |
-| [`khmer-chhankitek-calendar`](https://github.com/chochkimhour/khmer-chhankitek-calendar) | Choch Kimhour | Lunar dates, holidays |
-| [`bakong-khqr`](https://github.com/davidhuotkeo/bakong-khqr) | Devit Huotkeo | KHQR generation and validation |
-| [Chakkhu OCR](https://huggingface.co/muyleanging/Chakkhu-OCR-Khmer-ONNX) | **Ing Muyleang** | On-device Khmer/English OCR for ID cards |
-| [Kantumruy Pro](https://fonts.google.com/specimen/Kantumruy+Pro), [Moul](https://fonts.google.com/specimen/Moul) | Tep Sovichet; Danh Hong | Fonts |
-| [`khmer-normalizer`](https://www.npmjs.com/package/khmer-normalizer) | Keyman/SIL | Khmer encoding normalisation (Unicode L2/22-290) |
+| `DATABASE_URL` | yes | Neon pooled connection string |
+| `APP_SECRET` | yes | Long random string; encrypts stored tokens |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | recommended | Shared bot from @BotFather (username without `@`) |
+| `CRON_SECRET` | recommended | Protects the daily job |
+| `SUPER_ADMIN_EMAILS` / `SUPER_ADMIN_TELEGRAM_IDS` | optional | Platform owner accounts |
+| `BAKONG_TOKEN` | optional | Automatic payment confirmation for all landlords (renew every 90 days) |
+| `R2_*`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional | Cloudflare R2 storage; landlords' own Google Drive |
+| `VAPID_*` | optional | Push keys; generated automatically when empty |
 
-## Free for every landlord
+See [`.env.example`](.env.example) for the full list. Never commit secrets.
 
-Anyone can sign up with an email and password and gets their own private workspace. Every landlord's rooms, customers, invoices and ID-card images are stored separately, and each request can only reach that landlord's data. Landlords can export everything as JSON or permanently delete their account from **ការកំណត់** (Settings).
+## How it is built
 
-Telegram works without any setup. All landlords share one platform bot, and each message names the landlord's property. A landlord can switch to their own bot (their own name and logo) by pasting a @BotFather token.
-
-Forgot your password? A 6-digit reset code is sent to the owner Telegram you linked, so no email service is needed.
-
-## New in this version
-
-| Feature | What it does |
+| Part | Technology |
 | --- | --- |
-| **KHQR upload** | In Settings, upload a screenshot of your bank's "receive money" KHQR (ABA, ACLEDA, Wing…). It is decoded on your device; personal (tag 29) and merchant (tag 30) accounts are both supported, and every invoice gets a dynamic KHQR with the amount and invoice number. |
-| **Map + address** | Tap the map (OpenStreetMap, or Google / satellite tiles) to pin the property. The address is looked up and matched to province, district, commune and village with pumi, and you confirm it before saving. The address and a Google Maps QR appear on invoices, the customer portal and the bot (📍). |
-| **3D building designer** | Pick apartment, row rooms, row houses (ផ្ទះល្វែង) or a single house; set floors, rooms per floor and a numbering style (101, A-101, 1A, A1, L1-1 …); drag to rotate the 3D model; tap a unit to leave it out; then create all the rooms at once. The Rooms page shows each building in 3D, coloured by occupied, unpaid and vacant. |
-| **Khmer contract** | A short Khmer lease filled in from the customer, room and property, with 1 month's booking deposit and 1 month's prepaid rent by default. You can edit it, print it, save it as PNG, or choose "មិនត្រូវការ" (no contract). One tap creates the move-in invoice (deposit + prepaid). Customers can read it in the portal and in the bot (📄). |
-| **Invoice designer** | Drag and drop sections, choose an accent colour and a Khmer title font (Moul, Koulen, Bokor, Battambang, Siemreap, Kantumruy Pro), a size (A5, square for Telegram, story, receipt) and a header style. Export a PNG instantly, share it, or send the picture to the customer's Telegram. |
-| **ID card OCR** | **Chakkhu OCR** by Ing Muyleang runs *on the device* (onnxruntime-web, int8 model ~39 MB downloaded once). It finds the text lines on the card and reads the Khmer front and the MRZ on the back (with check digits), then fills in name, Latin name, ID number, sex, date of birth, issue and expiry dates. Photos never leave the phone. |
-| **Bot conversations** | Customers tap 🔧 Report repair or 💬 Message owner in the bot (photos allowed). You get it in Telegram and reply by swiping to reply or tapping ↩️, and can mark it 🔵 in progress / ✅ done. The same threads are in the web **Inbox (សារ)**, with replies sent through the bot. Repair reports also appear in Tasks. |
-| **Your data, your storage** | Files are stored in Postgres by default, or in Cloudflare R2 when its keys are set. A landlord can instead connect **their own Google Drive**: ID cards and photos go into a "ផ្ទះយើង" folder in their Drive (`drive.file` scope only), with a daily JSON backup there. Files are moved over automatically, and can be moved back when you disconnect. |
-| **Automatic payment confirmation (Bakong)** | Each invoice keeps one KHQR. With a free Bakong developer token (`BAKONG_TOKEN` for everyone, or the landlord's own in Settings → KHQR), the app asks Bakong whether that exact QR was paid — while the customer's pay screen is open, when the dashboard opens, and every day. It is marked paid only if the money reached the landlord's account and the amount matches, then receipts go out automatically. |
-| **One-click backup** | Settings → Backup: one button downloads everything (data + ID card photos) as a zip, optionally locked with a password (AES-256). Backups can go to the owner's Telegram with one tap and automatically every week. Restore from the same file in one step. A reminder appears on the dashboard after 30 days without a backup. |
-| **Notifications on the phone** | Web Push for payments, Bakong confirmations, repair reports and ID uploads, even without Telegram open. Zero setup: keys are generated automatically. On iPhone, add the app to the Home Screen first. |
-| **Team accounts** | Invite a manager or staff member with a one-time link (7 days). Managers handle customers, rooms, invoices and meters; staff only record meters, answer repair messages and do tasks — they never see money, ID cards or portal links. Every route is checked on the server. |
-| **Reports** | Billed vs collected per month, who still owes and since when, occupancy, water and electricity usage, with Excel export and print. |
-| **Smarter ID scanning** | The photo is cropped to the card, straightened and turned the right way up before OCR, so a quick photo on a table works. |
-| **Error monitoring** | Server and browser errors are grouped in the super admin **Errors** tab (emails, phone numbers and links are scrubbed). A crash shows a friendly Khmer screen instead of a blank page. |
-| **Partial payments** | Record several payments per invoice (cash, KHQR, ABA, ACLEDA, Wing…). The KHQR asks only for what is left; unpaid balance moves onto next month's invoice automatically (can be turned off). |
-| **Deposit & move-out** | The deposit is recorded when the move-in invoice is paid. Move-out subtracts damages and unpaid bills, shows the refund or what is still owed, prints a Khmer settlement slip, and frees the room. |
-| **Expenses & profit** | Record EDC/water bills, repairs, salaries… (monthly ones repeat automatically). Reports show money collected, expenses and real profit per month. |
-| **Meter photos** | Tap 📷: the phone reads the meter number on the device and suggests values that make sense; the photo is kept as proof for the tenant. |
-| **Tenants send readings** | Tenants send meter numbers through the bot (📟) or their page; the owner taps ✅ in Telegram, or normal readings are approved automatically. |
-| **Works offline** | No signal in the basement? Record meters anyway; they are sent when the phone is back online. |
-| **E-signature** | Tenants sign the Khmer contract with a finger; the owner signs once. Changing the contract asks for a new signature. |
-| **Vacant rooms page** | A public page per landlord (/v/name) with photos, prices and features to share on Facebook/Telegram; inquiries land in the Inbox. |
-| **Tiered prices & shared meters** | EDC-style price bands for electricity/water, and one meter split fairly between several rooms. |
-| **Room features & add-ons** | Tick air-con, hot water… per room; tick motorbike/car parking, Wi-Fi… per tenant (with quantity) — billed monthly. |
-| **Announcements & late fees** | Send notices to all tenants, a building or chosen rooms; optional automatic late fee. |
-| **Khmer user guide** | ❓ on every screen opens the guide for that screen; the Help page has searchable step-by-step guides in Khmer. |
+| Server | Node 22, Express 5. One JSON document per landlord in Postgres, locked per request. |
+| Web app | React 19 + Vite, installable PWA, no UI framework |
+| Telegram | Bot API by webhook (long polling locally) |
+| OCR | Chakkhu model with onnxruntime-web, entirely in the browser |
+| Tests | `node:test` with in-process fakes; GitHub Actions on every pull request |
+
+## Privacy and security
+
+- ID cards, bank slips, meter photos and signatures are private files: only that landlord (and the tenant concerned) can open them.
+- OCR runs on the user's device. Photos are not sent to any OCR service.
+- Passwords are hashed with scrypt; sessions are httpOnly cookies; sign-in, sign-up and public forms are rate limited.
+- Every signed-in route is checked against a role table that denies by default.
+- The platform owner manages the system, not landlords' data; there is no "download everyone's data" function.
+
+## Limits to know about
+
+- Automatic payment confirmation needs a Bakong developer token, which expires every 90 days.
+- Push notifications on iPhone need the app added to the Home Screen (iOS 16.4+).
+- Telegram backups are limited to 45 MB; larger accounts should use the download button or Drive storage.
+- The resident list and income summary are general records. Local authorities and the tax office may require their own forms; this app does not give legal or tax advice.
+- The map's optional "Google" and satellite layers load Google tiles directly. Check Google's terms before relying on them; OpenStreetMap is the default.
+
+## Acknowledgements
+
+This project stands on work shared by Khmer developers and the wider open-source community. Thank you.
+
+| Work | By | Used for |
+| --- | --- | --- |
+| khmernumber, khmerword, split-khmer, is-khmer, pumi | **Seanghay Yath** | Khmer numbers, words, search and addresses |
+| khmer-chhankitek-calendar | **Choch Kimhour** | Lunar calendar and holidays |
+| Chakkhu OCR | **Ing Muyleang** | Reading ID cards, meters and bank slips |
+| bakong-khqr | **Devit Huotkeo** / NBC KHQR SDK | KHQR |
+| Kantumruy Pro | The Kantumruy Project Authors ([sovichet/kantumruy-pro](https://github.com/sovichet/kantumruy-pro)) | Interface font |
+| Moul, Koulen, Bokor, Battambang, Siemreap | **Danh Hong** and project authors | Khmer display fonts |
+| khmer-normalizer | Marc Durdin / SIL | Khmer text normalisation |
+
+Full list with licences: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+## Licence
+
+Third-party components keep their own licences (see the notices file). **The licence for this project's own code has not been chosen yet**, so until the owner adds a `LICENSE` file, all rights are reserved.
