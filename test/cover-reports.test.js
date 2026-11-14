@@ -42,7 +42,7 @@ test('a reported listing can be hidden by the platform owner and comes back when
   const { q } = await import('../server/store.js');
   await q("DELETE FROM rate_limits WHERE key LIKE 'signup:%'");
   const boss = client(env.url);
-  await boss.post('/api/auth/signup', { email: 'mod@example.com', password: 'password123', propertyName: 'Platform' });
+  await boss.post('/api/auth/signup', { email: 'mod@example.com', password: 'lotus-river-2026', propertyName: 'Platform' });
   const { items } = await boss.get('/api/super/reports');
   const row = items.find((r) => r.slug === 'report-me');
   assert.equal(row.count, 2);

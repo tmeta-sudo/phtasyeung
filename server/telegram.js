@@ -247,6 +247,11 @@ export async function notifyTenant(tenant, html) {
 }
 
 /** Deliver a password-reset code to the owner's linked Telegram chats. */
+/** Security notice to the landlord's own Telegram and phone (new sign-in, two-factor changes…). */
+export async function sendSecurityAlert(org, html) {
+  return withOrg(org, () => notifyAdmins(html, {}, { url: '/settings', tag: 'security' })).catch(() => 0);
+}
+
 export async function sendResetCode(org, code) {
   return withOrg(org, async () => (await notifyAdmins(`🔑 លេខកូដប្តូរពាក្យសម្ងាត់ <b>${esc(db().settings.propertyName)}</b>:\n\n<code>${code}</code>\n\nមានសុពលភាព ១៥ នាទី។ បើអ្នកមិនបានស្នើ សូមមិនអើពើ។`, {}, { push: false })) > 0);
 }

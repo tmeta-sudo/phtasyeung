@@ -9,7 +9,8 @@
 import crypto from 'node:crypto';
 import { q, uid, createOrg, createUser, createSession, getSession, rateLimit, withOrg } from './store.js';
 import { newOrgDoc, db, save, now } from './db.js';
-import { cookies } from './auth.js';
+import { cookies, sessionMeta, alertIfNewDevice } from './auth.js';
+import { seal } from './blob.js';
 
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TTL_MIN = 10;
@@ -30,8 +31,16 @@ function device(ua = '') {
 const placeholderEmail = (tgId) => `tg${tgId}.${crypto.randomBytes(3).toString('hex')}@telegram.local`;
 export const isTelegramEmail = (email) => /@telegram\.local$/.test(String(email || ''));
 
+/** With two-factor on, Telegram approval is not enough: hand back a ticket for the 6-digit code instead of a session. */
+async function needsCode(userId) {
+  const { rows } = await q('SELECT totp_secret FROM users WHERE id = $1', [userId]);
+  return rows[0]?.totp_secret ? seal(JSON.stringify({ u: userId, exp: Date.now() + 5 * 60000 })) : '';
+}
+
 async function setCookie(req, res, user, opts) {
-  const token = await createSession(user.id, user.org_id, SESSION_DAYS, opts);
+  const token = await createSession(user.id, user.org_id, SESSION_DAYS, { ...opts, ...sessionMeta(req) });
+  const { rows } = await q('SELECT id, org_id, email FROM users WHERE id = $1', [user.id]);
+  if (rows[0]) alertIfNewDevice(req, rows[0], 'Telegram').catch(() => {});
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
   res.setHeader('Set-Cookie', `py_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure ? '; Secure' : ''}`);
 }
@@ -77,6 +86,8 @@ export function tgLoginRoutes(app) {
     if (r.mode === 'link') return res.json({ status: 'ok' });
     const { rows: u } = await q('SELECT id, org_id FROM users WHERE id = $1', [r.user_id]);
     if (!u[0]) return res.json({ status: 'expired' });
+    const ticket = await needsCode(u[0].id);
+    if (ticket) return res.json({ status: 'ok', twoFactor: true, ticket });
     await setCookie(req, res, u[0], { canReset: true });
     res.json({ status: 'ok' });
   });
@@ -90,6 +101,8 @@ export function tgLoginRoutes(app) {
     if (!rows[0]) fail('តំណនេះផុតកំណត់ ឬបានប្រើរួចហើយ។ សូមផ្ញើ /recover ទៅ bot ម្តងទៀត។');
     const { rows: u } = await q('SELECT u.id, u.org_id FROM users u JOIN orgs o ON o.id = u.org_id WHERE u.id = $1 AND NOT o.suspended', [rows[0].user_id]);
     if (!u[0]) fail('រកមិនឃើញគណនី', 404);
+    const ticket = await needsCode(u[0].id);
+    if (ticket) return res.json({ ok: true, twoFactor: true, ticket });
     await setCookie(req, res, u[0], { canReset: true });
     res.json({ ok: true });
   });

@@ -9,6 +9,7 @@ import StorageCard from '../settings/StorageCard.jsx';
 import BackupCard from '../settings/BackupCard.jsx';
 import NotifyCard from '../settings/NotifyCard.jsx';
 import { CoverButton } from '../settings/CoverButton.jsx';
+import SecurityCard from '../settings/SecurityCard.jsx';
 import UtilityCard from '../settings/UtilityCard.jsx';
 import AddonsCard from '../settings/AddonsCard.jsx';
 import ListingCard from '../settings/ListingCard.jsx';
@@ -149,6 +150,8 @@ export default function SettingsPage() {
           </div>
           <button className="btn primary">{acct.hasPassword ? 'ប្តូរ' : 'កំណត់'}</button>
         </form>
+
+        <SecurityCard />
 
         {acct.platformLogin && (
           <div className="card">

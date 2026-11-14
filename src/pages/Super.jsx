@@ -61,6 +61,7 @@ function Overview({ onTab }) {
         <Kpi icon={Building2} label="បន្ទប់ / អតិថិជន" value={`${n(s.usage.rooms)} / ${n(s.usage.tenants)}`} sub={`${n(s.usage.tenantsOnTelegram)} អតិថិជនភ្ជាប់ Telegram`} />
         <Kpi icon={ReceiptText} label={`វិក្កយបត្រ ${s.month}`} value={usd(s.thisMonth.billed, true)} sub={`បានបង់ ${n(pct(s.thisMonth.paid, s.thisMonth.billed))}% · ${n(s.thisMonth.invoices)} វិក្កយបត្រ`} tone="dark" />
       </div>
+      {s.security && <SecurityChecklist s={s.security} />}
       <div className="super-grid">
         <section className="card">
           <h3 className="sec-title"><Users size={17} /> ការចុះឈ្មោះ ៣០ ថ្ងៃ</h3>
@@ -383,6 +384,24 @@ function Reports() {
         ))}
       </div>
       {data && !data.items.length && <Empty icon={Flag} title="គ្មានរបាយការណ៍ទេ" />}
+    </section>
+  );
+}
+
+/** What the platform needs to be safe, at a glance. Values of secrets are never sent, only whether they are set. */
+function SecurityChecklist({ s }) {
+  const { n } = useFmt();
+  const items = [
+    [s.appSecret, 'APP_SECRET (≥ 24 តួ)', 'អ៊ិនគ្រីប token, 2FA និងសំបុត្រចូល — កំណត់នៅ Vercel → Environment Variables'],
+    [s.cronSecret, 'CRON_SECRET (≥ 24 តួ)', 'ការពារការងារប្រចាំថ្ងៃពីការហៅដោយអ្នកផ្សេង'],
+    [s.https, 'HTTPS', 'Vercel ផ្តល់ដោយស្វ័យប្រវត្តិ'],
+    [s.superTwoFactor, '2FA សម្រាប់អ្នក', 'ផ្ទាំងនេះត្រូវការការចូល ២ ជំហាន'],
+  ];
+  return (
+    <section className="card sec-check">
+      <h3 className="sec-title"><Shield size={17} /> សុវត្ថិភាពប្រព័ន្ធ</h3>
+      <div className="rows">{items.map(([ok, label, hint]) => <div key={label} className="row"><span>{ok ? '✅' : '⚠️'}</span><span><b>{label}</b><small className="muted">{hint}</small></span></div>)}</div>
+      <small className="muted">អ្នកប្រើបើក 2FA៖ {n(s.usersWith2fa)}/{n(s.users)}</small>
     </section>
   );
 }

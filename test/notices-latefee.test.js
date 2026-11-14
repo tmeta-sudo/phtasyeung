@@ -63,6 +63,6 @@ test('staff cannot send announcements', async () => {
   const { c } = await landlord(env.url);
   const inv = await c.post('/api/team/invites', { role: 'staff' });
   const s = client(env.url);
-  await s.post(`/api/join/${inv.token}`, { email: `st${Date.now()}@example.com`, password: 'password123' });
+  await s.post(`/api/join/${inv.token}`, { email: `st${Date.now()}@example.com`, password: 'lotus-river-2026' });
   await assert.rejects(s.post('/api/notices', { text: 'hi' }), /403/);
 });

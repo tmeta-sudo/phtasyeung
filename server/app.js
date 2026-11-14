@@ -13,13 +13,13 @@ import { convertCurrency } from './currency.js';
 
 setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession, propertiesOf, addMembership, switchSessionOrg, createOrg } from './store.js';
-import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
+import { securityRoutes, authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, setTenantMenuButton, clearTenantMenuButton, configureOwnBot,
-  webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
+  webhookRoute, registerAllWebhooks, sendResetCode, sendSecurityAlert, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
@@ -31,6 +31,7 @@ import {
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
 import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
+import { securityHeaders, sameOriginWrites } from './security.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -39,29 +40,15 @@ app.disable('x-powered-by');
 const jsonSmall = express.json({ limit: '2mb' });
 const jsonLarge = express.json({ limit: '12mb' });
 app.use((req, res, next) => (req.path === '/api/backup/restore' ? jsonLarge : jsonSmall)(req, res, next));
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
-  next();
-});
-// Cross-site write guard (alongside SameSite cookies). Telegram webhooks carry no Origin.
-app.use('/api', (req, res, next) => {
-  if (req.method === 'GET') return next();
-  const origin = req.headers.origin;
-  if (origin) {
-    let host = '';
-    try { host = new URL(origin).host; } catch { /* invalid */ }
-    if (host !== req.headers.host) return res.status(403).json({ error: 'Origin not allowed' });
-  }
-  next();
-});
+app.use(securityHeaders);
+// Cross-site write guard (alongside SameSite cookies). Telegram webhooks and the cron carry no Origin.
+app.use((req, res, next) => (req.path.startsWith('/api/') ? sameOriginWrites(req, res, next) : next()));
 app.use('/api', (req, res, next) => init().then(() => next(), next));
 // Serverless: register the platform bot's webhook on the first request of each instance.
 if (process.env.VERCEL) app.use('/api', (req, res, next) => { ensurePlatformWebhook().catch(() => {}); next(); });
 
-authRoutes(app, { sendResetCode, botName: () => platformBotName() });
+authRoutes(app, { sendResetCode, sendSecurityAlert, botName: () => platformBotName() });
+securityRoutes(app);
 teamRoutes(app);
 configureTgLogin({ api: tgApi, botName: platformBotName, appUrl, ensureWebhook: () => ensurePlatformWebhook() });
 tgLoginRoutes(app);

@@ -29,6 +29,10 @@ async function requireSuper(req, res, next) {
     try {
       const { rows } = await q('SELECT telegram_id FROM users WHERE id = $1', [req.session.userId]);
       if (!isSuper(req.session.email, rows[0]?.telegram_id)) return res.status(403).json({ error: 'សម្រាប់អ្នកគ្រប់គ្រងប្រព័ន្ធប៉ុណ្ណោះ' });
+      // The platform console controls every landlord account: it needs a session that passed two-factor sign-in.
+      if (process.env.SUPER_REQUIRE_2FA !== '0' && !req.session.mfa) {
+        return res.status(403).json({ error: 'ផ្ទាំងអ្នកគ្រប់គ្រងប្រព័ន្ធ ត្រូវការការចូល ២ ជំហាន៖ ការកំណត់ → សុវត្ថិភាពគណនី → បើក 2FA (ឬចេញ ហើយចូលម្តងទៀតដោយលេខកូដ)។', code: 'need-2fa' });
+      }
       next();
     } catch (e) { next(e); }
   });
@@ -138,7 +142,15 @@ export function superRoutes(app) {
     let dbBytes = 0;
     try { dbBytes = num((await q('SELECT pg_database_size(current_database()) AS b')).rows[0].b); } catch { /* not available */ }
     const o = orgs.rows[0];
+    const twofa = (await q('SELECT count(*) FILTER (WHERE totp_secret IS NOT NULL)::int AS on, count(*)::int AS all FROM users')).rows[0];
+    const secret = (v) => String(process.env[v] || '').length >= 24;
     res.json({
+      // Platform security checklist (values never leave the server; only whether each is in place).
+      security: {
+        appSecret: secret('APP_SECRET'), cronSecret: secret('CRON_SECRET'), https: req.secure || req.headers['x-forwarded-proto'] === 'https',
+        superTwoFactor: !!req.session.mfa, requireSuper2fa: process.env.SUPER_REQUIRE_2FA !== '0',
+        usersWith2fa: num(twofa.on), users: num(twofa.all),
+      },
       month: ym,
       landlords: { total: num(o.orgs), suspended: num(o.suspended), new7: num(o.new7), new30: num(o.new30), active7: num(o.active7), active30: num(o.active30) },
       usage: { rooms: num(o.rooms), tenants: num(o.tenants), invoices: num(o.invoices), tenantsOnTelegram: num(linked.rows[0].n) },

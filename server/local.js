@@ -43,6 +43,7 @@ if (fs.existsSync(legacy) && !(await q('SELECT 1 FROM users LIMIT 1')).rows.leng
 const host = express();
 host.use(app);
 if (DEV) {
+  process.env.PY_DEV_SERVER = '1';
   const { createServer } = await import('vite');
   const vite = await createServer({ root: ROOT, server: { middlewareMode: true }, appType: 'spa' });
   host.use(vite.middlewares);
