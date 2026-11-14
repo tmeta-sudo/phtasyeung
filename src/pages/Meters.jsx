@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Gauge, Droplets, Zap, Trash2, Check } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { monthKm } from '../../shared/khmer.js';
+import MeterPhoto from '../MeterPhoto.jsx';
+import { api, uploadFile } from '../api.js';
+import { queueReading, queued, cachedState } from '../offline.js';
 
 export default function Meters() {
   const { state, call } = useApp();
@@ -10,11 +13,33 @@ export default function Meters() {
   const [rows, setRows] = useState({});
   const tenantIn = (id) => state.tenants.find((t) => t.roomId === id && t.status === 'active');
   const done = (id) => state.meters.find((m) => m.roomId === id && m.month === month);
+  const groups = state.settings.sharedMeters || [];
+  const sharedKind = (id, kind) => groups.find((g) => g.kind === kind && g.rooms.includes(id));
+  const sharedDone = (g) => (state.sharedReadings || []).find((x) => x.groupId === g.id && x.month === month);
+  const [gv, setGv] = useState({});
 
+  const { setState, notify } = useApp();
+  const waiting = queued().length;
+  const role = state.account?.role || 'owner';
   async function saveRow(r) {
     const v = rows[r.id] || {};
-    const res = await call('POST', '/api/meters', { roomId: r.id, month, water: v.water, electric: v.electric }, `បានកត់ ${r.id}`);
-    if (res) setRows((x) => ({ ...x, [r.id]: undefined }));
+    if (navigator.onLine === false || state.offline) {
+      // Save on the phone; it is sent automatically when the internet is back.
+      const n2 = queueReading({ roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric });
+      setRows((x) => ({ ...x, [r.id]: undefined }));
+      const c = cachedState();
+      if (c) setState({ ...c, offline: true });
+      notify(`📴 បានរក្សាទុកក្នុងទូរស័ព្ទ (${n2}) — នឹងផ្ញើពេលមានអ៊ីនធឺណិត`);
+      return;
+    }
+    const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric }, `បានកត់ ${r.id}`);
+    if (!res) return;
+    setRows((x) => ({ ...x, [r.id]: undefined }));
+    // Upload the meter photos as proof (after the reading exists).
+    const m = res.meters.find((x) => x.roomId === r.id && x.month === month);
+    for (const kind of ['water', 'electric']) {
+      if (m && v['photo_' + kind]) { try { setState(await uploadFile(`/api/meters/${m.id}/photo/${kind}`, v['photo_' + kind])); } catch { /* reading saved anyway */ } }
+    }
   }
 
   return (
@@ -23,6 +48,27 @@ export default function Meters() {
         <h1>កត់កុងទ័រ</h1>
         <div className="head-actions"><input className="month-input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} aria-label="ខែ" /></div>
       </div>
+      {role !== 'staff' && (
+        <label className="switch-row small auto-approve"><input type="checkbox" checked={!!state.settings.autoApproveReadings} onChange={(e) => call('PUT', '/api/settings', { autoApproveReadings: e.target.checked })} />
+          <span><b>ទទួលយកលេខពីអតិថិជនដោយស្វ័យប្រវត្តិ</b><small>បើការប្រើប្រាស់ធម្មតា (ប្រៀបធៀបនឹង ៣ ខែមុន)។ ប្លែកពេក → រង់ចាំអ្នកពិនិត្យ។</small></span></label>
+      )}
+      {(state.meterSubmissions || []).length > 0 && (
+        <section className="card from-tenants">
+          <h3 className="sec-title">📟 លេខពីអតិថិជន ({n(state.meterSubmissions.length)})</h3>
+          {state.meterSubmissions.map((x) => (
+            <div key={x.id} className="sub-row">
+              <span><b>{x.roomId} · {x.name}</b><small className="muted">💧 {n(x.oldWater)} → <b>{n(x.water)}</b> (+{n(x.water - x.oldWater)}) · ⚡ {n(x.oldElectric)} → <b>{n(x.electric)}</b> (+{n(x.electric - x.oldElectric)}) · {x.source === 'telegram' ? 'Telegram' : 'គេហទំព័រ'}</small>
+                {Object.keys(x.photos || {}).map((kind) => <a key={kind} className="mp-thumb" href={`/api/meter-submissions/${x.id}/photo/${kind}`} target="_blank" rel="noreferrer">📷 {kind === 'water' ? 'ទឹក' : 'ភ្លើង'}</a>)}
+              </span>
+              <span className="row-btns">
+                <button className="btn ghost sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/reject`, {}, 'បានបដិសេធ')}>✖</button>
+                <button className="btn primary sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/approve`, {}, `បានកត់ ${x.roomId}`)}><Check size={14} /> ទទួលយក</button>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+      {(state.offline || waiting > 0) && <p className="form-warn">📴 {state.offline ? 'គ្មានអ៊ីនធឺណិត — អាចកត់កុងទ័របាន ហើយនឹងផ្ញើដោយស្វ័យប្រវត្តិ។' : ''} {waiting > 0 ? `រង់ចាំផ្ញើ ${n(waiting)}` : ''}</p>}
       <p className="lunar-line">{monthKm(month, k)} · កត់រួច {n(state.rooms.filter((r) => done(r.id)).length)}/{n(state.rooms.length)} · វាយលេខថ្មី ហើយចុច Enter</p>
       <section className="card">
         <div className="meter-table">
@@ -36,14 +82,16 @@ export default function Meters() {
                 <span><b>{r.id}</b><small className="muted">{tenantIn(r.id)?.nameKm || 'ទំនេរ'}</small></span>
                 {m ? (
                   <>
-                    <span>{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small></span>
-                    <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small></span>
+                    <span>{m.queued && '⏳ '}{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small>{m.photos?.water && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/water`} target="_blank" rel="noreferrer">📷</a>}</span>
+                    <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small>{m.photos?.electric && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/electric`} target="_blank" rel="noreferrer">📷</a>}</span>
                     <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/${m.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
                   </>
                 ) : (
                   <>
-                    <span className="mt-input"><small>ចាស់ {n(r.water)}</small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} required aria-label={`ទឹក ${r.id}`} /></span>
-                    <span className="mt-input"><small>ចាស់ {n(r.electric)}</small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} required aria-label={`ភ្លើង ${r.id}`} /></span>
+                    {sharedKind(r.id, 'water') ? <span className="mt-shared">💧 កុងទ័ររួម {sharedKind(r.id, 'water').name}</span>
+                      : <span className="mt-input"><small>ចាស់ {n(r.water)} <MeterPhoto previous={r.water} has={!!v.photo_water} onPick={(x) => set('water', x)} onPhoto={(f) => set('photo_water', f)} /></small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} required aria-label={`ទឹក ${r.id}`} /></span>}
+                    {sharedKind(r.id, 'electric') ? <span className="mt-shared">⚡ កុងទ័ររួម {sharedKind(r.id, 'electric').name}</span>
+                      : <span className="mt-input"><small>ចាស់ {n(r.electric)} <MeterPhoto previous={r.electric} has={!!v.photo_electric} onPick={(x) => set('electric', x)} onPhoto={(f) => set('photo_electric', f)} /></small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} required aria-label={`ភ្លើង ${r.id}`} /></span>}
                     <button className="icon-btn primary" aria-label="រក្សាទុក"><Check size={16} /></button>
                   </>
                 )}
@@ -53,6 +101,34 @@ export default function Meters() {
         </div>
         {!state.rooms.length && <Empty icon={Gauge} title="មិនទាន់មានបន្ទប់" />}
       </section>
+      {groups.length > 0 && (
+        <section className="card">
+          <h3 className="sec-title">កុងទ័ររួម</h3>
+          <div className="meter-table">
+            {groups.map((g) => {
+              const d = sharedDone(g);
+              return (
+                <form key={g.id} className={'mt-row ' + (d ? 'done' : '')} onSubmit={async (e) => { e.preventDefault(); if (await call('POST', '/api/meters/shared', { groupId: g.id, month, value: gv[g.id] }, `បានកត់ ${g.name}`)) setGv((x) => ({ ...x, [g.id]: '' })); }}>
+                  <span><b>{g.kind === 'water' ? '💧' : '⚡'} {g.name}</b><small className="muted">{g.rooms.join(', ')}</small></span>
+                  {d ? (
+                    <>
+                      <span>{n(d.old)} → <b>{n(d.value)}</b> <small className="muted">(+{n(d.value - d.old)})</small></span>
+                      <span />
+                      <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/shared/${d.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="mt-input"><small>ចាស់ {n(g.reading)}</small><input type="number" inputMode="decimal" min={g.reading} step="any" value={gv[g.id] ?? ''} onChange={(e) => setGv((x) => ({ ...x, [g.id]: e.target.value }))} required aria-label={g.name} /></span>
+                      <span />
+                      <button className="icon-btn primary" aria-label="រក្សាទុក"><Check size={16} /></button>
+                    </>
+                  )}
+                </form>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </>
   );
 }

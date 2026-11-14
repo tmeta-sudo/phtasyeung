@@ -2,13 +2,15 @@
 //  • Platform bot (TELEGRAM_BOT_TOKEN): shared by all landlords — nothing to set up.
 //  • Own bot (optional): a landlord pastes a @BotFather token to use their own name.
 // Production (Vercel) receives updates by webhook; local dev uses long polling.
+import { submitReading, approveSubmission, rejectSubmission } from './readings.js';
+import { storeImage } from './files.js';
 import { pushToOrg, htmlToText } from './push.js';
 import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import { db, save, uid, now, logEvent, orgId } from './db.js';
 import { withOrg, findOrgs, q, listOrgIds } from './store.js';
 import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices } from './invoices.js';
-import { usd, khr, monthKm, kmDigits, nowInCambodia, dateKm } from '../shared/khmer.js';
+import { usd, khr, monthKm, kmDigits, nowInCambodia, dateKm, asciiDigits } from '../shared/khmer.js';
 import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
 import { checkInvoice } from './bakong.js';
 
@@ -140,7 +142,8 @@ const MENU = {
   keyboard: [
     [{ text: '🧾 វិក្កយបត្រ' }, { text: '🔧 រាយការណ៍ជួសជុល' }],
     [{ text: '💬 ផ្ញើសារម្ចាស់ផ្ទះ' }, { text: '📍 ទីតាំង' }],
-    [{ text: '📄 កិច្ចសន្យា' }, { text: '👤 ព័ត៌មានរបស់ខ្ញុំ' }],
+    [{ text: '📟 ផ្ញើលេខកុងទ័រ' }, { text: '📄 កិច្ចសន្យា' }],
+    [{ text: '👤 ព័ត៌មានរបស់ខ្ញុំ' }],
   ],
   resize_keyboard: true,
 };
@@ -351,6 +354,8 @@ export async function handleUpdate(botKey, token, u) {
         if (admin) await send(chatId, '📊 /summary · ⏳ /unpaid · 🧾 /generate', { reply_markup: ADMIN_MENU });
         return;
       }
+      if (text === '📟 ផ្ញើលេខកុងទ័រ' || text === '/meter') return startMeterConversation(tenant);
+      if (tenant.botState?.mode === 'meter' && !photoHandled && await handleMeterConversation(tenant, m, text)) { photoHandled = true; return; }
       // Tenant is writing a maintenance report / message, or replying to one.
       if (!photoHandled && await handleTenantConversation(tenant, m, text)) { photoHandled = true; return; }
       if (text === '🔧 រាយការណ៍ជួសជុល' || text === '/repair') return startConversation(tenant, 'maintenance');
@@ -441,7 +446,7 @@ async function handleCallback(botKey, token, query) {
   try {
     return await withOrg(org, async () => {
       if (botKeyOf(db()) !== botKey) return answer('មិនមានសិទ្ធិ');
-      if (action.startsWith('t')) return handleTicketCallback(action, id, extra, chatId, answer);
+      if (action.startsWith('t') || action === 'ma' || action === 'mr') return handleTicketCallback(action, id, extra, chatId, answer);
       const inv = db().invoices.find((i) => i.id === id);
       if (!inv) return answer('រកមិនឃើញវិក្កយបត្រ');
       if (action === 'p') {
@@ -587,6 +592,16 @@ async function handleTicketCallback(action, id, extra, chatId, answer) {
     return answer('បានបោះបង់');
   }
   if (!isAdminChat(chatId)) return answer('មិនមានសិទ្ធិ');
+  if (action === 'ma' || action === 'mr') {
+    const sub = (db().meterSubmissions || []).find((x) => x.id === id);
+    if (!sub || sub.status !== 'pending') return answer('បានដំណើរការរួចហើយ');
+    try {
+      if (action === 'ma') { await approveAndNotify(sub, 'telegram'); return answer('✅ បានទទួលយក'); }
+      rejectSubmission(sub);
+      await notifyTenant(db().tenants.find((x) => x.id === sub.tenantId), '⚠️ លេខកុងទ័រដែលអ្នកផ្ញើមិនត្រឹមត្រូវ។ សូមពិនិត្យ ហើយផ្ញើម្តងទៀត។');
+      return answer('បានបដិសេធ');
+    } catch (e) { return answer(e.message.slice(0, 180)); }
+  }
   const t = db().tickets.find((x) => x.id === id);
   if (!t) return answer('រកមិនឃើញ');
   if (action === 'tr') {
@@ -757,3 +772,92 @@ export async function refreshPolling() {
 }
 
 export { listOrgIds };
+
+// ---------- tenant sends meter readings through the bot ----------
+
+const METER_STEPS = [['water', '💧 ទឹក', 'm³'], ['electric', '⚡ ភ្លើង', 'kWh']];
+const isShared = (roomId, kind) => (db().settings.sharedMeters || []).some((g) => g.kind === kind && g.rooms.includes(roomId));
+
+async function askMeterStep(tenant) {
+  const st = tenant.botState;
+  const room = db().rooms.find((r) => r.id === tenant.roomId);
+  const step = METER_STEPS.find(([k]) => k === st.step);
+  return send(tenant.telegram.chatId, `📟 <b>លេខកុងទ័រ${step[1]}</b>\nលេខខែមុន: <b>${kmDigits(room[step[0]])} ${step[2]}</b>\n\nសូមវាយលេខថ្មី ឬថតរូបកុងទ័រ ហើយសរសេរលេខនៅក្នុង caption។`,
+    { reply_markup: { inline_keyboard: [[{ text: '✖️ បោះបង់', callback_data: `tx:${orgId()}:${tenant.id}` }]] } });
+}
+
+export async function startMeterConversation(tenant) {
+  const room = db().rooms.find((r) => r.id === tenant.roomId);
+  if (!room) return send(tenant.telegram.chatId, 'អ្នកមិនទាន់មានបន្ទប់ទេ។');
+  const steps = METER_STEPS.map(([k]) => k).filter((k) => !isShared(room.id, k));
+  if (!steps.length) return send(tenant.telegram.chatId, 'បន្ទប់របស់អ្នកប្រើកុងទ័ររួម — ម្ចាស់ផ្ទះនឹងកត់ដោយខ្លួនឯង។ 🙏');
+  tenant.botState = { mode: 'meter', step: steps[0], steps, values: {}, photos: {}, at: now() };
+  save();
+  return askMeterStep(tenant);
+}
+
+async function handleMeterConversation(tenant, m, text) {
+  const st = tenant.botState;
+  if (Date.now() - new Date(st.at).getTime() > CONV_TTL) { tenant.botState = null; save(); return false; }
+  const body = String(m.caption || text || '').trim();
+  if (body.startsWith('/') || MENU_TEXTS.includes(body)) { tenant.botState = null; save(); return false; }
+  const photo = m.photo?.length ? m.photo[m.photo.length - 1].file_id : (m.document?.mime_type?.startsWith('image/') ? m.document.file_id : '');
+  const num = parseFloat(asciiDigits(body).replace(/[^\d.]/g, ''));
+  const room = db().rooms.find((r) => r.id === tenant.roomId);
+  if (photo) st.photos[st.step] = { tg: photo };
+  if (!Number.isFinite(num)) {
+    save();
+    await send(tenant.telegram.chatId, photo ? '📷 បានទទួលរូប។ សូមវាយលេខដែលឃើញលើកុងទ័រ។' : 'សូមវាយជាលេខ (ឧ. ១២៣៤ ឬ 1234)។');
+    return true;
+  }
+  if (num < room[st.step]) { await send(tenant.telegram.chatId, `⚠️ លេខត្រូវធំជាង ឬស្មើលេខខែមុន (${kmDigits(room[st.step])})។ សូមពិនិត្យម្តងទៀត។`); return true; }
+  st.values[st.step] = num;
+  st.at = now();
+  const next = st.steps[st.steps.indexOf(st.step) + 1];
+  if (next) { st.step = next; save(); await askMeterStep(tenant); return true; }
+  tenant.botState = null;
+  try {
+    const { sub, approved } = submitReading(tenant, { water: st.values.water ?? room.water, electric: st.values.electric ?? room.electric, photos: st.photos, source: 'telegram' });
+    if (approved) {
+      const meter = db().meters.find((x) => x.id === sub.meterId);
+      if (meter) await copyTelegramPhotos(sub, meter);
+      await send(tenant.telegram.chatId, '✅ បានកត់លេខកុងទ័រ។ អរគុណ!', { reply_markup: MENU });
+    } else {
+      await notifyReadingToOwners(sub);
+      await send(tenant.telegram.chatId, '📨 បានផ្ញើលេខកុងទ័រទៅម្ចាស់ផ្ទះ។ អរគុណ!', { reply_markup: MENU });
+    }
+  } catch (e) {
+    save();
+    await send(tenant.telegram.chatId, `⚠️ ${esc(e.message)}`, { reply_markup: MENU });
+  }
+  return true;
+}
+
+/** Owner gets the reading with ✅/❌ buttons (and push). */
+export async function notifyReadingToOwners(sub) {
+  const used = (k, o) => `${kmDigits(sub[o])} → <b>${kmDigits(sub[k])}</b> (+${kmDigits(Math.round((sub[k] - sub[o]) * 100) / 100)})`;
+  const html = `📟 <b>លេខកុងទ័រពីអតិថិជន</b>\n${propertyTag()}🚪 ${esc(sub.roomId)} · ${esc(sub.name)}\n💧 ${used('water', 'oldWater')}\n⚡ ${used('electric', 'oldElectric')}${Object.keys(sub.photos || {}).length ? '\n📷 មានរូបកុងទ័រ' : ''}`;
+  const o = orgId();
+  await notifyAdmins(html, { reply_markup: { inline_keyboard: [[{ text: '✅ ទទួលយក', callback_data: `ma:${o}:${sub.id}` }, { text: '❌ មិនត្រឹមត្រូវ', callback_data: `mr:${o}:${sub.id}` }]] } }, { url: '/meters', tag: 'reading-' + sub.id });
+}
+
+async function copyTelegramPhotos(sub, meter) {
+  for (const [kind, ph] of Object.entries(sub.photos || {})) {
+    if (!ph?.tg) continue;
+    try {
+      const f = await fetchTelegramFile(ph.tg);
+      const { meta } = await storeImage({ buffer: f.data }, `meter ${sub.roomId} ${sub.month} ${kind}`);
+      if (meta) meter.photos = { ...(meter.photos || {}), [kind]: meta };
+    } catch (e) { console.error('[readings] photo', e.message); }
+  }
+  save();
+}
+
+/** Approve a tenant's reading (web or Telegram), copy its photos in, and thank the tenant. */
+export async function approveAndNotify(sub, by) {
+  const meter = approveSubmission(sub, by);
+  await copyTelegramPhotos(sub, meter);
+  const t = db().tenants.find((x) => x.id === sub.tenantId);
+  await notifyTenant(t, `✅ ម្ចាស់ផ្ទះបានទទួលលេខកុងទ័ររបស់អ្នក (ទឹក ${kmDigits(sub.water)} · ភ្លើង ${kmDigits(sub.electric)})។ អរគុណ!`);
+  return meter;
+}

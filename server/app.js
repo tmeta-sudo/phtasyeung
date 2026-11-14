@@ -1,4 +1,6 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { recordMeter, submitReading, approveSubmission, rejectSubmission } from './readings.js';
+import { FEATURE_IDS } from '../shared/features.js';
 import { recordError, installProcessHandlers } from './errors.js';
 installProcessHandlers();
 import { staffView, MANAGER_SETTINGS } from './roles.js';
@@ -6,16 +8,16 @@ import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
+import { db, save, uid, now, logEvent, migrateDoc, orgId } from './db.js';
 
 setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
-import { upload, storeFile, sendStored, removeFile, SLOTS } from './files.js';
-import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom } from './invoices.js';
+import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
+import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
-  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, configureOwnBot,
+  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, configureOwnBot,
   webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
@@ -110,7 +112,7 @@ async function publicSettings() {
   };
 }
 
-const withQr = (inv) => { const khqr = khqrOf(inv); const { khqrStr, khqrSig, khqrExp, ...rest } = inv; return { ...rest, khqr, overdue: isOverdue(inv) }; };
+const withQr = (inv) => { const khqr = khqrOf(inv); const { khqrStr, khqrSig, khqrExp, ...rest } = inv; return { ...rest, khqr, overdue: isOverdue(inv), paid: paidSoFar(inv), balance: balanceOf(inv) }; };
 
 async function accountInfo(req) {
   if (!req?.session) return {};
@@ -142,6 +144,9 @@ async function fullState(req) {
     activities: s.activities,
     tickets: (s.tickets || []).slice(-300),
     notices: (s.notices || []).slice(0, 30),
+    expenses: (s.expenses || []).slice(-2000),
+    sharedReadings: (s.sharedReadings || []).slice(-600),
+    meterSubmissions: (s.meterSubmissions || []).filter((x) => x.status === 'pending'),
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
@@ -149,6 +154,18 @@ async function fullState(req) {
     account: await accountInfo(req),
     runtime: { serverless: !!process.env.VERCEL, appUrl: appUrl() },
   };
+}
+
+/** Paid add-ons a tenant uses: [{ id, qty }] limited to the landlord's price list. */
+function cleanAddons(list) {
+  const catalog = new Map((db().settings.addons || []).map((a) => [a.id, a]));
+  const out = [];
+  for (const x of Array.isArray(list) ? list : []) {
+    const a = catalog.get(String(x?.id));
+    const qty = Math.min(a?.max || 9, Math.max(0, Math.round(+x?.qty || 0)));
+    if (a && qty > 0 && !out.some((o) => o.id === a.id)) out.push({ id: a.id, qty });
+  }
+  return out;
 }
 
 function cleanProfile(input, existing = {}, { admin }) {
@@ -170,6 +187,7 @@ function cleanProfile(input, existing = {}, { admin }) {
       status: ['active', 'former', 'prospect'].includes(p.status) ? p.status : 'active',
       roomId: str(p.roomId, 30),
       contract: { start: date(p.contract?.start), end: date(p.contract?.end), deposit: money(p.contract?.deposit) },
+      addons: cleanAddons(p.addons ?? existing.addons),
     });
   }
   return { ...existing, ...out };
@@ -199,6 +217,7 @@ function cleanRoom(p) {
   return {
     id: str(p.id, 30), building: str(p.building, 60), floor: str(p.floor, 10), rent: money(p.rent),
     water: Math.max(0, +p.water || 0), electric: Math.max(0, +p.electric || 0), note: str(p.note, 300),
+    features: [...new Set((Array.isArray(p.features) ? p.features : []).filter((f) => FEATURE_IDS.has(f)))],
     extras: (Array.isArray(p.extras) ? p.extras : []).slice(0, 6).map((e) => ({ label: str(e.label, 60), amount: money(e.amount) })).filter((e) => e.label),
   };
 }
@@ -301,26 +320,86 @@ app.get('/api/tenants/:id/files/:slot', ...owner((req, res) => sendStored(res, r
 
 // ---------- meters ----------
 
-app.post('/api/meters', ...owner((req) => {
+// ---------- meter photos (proof of the reading) ----------
+
+const PHOTO_KINDS = ['water', 'electric', 'value'];
+function findReading(id) {
   const s = db();
-  const room = s.rooms.find((r) => r.id === req.body?.roomId);
+  return s.meters.find((m) => m.id === id) || (s.sharedReadings || []).find((m) => m.id === id) || null;
+}
+app.post('/api/meters/:id/photo/:kind', ...owner(async (req) => {
+  const m = findReading(req.params.id);
+  if (!m || !PHOTO_KINDS.includes(req.params.kind)) fail('រកមិនឃើញ', 404);
+  const { meta, error } = await storeImage(req.file, `meter ${m.roomId || m.groupId} ${m.month} ${req.params.kind}`);
+  if (error) fail(error);
+  await removeFile(m.photos?.[req.params.kind]);
+  m.photos = { ...(m.photos || {}), [req.params.kind]: meta };
+  save();
+  return adminState(req);
+}, upload));
+app.get('/api/meters/:id/photo/:kind', ...owner((req, res) => sendStored(res, req.session.orgId, findReading(req.params.id)?.photos?.[req.params.kind])));
+
+app.post('/api/meters/shared', ...owner((req) => {
+  const s = db();
+  const g = (s.settings.sharedMeters || []).find((x) => x.id === req.body?.groupId);
   const m = month(req.body?.month);
-  const water = Number(req.body?.water);
-  const electric = Number(req.body?.electric);
-  if (!room || !m) fail('សូមជ្រើសរើសបន្ទប់ និងខែ');
-  if (!Number.isFinite(water) || !Number.isFinite(electric) || water < room.water || electric < room.electric) {
-    fail(`លេខថ្មីត្រូវធំជាង ឬស្មើលេខចាស់ (ទឹក ${room.water}, ភ្លើង ${room.electric})`);
-  }
-  if (s.meters.some((x) => x.roomId === room.id && x.month === m)) fail('បន្ទប់នេះបានកត់កុងទ័រសម្រាប់ខែនេះរួចហើយ');
-  if (s.invoices.some((i) => i.roomId === room.id && i.month === m)) fail('ខែនេះមានវិក្កយបត្ររួចហើយ។ សូមលុបវិក្កយបត្រមុនពេលកត់កុងទ័រ');
-  s.meters.push({ id: uid(), roomId: room.id, month: m, oldWater: room.water, water, oldElectric: room.electric, electric, at: now() });
-  room.water = water;
-  room.electric = electric;
+  const value = Number(req.body?.value);
+  if (!g || !m) fail('សូមជ្រើសរើសកុងទ័ររួម និងខែ');
+  if (!Number.isFinite(value) || value < g.reading) fail(`លេខថ្មីត្រូវធំជាង ឬស្មើលេខចាស់ (${g.reading})`);
+  s.sharedReadings = s.sharedReadings || [];
+  if (s.sharedReadings.some((x) => x.groupId === g.id && x.month === m)) fail('កុងទ័រនេះបានកត់សម្រាប់ខែនេះរួចហើយ');
+  if (s.invoices.some((i) => i.month === m && g.rooms.includes(i.roomId))) fail('ខែនេះមានវិក្កយបត្ររួចហើយសម្រាប់បន្ទប់ក្នុងក្រុមនេះ');
+  s.sharedReadings.push({ id: uid(), groupId: g.id, month: m, old: g.reading, value, at: now(), photo: null });
+  g.reading = value;
   save();
   return adminState(req);
 }));
 
-app.delete('/api/meters/:id', ...owner((req) => {
+app.delete('/api/meters/shared/:id', ...owner((req) => {
+  const s = db();
+  const r = (s.sharedReadings || []).find((x) => x.id === req.params.id);
+  if (!r) fail('រកមិនឃើញ', 404);
+  const g = (s.settings.sharedMeters || []).find((x) => x.id === r.groupId);
+  const latest = s.sharedReadings.filter((x) => x.groupId === r.groupId).sort((a, b) => b.month.localeCompare(a.month))[0];
+  if (latest.id !== r.id) fail('អាចលុបបានតែកំណត់ត្រាចុងក្រោយបង្អស់');
+  if (g) g.reading = r.old;
+  s.sharedReadings = s.sharedReadings.filter((x) => x.id !== r.id);
+  save();
+  return adminState(req);
+}));
+
+app.post('/api/meters', ...owner((req) => {
+  recordMeter({ roomId: req.body?.roomId, month: month(req.body?.month), water: req.body?.water, electric: req.body?.electric, by: req.session.role });
+  return adminState(req);
+}));
+
+// ---------- readings sent by tenants (bot / portal) ----------
+
+app.post('/api/meter-submissions/:id/approve', ...owner(async (req) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
+  if (!sub) fail('រកមិនឃើញ', 404);
+  await approveAndNotify(sub, req.session.role);
+  return adminState(req);
+}));
+app.post('/api/meter-submissions/:id/reject', ...owner(async (req) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
+  if (!sub) fail('រកមិនឃើញ', 404);
+  rejectSubmission(sub);
+  const t = db().tenants.find((x) => x.id === sub.tenantId);
+  await notifyTenant(t, `⚠️ លេខកុងទ័រដែលអ្នកផ្ញើមិនត្រឹមត្រូវ។ ${str(req.body?.reason, 200) || 'សូមពិនិត្យ ហើយផ្ញើម្តងទៀត ឬរង់ចាំម្ចាស់ផ្ទះមកកត់។'}`);
+  return adminState(req);
+}));
+app.get('/api/meter-submissions/:id/photo/:kind', ...owner(async (req, res) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
+  const ph = sub?.photos?.[req.params.kind];
+  if (ph?.tg) {
+    try { const f = await fetchTelegramFile(ph.tg); res.setHeader('Content-Type', f.type); res.setHeader('Cache-Control', 'private, max-age=600'); return res.end(f.data); } catch { return res.status(404).end(); }
+  }
+  return sendStored(res, req.session.orgId, ph);
+}));
+
+
+app.delete('/api/meters/:id', ...owner(async (req) => {
   const s = db();
   const m = s.meters.find((x) => x.id === req.params.id);
   if (!m) fail('រកមិនឃើញ', 404);
@@ -330,6 +409,7 @@ app.delete('/api/meters/:id', ...owner((req) => {
   const room = s.rooms.find((r) => r.id === m.roomId);
   if (room) { room.water = m.oldWater; room.electric = m.oldElectric; }
   s.meters = s.meters.filter((x) => x.id !== m.id);
+  for (const ph of Object.values(m.photos || {})) await removeFile(ph).catch(() => {});
   save();
   return adminState(req);
 }));
@@ -355,12 +435,42 @@ app.put('/api/invoices/:id', ...owner(async (req) => {
   }
   if (date(b.dueDate)) inv.dueDate = b.dueDate;
   if (b.status === 'paid' && inv.status !== 'paid') await confirmPayment(inv, 'admin');
-  else if (b.status === 'unpaid') { inv.status = 'unpaid'; inv.paidAt = null; }
+  else if (b.status === 'unpaid') { inv.status = 'unpaid'; inv.paidAt = null; inv.payments = []; }
+  save();
+  return adminState(req);
+}));
+
+const PAY_METHODS = ['cash', 'bank', 'khqr', 'aba', 'acleda', 'wing', 'other'];
+
+app.post('/api/invoices/:id/payments', ...owner(async (req) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (inv.status === 'paid') fail('វិក្កយបត្រនេះបានបង់រួចហើយ');
+  const via = PAY_METHODS.includes(req.body?.via) ? req.body.via : 'cash';
+  const at = date(req.body?.date) ? `${req.body.date}T12:00:00+07:00` : now();
+  const { full } = addPayment(inv, { amount: req.body?.amount, via, note: str(req.body?.note, 200), at });
+  if (full) await confirmPayment(inv, via);
+  else {
+    logEvent('admin', `បានទទួលប្រាក់ខ្លះ ${usdFmt(+req.body.amount)} ពី ${inv.roomId} · នៅសល់ ${usdFmt(balanceOf(inv))}`, { invoiceId: inv.id });
+    const t = db().tenants.find((x) => x.id === inv.tenantId);
+    await notifyTenant(t, `✅ <b>បានទទួលប្រាក់ ${usdFmt(+req.body.amount)}</b>\n🧾 ${inv.number}\nនៅសល់: <b>${usdFmt(balanceOf(inv))}</b>`);
+  }
+  return adminState(req);
+}));
+
+app.delete('/api/invoices/:id/payments/:pid', ...owner((req) => {
+  const inv = findInvoice(req.params.id);
+  if (!inv) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (inv.paidVia === 'carried') fail('សមតុល្យនេះបានផ្ទេរទៅវិក្កយបត្របន្ទាប់');
+  inv.payments = (inv.payments || []).filter((p) => p.id !== req.params.pid);
+  if (inv.status === 'paid' && balanceOf({ ...inv, status: 'unpaid' }) > 0) { inv.status = 'unpaid'; inv.paidAt = null; }
   save();
   return adminState(req);
 }));
 
 app.delete('/api/invoices/:id', ...owner((req) => {
+  const gone = findInvoice(req.params.id);
+  if (gone) reopenCarried(gone);
   db().invoices = db().invoices.filter((i) => i.id !== req.params.id);
   save();
   return adminState(req);
@@ -506,6 +616,41 @@ app.put('/api/settings', ...owner(async (req) => {
     if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
+  if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (b.listing) {
+    const slug = String(b.listing.slug ?? s.listing?.slug ?? '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    if (b.listing.enabled && slug.length < 3) fail('សូមដាក់ឈ្មោះតំណ (អក្សរឡាតាំង យ៉ាងហោចណាស់ ៣ តួ)');
+    if (slug && b.listing.enabled) {
+      const taken = (await findOrgs('listing', slug)).filter((id) => id !== orgId());
+      if (taken.length || ['admin', 'api', 'login', 'signup'].includes(slug)) fail('ឈ្មោះតំណនេះមានគេប្រើហើយ — សូមជ្រើសឈ្មោះផ្សេង');
+    }
+    s.listing = { enabled: !!b.listing.enabled, slug, intro: str(b.listing.intro ?? s.listing?.intro, 600), showPhone: b.listing.showPhone !== false };
+  }
+  if (typeof b.autoApproveReadings === 'boolean') s.autoApproveReadings = b.autoApproveReadings;
+  if (Array.isArray(b.addons)) {
+    const seen = new Set();
+    s.addons = b.addons.slice(0, 20).map((a) => ({
+      id: /^[\w-]{1,20}$/.test(a.id || '') ? a.id : 'x' + uid(4),
+      icon: str(a.icon, 8) || '➕', label: str(a.label, 40), price: money(a.price), max: Math.min(20, Math.max(1, Math.round(+a.max || 1))),
+    })).filter((a) => a.label && !seen.has(a.id) && seen.add(a.id));
+  }
+  if (b.tiers) {
+    const clean = (list) => (Array.isArray(list) ? list : []).slice(0, 8)
+      .map((t) => ({ upTo: t.upTo === '' || t.upTo == null ? null : Math.max(0, +t.upTo || 0), rate: Math.max(0, Math.round((+t.rate || 0) * 10000) / 10000) }))
+      .filter((t) => t.rate > 0);
+    s.tiers = { electric: clean(b.tiers.electric), water: clean(b.tiers.water) };
+  }
+  if (Array.isArray(b.sharedMeters)) {
+    const roomIds = new Set(db().rooms.map((r) => r.id));
+    const old = new Map((s.sharedMeters || []).map((g) => [g.id, g]));
+    s.sharedMeters = b.sharedMeters.slice(0, 50).map((g) => ({
+      id: /^[\w-]{1,20}$/.test(g.id || '') ? g.id : 'S' + uid(4),
+      name: str(g.name, 40) || 'កុងទ័ររួម',
+      kind: g.kind === 'water' ? 'water' : 'electric',
+      rooms: [...new Set((g.rooms || []).map(String).filter((id) => roomIds.has(id)))],
+      reading: Math.max(0, +(g.reading ?? old.get(g.id)?.reading ?? 0) || 0),
+    })).filter((g) => g.rooms.length >= 2);
+  }
   if (b.lateFee) {
     s.lateFee = {
       enabled: !!b.lateFee.enabled,
@@ -522,6 +667,87 @@ app.put('/api/settings', ...owner(async (req) => {
 }));
 
 // ---------- building designer: create many rooms at once ----------
+
+// ---------- room photos (for the public listing) ----------
+
+app.post('/api/rooms/:id/photos', ...owner(async (req) => {
+  const room = db().rooms.find((r) => r.id === req.params.id);
+  if (!room) fail('រកមិនឃើញបន្ទប់', 404);
+  if ((room.photos || []).length >= 8) fail('រូបភាពអតិបរមា ៨');
+  const { meta, error } = await storeImage(req.file, `room ${room.id}`);
+  if (error) fail(error);
+  room.photos = [...(room.photos || []), meta];
+  save();
+  return adminState(req);
+}, upload));
+app.delete('/api/rooms/:id/photos/:pid', ...owner(async (req) => {
+  const room = db().rooms.find((r) => r.id === req.params.id);
+  const ph = room?.photos?.find((p) => p.id === req.params.pid);
+  if (!ph) fail('រកមិនឃើញ', 404);
+  await removeFile(ph);
+  room.photos = room.photos.filter((p) => p.id !== ph.id);
+  save();
+  return adminState(req);
+}));
+app.get('/api/rooms/:id/photos/:pid', ...owner((req, res) => sendStored(res, req.session.orgId, db().rooms.find((r) => r.id === req.params.id)?.photos?.find((p) => p.id === req.params.pid))));
+
+// ---------- public listing of vacant rooms ----------
+
+async function listingOrg(slug) {
+  const ids = await findOrgs('listing', String(slug || '').toLowerCase());
+  if (ids.length !== 1) fail('រកមិនឃើញទំព័រនេះ', 404);
+  return ids[0];
+}
+const vacantRooms = () => db().rooms.filter((r) => !tenantOfRoom(r.id));
+
+app.get('/api/listing/:slug', async (req, res) => {
+  if (!(await rateLimit(`listing:${req.ip}`, 120, 600))) fail('ព្យាយាមច្រើនដងពេក', 429);
+  const org = await listingOrg(req.params.slug);
+  const out = await withOrg(org, () => {
+    const st = db().settings;
+    if (!st.listing?.enabled) fail('រកមិនឃើញទំព័រនេះ', 404);
+    const L = st.location || {};
+    return {
+      property: { name: st.propertyName, nameEn: st.propertyNameEn, phone: st.listing.showPhone ? st.phone : '', coverUrl: st.coverUrl, address: [L.addressText || st.address].filter(Boolean).join(', '), lat: L.lat, lng: L.lng, khmerNumerals: st.khmerNumerals },
+      intro: st.listing.intro,
+      rooms: vacantRooms().map((r) => ({ id: r.id, building: r.building, floor: r.floor, rent: r.rent, features: r.features || [], note: r.note, photos: (r.photos || []).map((p) => p.id) })),
+      addons: (st.addons || []).map(({ icon, label, price }) => ({ icon, label, price })),
+      deposit: { months: st.contract?.depositMonths, prepaid: st.contract?.prepaidMonths },
+    };
+  });
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json(out);
+});
+app.get('/api/listing/:slug/photo/:roomId/:pid', async (req, res) => {
+  const org = await listingOrg(req.params.slug);
+  await withOrg(org, async () => {
+    if (!db().settings.listing?.enabled) return res.status(404).end();
+    const room = vacantRooms().find((r) => r.id === req.params.roomId);
+    return sendStored(res, org, room?.photos?.find((p) => p.id === req.params.pid));
+  });
+});
+app.post('/api/listing/:slug/inquiry', async (req, res) => {
+  if (!(await rateLimit(`inquiry:${req.ip}`, 5, 3600))) fail('ផ្ញើច្រើនដងពេក សូមព្យាយាមម្តងទៀតក្រោយ', 429);
+  const b = req.body || {};
+  if (b.website) return res.json({ ok: true }); // bots fill the hidden field
+  const name = str(b.name, 60); const phone = normalizePhone(b.phone) || str(b.phone, 30);
+  if (!name || !/\d{8,}/.test(String(phone).replace(/\D/g, ''))) fail('សូមបញ្ចូលឈ្មោះ និងលេខទូរស័ព្ទ');
+  const org = await listingOrg(req.params.slug);
+  await withOrg(org, async () => {
+    const s = db();
+    if (!s.settings.listing?.enabled) fail('រកមិនឃើញទំព័រនេះ', 404);
+    const roomId = vacantRooms().some((r) => r.id === b.roomId) ? b.roomId : '';
+    s.counters.ticket = (s.counters.ticket || 0) + 1;
+    const text = [`📞 ${phone}`, b.moveIn ? `📅 ចង់ចូលនៅ ${str(b.moveIn, 20)}` : '', str(b.message, 1000)].filter(Boolean).join('\n');
+    const t = { id: uid(), no: s.counters.ticket, kind: 'inquiry', tenantId: null, phone, roomId, name, status: 'open', createdAt: now(), updatedAt: now(), unread: 1, messages: [{ from: 'tenant', text, at: now(), via: 'listing' }], adminMsgIds: [], tenantMsgIds: [] };
+    s.tickets.push(t);
+    if (s.tickets.length > 500) s.tickets.splice(0, s.tickets.length - 500);
+    save();
+    logEvent('tenant', `🏠 សំណួរពីអ្នកចង់ជួល ${name}${roomId ? ` (បន្ទប់ ${roomId})` : ''}`, { ticketId: t.id });
+    await notifyAdmins(`🏠 <b>អ្នកចង់ជួលបន្ទប់</b>${roomId ? ` · ${esc(roomId)}` : ''}\n👤 ${esc(name)}\n${esc(text)}`, {}, { url: `/inbox?t=${t.id}`, tag: 'inquiry-' + t.id }).catch(() => {});
+  });
+  res.json({ ok: true });
+});
 
 app.post('/api/rooms/bulk', ...owner((req) => {
   const b = req.body || {};
@@ -551,6 +777,38 @@ app.post('/api/rooms/bulk', ...owner((req) => {
 
 // ---------- contracts ----------
 
+// ---------- e-signatures ----------
+
+/** A drawn signature (PNG data URL from the signature pad) → stored image meta. */
+async function storeSignature(dataUrl, name) {
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m) fail('សូមចុះហត្ថលេខាជាមុនសិន');
+  const buffer = Buffer.from(m[1], 'base64');
+  if (buffer.length < 300 || buffer.length > 300 * 1024) fail('ហត្ថលេខាមិនត្រឹមត្រូវ');
+  const { meta, error } = await storeImage({ buffer }, name);
+  if (error) fail(error);
+  return meta;
+}
+const leaseHash = (text) => crypto.createHash('sha256').update(String(text || '')).digest('hex');
+
+app.post('/api/settings/signature', ...owner(async (req) => {
+  const meta = await storeSignature(req.body?.signature, 'owner signature');
+  const c = db().settings.contract;
+  await removeFile(c.ownerSignature);
+  c.ownerSignature = meta;
+  save();
+  return adminState(req);
+}));
+app.delete('/api/settings/signature', ...owner(async (req) => {
+  const c = db().settings.contract;
+  await removeFile(c.ownerSignature);
+  c.ownerSignature = null;
+  save();
+  return adminState(req);
+}));
+app.get('/api/settings/signature', ...owner((req, res) => sendStored(res, req.session.orgId, db().settings.contract.ownerSignature)));
+app.get('/api/tenants/:id/signature', ...owner((req, res) => sendStored(res, req.session.orgId, findTenant(req.params.id)?.lease?.signature?.file)));
+
 app.put('/api/tenants/:id/contract', ...owner((req) => {
   const t = findTenant(req.params.id);
   if (!t) fail('រកមិនឃើញអតិថិជន', 404);
@@ -561,12 +819,36 @@ app.put('/api/tenants/:id/contract', ...owner((req) => {
     prepaidMonths: Math.min(12, Math.max(0, Math.round(+(b.prepaidMonths ?? 1)))),
     text: str(b.text, 15000),
     updatedAt: now(),
+    signature: t.lease?.signature,
   };
+  if (t.lease.signature && t.lease.signature.hash !== leaseHash(t.lease.text)) t.lease.signature = { ...t.lease.signature, outdated: true };
   save();
   return adminState(req);
 }));
 
 /** Move-in invoice: booking deposit + prepaid rent, as agreed in the contract. */
+app.put('/api/tenants/:id/deposit', ...owner((req) => {
+  const t = findTenant(req.params.id);
+  if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  t.deposit = { ...(t.deposit || {}), held: money(req.body?.held), receivedAt: date(req.body?.date) || t.deposit?.receivedAt || nowInCambodia().ymd, note: str(req.body?.note, 120), source: 'manual' };
+  save();
+  return adminState(req);
+}));
+
+app.post('/api/tenants/:id/moveout', ...owner(async (req) => {
+  const t = findTenant(req.params.id);
+  if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  if (t.status !== 'active') fail('អតិថិជននេះមិនកំពុងជួលទេ');
+  const result = moveOut(t, { date: date(req.body?.date) || nowInCambodia().ymd, deductions: Array.isArray(req.body?.deductions) ? req.body.deductions : [], useDeposit: req.body?.useDeposit !== false });
+  const lines = [`🏠 <b>ការទូទាត់ពេលចាកចេញ</b> — បន្ទប់ ${t.roomId}`, `ប្រាក់កក់: ${usdFmt(result.deposit)}`];
+  for (const d of result.deductions) lines.push(`− ${d.label}: ${usdFmt(d.amount)}`);
+  if (result.applied) lines.push(`− ទូទាត់វិក្កយបត្រមិនទាន់បង់: ${usdFmt(result.applied)}`);
+  if (result.refund > 0) lines.push(`💵 <b>ប្រាក់សងវិញ: ${usdFmt(result.refund)}</b>`);
+  if (result.owes > 0) lines.push(`⚠️ <b>នៅជំពាក់: ${usdFmt(result.owes)}</b>`);
+  await notifyTenant(t, lines.join('\n'));
+  return { ...(await adminState(req)), result };
+}));
+
 app.post('/api/tenants/:id/movein-invoice', ...owner((req) => {
   const s = db();
   const t = findTenant(req.params.id);
@@ -718,6 +1000,44 @@ app.delete('/api/activities/:id', ...owner((req) => {
 app.get('/api/account/export', ...owner((req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="phteah-yeung-${nowInCambodia().ymd}.json"`);
   res.json(exportData());
+}));
+
+// ---------- expenses (for profit in Reports) ----------
+
+export const EXPENSE_CATS = ['electric', 'water', 'repair', 'cleaning', 'salary', 'internet', 'tax', 'loan', 'other'];
+function cleanExpense(b, cur = {}) {
+  const e = {
+    ...cur,
+    date: date(b.date) || cur.date || nowInCambodia().ymd,
+    category: EXPENSE_CATS.includes(b.category) ? b.category : (cur.category || 'other'),
+    amount: money(b.amount ?? cur.amount),
+    note: str(b.note ?? cur.note, 200),
+    building: str(b.building ?? cur.building, 60),
+    repeat: typeof b.repeat === 'boolean' ? b.repeat : !!cur.repeat,
+  };
+  if (!(e.amount > 0)) fail('សូមបញ្ចូលចំនួនទឹកប្រាក់');
+  return e;
+}
+app.post('/api/expenses', ...owner((req) => {
+  const s = db();
+  s.expenses = s.expenses || [];
+  if (s.expenses.length >= 5000) fail('ចំណាយច្រើនពេក');
+  s.expenses.push({ id: uid(), ...cleanExpense(req.body || {}), createdAt: now() });
+  save();
+  return adminState(req);
+}));
+app.put('/api/expenses/:id', ...owner((req) => {
+  const s = db();
+  const i = (s.expenses || []).findIndex((e) => e.id === req.params.id);
+  if (i < 0) fail('រកមិនឃើញ', 404);
+  s.expenses[i] = cleanExpense(req.body || {}, s.expenses[i]);
+  save();
+  return adminState(req);
+}));
+app.delete('/api/expenses/:id', ...owner((req) => {
+  db().expenses = (db().expenses || []).filter((e) => e.id !== req.params.id);
+  save();
+  return adminState(req);
 }));
 
 // ---------- announcements to tenants (Telegram + portal) ----------
@@ -874,10 +1194,13 @@ async function portalState(t) {
     meters: s.meters.filter((m) => m.roomId === t.roomId).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12),
     property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, waterRate: st.waterRate, electricRate: st.electricRate },
     telegram: { bot, linked: !!t.telegram?.chatId, link: bot ? `https://t.me/${bot}?start=${linkCode}` : '' },
-    lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths } : null,
+    lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths, signed: t.lease.signature ? { name: t.lease.signature.name, at: t.lease.signature.at, outdated: !!t.lease.signature.outdated } : null, ownerSigned: !!st.contract?.ownerSignature } : null,
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
     autoConfirm: bakongEnabled(),
+    today: nowInCambodia(),
+    myReading: (s.meterSubmissions || []).filter((x) => x.tenantId === t.id).at(-1) || null,
+    sharedKinds: ['water', 'electric'].filter((k) => (st.sharedMeters || []).some((g) => g.kind === k && g.rooms.includes(t.roomId))),
     notices: (s.notices || []).filter((n) => n.rooms?.includes(t.roomId) && Date.now() - new Date(n.at).getTime() < 60 * 86400000).slice(0, 5).map(({ id, at, text }) => ({ id, at, text })),
   };
 }
@@ -928,6 +1251,44 @@ app.get('/api/portal/:token/files/:slot', ...portal((req, res, t, org) => {
 }));
 
 /** Polled by the portal while the KHQR is on screen: confirms automatically once Bakong sees the payment. */
+app.get('/api/portal/:token/meters/:id/photo/:kind', ...portal((req, res, t, org) => {
+  const m = db().meters.find((x) => x.id === req.params.id && x.roomId === t.roomId);
+  return sendStored(res, org, m?.photos?.[req.params.kind]);
+}));
+
+app.post('/api/portal/:token/readings', ...portal(async (req, res, t) => {
+  if (!(await rateLimit(`reading:${t.id}`, 10, 3600))) fail('ផ្ញើច្រើនដងពេក សូមរង់ចាំ');
+  const { sub, approved } = submitReading(t, { water: req.body?.water, electric: req.body?.electric, source: 'portal' });
+  if (!approved) await notifyReadingToOwners(sub);
+  return { ...(await portalState(t)), result: { id: sub.id, approved } };
+}));
+app.post('/api/portal/:token/readings/:id/photo/:kind', ...portal(async (req, res, t) => {
+  const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id && x.tenantId === t.id);
+  if (!sub || !['water', 'electric'].includes(req.params.kind)) fail('រកមិនឃើញ', 404);
+  const { meta, error } = await storeImage(req.file, `meter ${sub.roomId} ${sub.month} ${req.params.kind}`);
+  if (error) fail(error);
+  if (sub.status === 'approved') {
+    const m = db().meters.find((x) => x.id === sub.meterId);
+    if (m) m.photos = { ...(m.photos || {}), [req.params.kind]: meta };
+  } else sub.photos = { ...(sub.photos || {}), [req.params.kind]: meta };
+  save();
+  return { ok: true };
+}, upload));
+
+app.post('/api/portal/:token/sign', ...portal(async (req, res, t) => {
+  if (!t.lease?.text || t.lease.required === false) fail('មិនមានកិច្ចសន្យាត្រូវចុះហត្ថលេខា');
+  if (t.lease.signature && !t.lease.signature.outdated) fail('បានចុះហត្ថលេខារួចហើយ');
+  const name = str(req.body?.name, 80) || t.nameKm || t.nameEn;
+  const file = await storeSignature(req.body?.signature, `${t.roomId} ${name} signature`);
+  if (t.lease.signature?.file) await removeFile(t.lease.signature.file);
+  t.lease.signature = { file, name, at: now(), hash: leaseHash(t.lease.text), ip: String(req.ip || '').slice(0, 64), ua: String(req.headers['user-agent'] || '').slice(0, 160) };
+  save();
+  logEvent('tenant', `${name} (${t.roomId}) បានចុះហត្ថលេខាលើកិច្ចសន្យា`, { tenantId: t.id });
+  await notifyAdmins(`✍️ <b>${esc(name)}</b> (${esc(t.roomId)}) បានចុះហត្ថលេខាលើកិច្ចសន្យាជួល។`, {}, { url: `/customers/${t.id}?contract=1` }).catch(() => {});
+  return portalState(t);
+}));
+app.get('/api/portal/:token/signature/:who', ...portal((req, res, t, org) => sendStored(res, org, req.params.who === 'owner' ? db().settings.contract.ownerSignature : t.lease?.signature?.file)));
+
 app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
   if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);

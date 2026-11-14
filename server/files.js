@@ -47,3 +47,13 @@ export async function sendStored(res, org, meta) {
   res.setHeader('Content-Disposition', 'inline');
   res.end(f.data);
 }
+
+/** Store a photo that is not a tenant document (meter readings…). Returns { meta } or { error }. */
+export async function storeImage(file, name) {
+  if (!file?.buffer?.length) return { error: 'សូមជ្រើសរើសរូបភាព' };
+  const kind = sniff(file.buffer);
+  if (!kind || kind[0] === 'pdf') return { error: 'អនុញ្ញាតតែរូបភាព JPG, PNG ឬ WEBP' };
+  const meta = { id: uid(16), ext: kind[0], type: kind[1], size: file.buffer.length, at: now() };
+  meta.backend = await putBlob(orgId(), db().settings, { id: meta.id, mime: meta.type, data: file.buffer, name: `${name}.${meta.ext}` });
+  return { meta };
+}

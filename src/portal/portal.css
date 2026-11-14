@@ -111,3 +111,18 @@
 .pt-notice small { opacity: .65; font-size: 11.5px; }
 :root[data-theme="dark"] .pt-notice { background: rgba(245, 166, 35, .14); color: #ffd58a; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pt-notice { background: rgba(245, 166, 35, .14); color: #ffd58a; } }
+.pt-meter-form { display: grid; gap: 10px; }
+.pt-meter-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px 42px; gap: 8px; align-items: center; }
+.pt-meter-row > span:first-child { display: grid; font-weight: 600; }
+.pt-meter-row small { font-weight: 400; opacity: .65; font-size: 12px; }
+.pt-meter-row input[type=number] { min-width: 0; border-radius: 14px; border: 1px solid rgba(0,0,0,.12); padding: 10px 12px; font: inherit; font-size: 16px; background: #fff; color: #111; }
+.pt-cam { position: relative; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.06); overflow: hidden; }
+.pt-cam.has { background: #dff6e9; color: #12804f; }
+.pt-cam input { position: absolute; inset: 0; opacity: 0; }
+.pt-hint { opacity: .7; font-size: 12px; }
+.pt-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.pt-meter-sent { display: flex; gap: 10px; align-items: center; color: #12804f; }
+.pt-meter-sent span { display: grid; } .pt-meter-sent small { opacity: .75; }
+.pt-sign { display: grid; gap: 8px; margin: 14px 0; }
+.pt-sign small { opacity: .7; }
+.pt-signed { color: #12804f; font-weight: 600; margin: 12px 0; }

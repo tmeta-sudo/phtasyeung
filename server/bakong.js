@@ -52,12 +52,13 @@ export async function checkInvoice(inv, { minIntervalMs = 15000 } = {}) {
   if (!tx) return 'pending';
   const k = db().settings.khqr || {};
   const toOk = !tx.toAccountId || String(tx.toAccountId).toLowerCase() === String(k.accountId).toLowerCase();
-  const amountOk = Math.abs(Number(tx.amount) - Number(inv.total)) < 0.011 && (!tx.currency || String(tx.currency).toUpperCase() === 'USD');
+  const amountOk = Math.abs(Number(tx.amount) - Number(inv.khqrAmount ?? inv.total)) < 0.011 && (!tx.currency || String(tx.currency).toUpperCase() === 'USD');
   if (!toOk || !amountOk) {
     logEvent('alert', `Bakong: ការបង់ប្រាក់សម្រាប់ ${inv.number} មិនត្រូវគ្នា (${tx.amount} ${tx.currency} → ${tx.toAccountId})`, { invoiceId: inv.id });
     return 'pending';
   }
   inv.bakong = { hash: tx.hash || '', from: tx.fromAccountId || '', at: tx.acknowledgedDateMs ? new Date(+tx.acknowledgedDateMs).toISOString() : now() };
+  if ((inv.payments || []).some((p) => p.ref === inv.bakong.hash && inv.bakong.hash)) return 'pending';
   await confirmPayment(inv, 'bakong');
   await notifyAdmins(`🤖 <b>បានទទួលប្រាក់ស្វ័យប្រវត្តិ (Bakong)</b>\n🚪 ${inv.roomId} · ${inv.name}\n🧾 ${inv.number} · <b>${usd(inv.total)}</b>${inv.bakong.from ? `\nពី: ${inv.bakong.from}` : ''}`).catch(() => {});
   return 'paid';

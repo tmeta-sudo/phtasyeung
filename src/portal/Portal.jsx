@@ -6,6 +6,8 @@ import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
 import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords } from '../../shared/khmer.js';
 import './portal.css';
+import MeterSubmit from './MeterSubmit.jsx';
+import SignaturePad from '../SignaturePad.jsx';
 import PwaBar from '../PwaBar.jsx';
 import { useAppIdentity } from '../pwa.js';
 import { ThemeToggle } from '../theme.jsx';
@@ -131,6 +133,7 @@ export default function Portal({ token }) {
                 <ChevronRight size={18} />
               </button>
             )}
+            <MeterSubmit token={token} data={data} onDone={load} notify={notify} />
             {data.meters[0] && (
               <div className="pt-card">
                 <b>ការប្រើប្រាស់ {monthKm(data.meters[0].month, k)}</b>
@@ -168,7 +171,8 @@ export default function Portal({ token }) {
             <header className="pt-top"><button className="pt-round" onClick={() => setPay(null)} aria-label="បិទ"><ArrowLeft size={18} /></button><b>{monthKm(pay.month, k)}</b><span /></header>
             <div className="pt-pay-card">
               <small>{pay.number}</small>
-              <b className="pt-amount">{$(pay.total)}</b>
+              <b className="pt-amount">{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b>
+              {pay.status !== 'paid' && pay.paid > 0 && <small>បានបង់ {$(pay.paid)} នៃ {$(pay.total)}</small>}
               <small>{khr(pay.totalKhr, k)} · {usdInWords(pay.total)}</small>
               {pay.khqr && pay.status !== 'paid' && data.autoConfirm && <p className="pt-auto"><span className="dot-pulse" /> រង់ចាំការបង់ប្រាក់ — នឹងបញ្ជាក់ដោយស្វ័យប្រវត្តិ</p>}
               {pay.khqr && pay.status !== 'paid' && <div className="pt-khqr"><span>KHQR</span><QR value={pay.khqr} size={210} label="KHQR" /><small>ថតរូបអេក្រង់ ឬស្កេនដោយកម្មវិធីធនាគារ ABA, ACLEDA, Wing, Bakong…</small></div>}
@@ -178,7 +182,7 @@ export default function Portal({ token }) {
             </div>
             <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={{ ...data.property, addressText: data.location?.addressText, location: data.location }} khmer={k} design={data.invoiceDesign} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
             <div className="pt-bottom-bar">
-              <div><b>{$(pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
+              <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
               {pay.status === 'unpaid' && <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>}
               {pay.status === 'claimed' && <span className="pt-wait">⏳ រង់ចាំបញ្ជាក់</span>}
               {pay.status === 'paid' && <span className="pt-done"><Check size={16} /> បានបង់</span>}
@@ -193,7 +197,7 @@ export default function Portal({ token }) {
         {data.telegram.link && <a href={data.telegram.link} target="_blank" rel="noreferrer"><Send size={18} /><span>Telegram</span></a>}
         <button className={tab === 'me' ? 'on' : ''} onClick={() => setTab('me')}><UserRound size={18} /><span>ខ្ញុំ</span></button>
       </nav>
-      {showLease && data.lease && <Modal title="កិច្ចសន្យាជួល" onClose={() => setShowLease(false)} wide><ContractDoc text={data.lease.text} property={data.property.name} /></Modal>}
+      {showLease && data.lease && <LeaseModal token={token} data={data} onClose={() => setShowLease(false)} onSigned={(d) => { setData(d); notify('✍️ បានចុះហត្ថលេខា — អរគុណ!'); }} notify={notify} />}
       <Toast toast={toast} />
     </div>
   );
@@ -271,5 +275,31 @@ function Profile({ token, data, setData, notify, onBack }) {
       </form>
       {view && <Modal title="អត្តសញ្ញាណប័ណ្ណ" onClose={() => setView('')}><img className="viewer-img" src={view} alt="" /></Modal>}
     </>
+  );
+}
+
+function LeaseModal({ token, data, onClose, onSigned, notify }) {
+  const L = data.lease;
+  const [sig, setSig] = useState('');
+  const [busy, setBusy] = useState(false);
+  const signed = L.signed && !L.signed.outdated;
+  const signatures = { owner: L.ownerSigned ? `/api/portal/${token}/signature/owner` : '', tenant: L.signed ? `/api/portal/${token}/signature/tenant?v=${encodeURIComponent(L.signed.at)}` : '', tenantName: L.signed?.name, tenantAt: L.signed?.at };
+  async function sign() {
+    setBusy(true);
+    try { onSigned(await api('POST', `/api/portal/${token}/sign`, { signature: sig })); } catch (e) { notify(e.message, true); } finally { setBusy(false); }
+  }
+  return (
+    <Modal title="កិច្ចសន្យាជួល" onClose={onClose} wide>
+      <ContractDoc text={L.text} property={data.property.name} signatures={signatures} />
+      {signed ? <p className="pt-signed">✅ បានចុះហត្ថលេខា</p> : (
+        <div className="pt-sign">
+          <b>{L.signed?.outdated ? 'កិច្ចសន្យាត្រូវបានកែប្រែ — សូមចុះហត្ថលេខាម្តងទៀត' : 'ចុះហត្ថលេខាលើកិច្ចសន្យា'}</b>
+          <small>ខ្ញុំបានអាន និងយល់ព្រមតាមលក្ខខណ្ឌខាងលើ។</small>
+          <SignaturePad onChange={setSig} />
+          <button className="pt-pink" disabled={!sig || busy} onClick={sign}>{busy ? '…' : '✍️ ចុះហត្ថលេខា'}</button>
+        </div>
+      )}
+      <button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក PDF / បោះពុម្ព</button>
+    </Modal>
   );
 }

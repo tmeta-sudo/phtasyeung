@@ -38,7 +38,7 @@ export default function Inbox() {
                 <button key={t.id} className={'row ticket-row ' + (sel === t.id ? 'sel' : '')} onClick={() => setSel(t.id)}>
                   <Avatar name={t.name} src={tenantPhoto(tenant)} size={38} />
                   <span>
-                    <b>{t.kind === 'maintenance' ? <Wrench size={13} /> : <MessageSquare size={13} />} {t.name} <small className="muted">· {t.roomId || '—'} · #{n(t.no)}</small></b>
+                    <b>{t.kind === 'maintenance' ? <Wrench size={13} /> : t.kind === 'inquiry' ? '🏠' : <MessageSquare size={13} />} {t.name} <small className="muted">· {t.roomId || '—'} · #{n(t.no)}</small></b>
                     <small className="muted clamp1">{last?.from === 'owner' ? '↩️ ' : ''}{last?.text || (last?.photo ? '📷 រូបភាព' : '')}</small>
                   </span>
                   {t.unread ? <em className="count">{n(t.unread)}</em> : <span className={'pill ' + STATUS[t.status][1]}><i />{STATUS[t.status][0]}</span>}
@@ -55,7 +55,7 @@ export default function Inbox() {
 }
 
 function Thread({ t, onBack }) {
-  const { state, call } = useApp();
+  const { state, call, openCustomerForm } = useApp();
   const { n } = useFmt();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -73,9 +73,11 @@ function Thread({ t, onBack }) {
     <section className="card thread">
       <header className="thread-head">
         <button className="icon-btn back" onClick={onBack} aria-label="ត្រឡប់"><ArrowLeft size={17} /></button>
-        <div><b>{t.kind === 'maintenance' ? '🔧 ការជួសជុល' : '💬 សារ'} #{n(t.no)}</b><small className="muted"> · {t.name} · {t.roomId || '—'}</small></div>
+        <div><b>{t.kind === 'maintenance' ? '🔧 ការជួសជុល' : t.kind === 'inquiry' ? '🏠 អ្នកចង់ជួល' : '💬 សារ'} #{n(t.no)}</b><small className="muted"> · {t.name} · {t.roomId || '—'}</small></div>
         <div className="row-btns">
           {tenant && <button className="btn ghost sm" onClick={() => navigate('/customers/' + tenant.id)}>ប្រវត្តិរូប</button>}
+          {t.kind === 'inquiry' && t.phone && <a className="btn primary sm" href={`tel:${t.phone.replace(/\s/g, '')}`}>📞 ហៅ</a>}
+          {t.kind === 'inquiry' && <button className="btn ghost sm" onClick={() => openCustomerForm(null, { nameKm: t.name, phone: t.phone, roomId: t.roomId, status: 'prospect' })}>＋ អតិថិជន</button>}
           {t.status !== 'progress' && t.status !== 'done' && <button className="btn ghost sm" onClick={() => call('PUT', `/api/tickets/${t.id}`, { status: 'progress' })}><Loader size={14} /> កំពុងធ្វើ</button>}
           {t.status !== 'done'
             ? <button className="btn primary sm" onClick={() => call('PUT', `/api/tickets/${t.id}`, { status: 'done' }, 'បានបញ្ចប់ — អតិថិជនទទួលដំណឹង')}><Check size={14} /> រួចរាល់</button>
@@ -93,7 +95,7 @@ function Thread({ t, onBack }) {
         <div ref={end} />
       </div>
       <form className="thread-reply" onSubmit={send}>
-        <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={tenant?.telegram?.chatId ? 'សរសេរចម្លើយ… (ផ្ញើតាម Telegram)' : 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram'}
+        <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={tenant?.telegram?.chatId ? 'សរសេរចម្លើយ… (ផ្ញើតាម Telegram)' : t.kind === 'inquiry' ? 'ហៅទូរស័ព្ទ ឬផ្ញើសារទៅលេខខាងលើ' : 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram'}
           disabled={!tenant?.telegram?.chatId} onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(e); }} />
         <button className="btn primary" disabled={busy || !text.trim()} aria-label="ផ្ញើ"><Send size={16} /></button>
       </form>

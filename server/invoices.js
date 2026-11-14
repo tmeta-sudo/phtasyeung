@@ -14,6 +14,52 @@ function addDays(ymd, days) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Cost of `qty` units with EDC-style price bands: [{ upTo: 50, rate: 0.15 }, { upTo: null, rate: 0.2 }].
+ * No bands -> flat `rate`. Returns { amount, parts } where parts explain the bill.
+ */
+export function tieredCost(qty, tiers, rate) {
+  const q = Math.max(0, +qty || 0);
+  const bands = (tiers || []).filter((t) => +t.rate >= 0).sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+  if (!bands.length) return { amount: round2(q * (+rate || 0)), parts: [] };
+  let left = q; let from = 0; let amount = 0; const parts = [];
+  for (const b of bands) {
+    if (left <= 0) break;
+    const cap = b.upTo == null || b.upTo === '' ? Infinity : +b.upTo;
+    const take = Math.min(left, cap - from);
+    if (take > 0) { amount += take * +b.rate; parts.push({ qty: round2(take), rate: +b.rate }); left -= take; }
+    from = cap;
+  }
+  if (left > 0) { const last = bands.at(-1); amount += left * +last.rate; parts.push({ qty: round2(left), rate: +last.rate }); }
+  return { amount: round2(amount), parts };
+}
+
+const tierNote = (parts) => (parts.length > 1 ? parts.map((p) => `${p.qty}x$${p.rate}`).join(' + ') : '');
+
+/** Money received so far on an invoice (all recorded payments). */
+export const paidSoFar = (inv) => {
+  // Invoices paid before payments were recorded one by one count as fully paid.
+  if (inv.status === 'paid' && !(inv.payments || []).length && inv.paidVia !== 'carried') return round2(inv.total);
+  return round2((inv.payments || []).reduce((s, p) => s + (+p.amount || 0), 0));
+};
+/** What the tenant still owes on it. */
+export const balanceOf = (inv) => (inv.status === 'paid' ? 0 : Math.max(0, round2(inv.total - paidSoFar(inv))));
+
+/**
+ * Record money received. Returns { full } — true when this payment settles the invoice
+ * (the caller then sends the receipt via confirmPayment).
+ */
+export function addPayment(inv, { amount, via = 'cash', note = '', at = now() }) {
+  const a = round2(amount);
+  if (!(a > 0)) throw Object.assign(new Error('ចំនួនទឹកប្រាក់មិនត្រឹមត្រូវ'), { status: 400 });
+  const due = balanceOf(inv);
+  if (a - due > 0.005) throw Object.assign(new Error(`លើសចំនួនដែលនៅជំពាក់ (${usd(due)})`), { status: 400 });
+  inv.payments = [...(inv.payments || []), { id: uid(), amount: a, via, note: String(note || '').slice(0, 200), at }];
+  if (inv.status === 'claimed') inv.status = 'unpaid';
+  save();
+  return { full: balanceOf(inv) <= 0.005 };
+}
+
 export function recalc(inv) {
   inv.items = inv.items.map((it) => ({ ...it, amount: round2(it.amount) }));
   inv.total = round2(inv.items.reduce((s, it) => s + it.amount, 0));
@@ -33,14 +79,42 @@ export function generateInvoices(month, actor = 'admin') {
     if (s.invoices.some((i) => i.roomId === room.id && i.month === month)) continue;
     const meter = s.meters.find((m) => m.roomId === room.id && m.month === month);
     const items = [{ key: 'rent', label: 'ថ្លៃជួលបន្ទប់', qty: 1, unit: 'ខែ', rate: +room.rent || 0, amount: +room.rent || 0 }];
-    if (meter) {
-      const w = Math.max(0, meter.water - meter.oldWater);
-      const e = Math.max(0, meter.electric - meter.oldElectric);
-      items.push({ key: 'water', label: 'ថ្លៃទឹក', qty: w, unit: 'm³', rate: +settings.waterRate, amount: w * settings.waterRate, from: meter.oldWater, to: meter.water });
-      items.push({ key: 'electric', label: 'ថ្លៃភ្លើង', qty: e, unit: 'kWh', rate: +settings.electricRate, amount: e * settings.electricRate, from: meter.oldElectric, to: meter.electric });
+    const tiers = settings.tiers || {};
+    const sharedOf = (kind) => (settings.sharedMeters || []).find((g) => g.kind === kind && (g.rooms || []).includes(room.id));
+    for (const [kind, label, unit, rateKey, oldKey] of [['water', 'ថ្លៃទឹក', 'm³', 'waterRate', 'oldWater'], ['electric', 'ថ្លៃភ្លើង', 'kWh', 'electricRate', 'oldElectric']]) {
+      const g = sharedOf(kind);
+      if (g) {
+        // One meter for several rooms: price the whole usage, then split it equally between the rented rooms.
+        const read = (s.sharedReadings || []).find((x) => x.groupId === g.id && x.month === month);
+        if (!read) continue;
+        const rented = g.rooms.filter((id) => tenantOfRoom(id));
+        const parts = Math.max(1, rented.length);
+        const used = Math.max(0, read.value - read.old);
+        const c = tieredCost(used, tiers[kind], settings[rateKey]);
+        const note = tierNote(c.parts);
+        items.push({ key: kind, label: `${label} (កុងទ័ររួម ${g.name} ÷ ${kmDigits(parts)})`, qty: round2(used / parts), unit, rate: note ? undefined : +settings[rateKey], amount: round2(c.amount / parts), from: read.old, to: read.value, shared: g.id, note });
+        continue;
+      }
+      if (!meter) continue;
+      const used = Math.max(0, meter[kind] - meter[oldKey]);
+      const c = tieredCost(used, tiers[kind], settings[rateKey]);
+      const note = tierNote(c.parts);
+      items.push({ key: kind, label, qty: used, unit, rate: note ? undefined : +settings[rateKey], amount: c.amount, from: meter[oldKey], to: meter[kind], note });
     }
     for (const extra of room.extras || []) {
       if (extra.label && +extra.amount) items.push({ key: 'extra', label: extra.label, qty: 1, unit: 'ខែ', rate: +extra.amount, amount: +extra.amount });
+    }
+    // Paid add-ons the tenant ticked (parking, Wi-Fi, …).
+    for (const x of tenant.addons || []) {
+      const a = (settings.addons || []).find((y) => y.id === x.id);
+      if (!a || !(x.qty > 0) || !(+a.price > 0)) continue;
+      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: round2(a.price * x.qty) });
+    }
+    // Unpaid balance of earlier months moves onto this invoice (one bill, one QR).
+    const carried = settings.carryOver ? s.invoices.filter((i) => i.tenantId === tenant.id && i.month < month && i.status !== 'paid' && balanceOf(i) > 0) : [];
+    for (const prev of carried) {
+      const b = balanceOf(prev);
+      items.push({ key: 'arrears', label: `នៅជំពាក់ ${monthKm(prev.month)}`, qty: 1, unit: '', rate: b, amount: b, ref: prev.id });
     }
     s.counters.invoice += 1;
     const inv = recalc({
@@ -62,6 +136,7 @@ export function generateInvoices(month, actor = 'admin') {
       createdBy: actor,
     });
     s.invoices.push(inv);
+    for (const prev of carried) Object.assign(prev, { status: 'paid', paidVia: 'carried', paidAt: now(), carriedTo: inv.id });
     created.push(inv);
   }
   if (created.length) {
@@ -78,12 +153,14 @@ export function generateInvoices(month, actor = 'admin') {
 export function khqrOf(inv) {
   if (!inv || inv.status === 'paid') return '';
   const k = db().settings.khqr || {};
-  const sig = `${k.accountId}|${k.type}|${k.merchantId}|${inv.total}`;
+  const amount = balanceOf(inv);
+  if (amount <= 0) return '';
+  const sig = `${k.accountId}|${k.type}|${k.merchantId}|${amount}`;
   if (inv.khqrStr && inv.khqrSig === sig && (!inv.khqrExp || inv.khqrExp > Date.now() + 86400000)) return inv.khqrStr;
   const exp = Math.max(new Date(inv.dueDate + 'T23:59:59+07:00').getTime() + 30 * 86400000, Date.now() + 30 * 86400000);
-  const qr = khqrFor(db().settings, { amount: inv.total, bill: inv.number, expiresAt: exp });
+  const qr = khqrFor(db().settings, { amount, bill: inv.number, expiresAt: exp });
   if (!qr) return '';
-  Object.assign(inv, { khqrStr: qr, khqrSig: sig, khqrExp: exp, khqrMd5: crypto.createHash('md5').update(qr).digest('hex') });
+  Object.assign(inv, { khqrStr: qr, khqrSig: sig, khqrExp: exp, khqrAmount: amount, khqrMd5: crypto.createHash('md5').update(qr).digest('hex') });
   save();
   return qr;
 }
@@ -93,10 +170,59 @@ export function isOverdue(inv, today = nowInCambodia().ymd) {
 }
 
 export function markPaid(inv, via = 'admin') {
+  // Record whatever is still owed as the final payment, so totals collected stay exact.
+  const rest = round2(inv.total - paidSoFar(inv));
+  if (rest > 0.005 && via !== 'carried') inv.payments = [...(inv.payments || []), { id: uid(), amount: rest, via, note: '', at: now() }];
   inv.status = 'paid';
   inv.paidAt = now();
   inv.paidVia = via;
+  // A paid move-in invoice means the deposit is now held for this tenant.
+  if (inv.kind === 'movein') {
+    const dep = round2(inv.items.filter((it) => it.key === 'deposit').reduce((s, it) => s + it.amount, 0));
+    const t = db().tenants.find((x) => x.id === inv.tenantId);
+    if (t && dep > 0) {
+      t.deposit = { held: dep, receivedAt: now().slice(0, 10), note: inv.number, source: 'movein' };
+      t.contract = { ...(t.contract || {}), deposit: t.contract?.deposit || dep };
+    }
+  }
   save();
+}
+
+/**
+ * Move-out settlement: deposit − deductions − unpaid balances (paid from the deposit, oldest first).
+ * Returns the settlement; a negative refund means the tenant still owes that much.
+ */
+export function moveOut(t, { date, deductions = [], useDeposit = true }) {
+  const s = db();
+  const deposit = round2(t.deposit?.held || 0);
+  const ded = deductions.map((d) => ({ label: String(d.label || '').trim().slice(0, 80), amount: round2(Math.abs(+d.amount || 0)) })).filter((d) => d.label && d.amount > 0).slice(0, 20);
+  const dedTotal = round2(ded.reduce((a, d) => a + d.amount, 0));
+  const open = s.invoices.filter((i) => i.tenantId === t.id && i.status !== 'paid' && balanceOf(i) > 0).sort((a, b) => a.month.localeCompare(b.month));
+  const unpaid = round2(open.reduce((a, i) => a + balanceOf(i), 0));
+  let available = useDeposit ? Math.max(0, round2(deposit - dedTotal)) : 0;
+  let applied = 0;
+  const settled = [];
+  for (const inv of open) {
+    if (available <= 0) break;
+    const take = Math.min(available, balanceOf(inv));
+    addPayment(inv, { amount: take, via: 'deposit', note: 'កាត់ពីប្រាក់កក់ពេលចាកចេញ', at: `${date}T12:00:00+07:00` });
+    if (balanceOf(inv) <= 0.005) markPaid(inv, 'deposit');
+    available = round2(available - take); applied = round2(applied + take); settled.push(inv.number);
+  }
+  const left = useDeposit ? round2(deposit - dedTotal - applied) : deposit;
+  const stillUnpaid = round2(unpaid - applied);
+  // Refund what is left of the deposit; anything not covered (extra deductions + unpaid bills) is still owed.
+  const refund = Math.max(0, left);
+  const owes = round2(Math.max(0, -left) + stillUnpaid);
+  const result = { date, deposit, deductions: ded, deductionsTotal: dedTotal, unpaid, applied, settled, refund, owes, useDeposit, at: now() };
+  t.moveOut = result;
+  t.status = 'former';
+  t.contract = { ...(t.contract || {}), end: date };
+  t.deposit = { ...(t.deposit || {}), held: 0, settledAt: date };
+  t.updatedAt = now();
+  logEvent('admin', `${t.nameKm || t.nameEn} បានចាកចេញពីបន្ទប់ ${t.roomId} · សងប្រាក់កក់ ${usd(Math.max(0, refund))}`, { tenantId: t.id });
+  save();
+  return result;
 }
 
 /** Plain-text (Telegram HTML) invoice summary in Khmer. Kept under the 1024-char caption limit. */
@@ -113,13 +239,14 @@ export function invoiceTelegramHtml(inv, { reminder = false, hasQr = false } = {
   lines.push('');
   for (const it of inv.items) {
     const detail = it.key === 'water' || it.key === 'electric'
-      ? ` (${kmDigits(it.from)}→${kmDigits(it.to)} = ${kmDigits(it.qty)} ${it.unit})`
+      ? ` (${kmDigits(it.from)}→${kmDigits(it.to)} = ${kmDigits(it.qty)} ${it.unit}${it.note ? `; ${it.note}` : ''})`
       : '';
     lines.push(`• ${esc(it.label)}${detail}: <b>${usd(it.amount)}</b>`);
   }
   lines.push('');
   lines.push(`💰 <b>សរុប: ${usd(inv.total)}</b>  (${khr(inv.totalKhr)})`);
   lines.push(`<i>${esc(usdInWords(inv.total))}</i>`);
+  if (paidSoFar(inv) > 0 && inv.status !== 'paid') lines.push(`✅ បានបង់: ${usd(paidSoFar(inv))} · <b>នៅសល់: ${usd(balanceOf(inv))}</b>`);
   lines.push(`📅 ថ្ងៃផុតកំណត់: ${esc(dateKm(inv.dueDate))}`);
   if (inv.status === 'claimed') lines.push('⏳ កំពុងរង់ចាំការបញ្ជាក់ពីម្ចាស់ផ្ទះ');
   if (inv.status === 'paid') lines.push('✅ <b>បានបង់រួចរាល់</b> — សូមអរគុណ!');
@@ -154,4 +281,36 @@ export function applyLateFees(today = nowInCambodia().ymd) {
   }
   if (changed.length) { save(); logEvent('auto', `បានបន្ថែមថ្លៃបង់យឺតលើ ${kmDigits(changed.length)} វិក្កយបត្រ`); }
   return changed;
+}
+
+/** Undo carry-over when the invoice that took the old balances is deleted. */
+export function reopenCarried(inv) {
+  for (const it of inv.items || []) {
+    if (it.key !== 'arrears' || !it.ref) continue;
+    const prev = db().invoices.find((i) => i.id === it.ref);
+    if (prev && prev.paidVia === 'carried') Object.assign(prev, { status: 'unpaid', paidVia: null, paidAt: null, carriedTo: null });
+  }
+}
+
+/** Copy expenses marked "every month" into the current month (once). Returns how many were added. */
+export function repeatMonthlyExpenses(ym = nowInCambodia().ym) {
+  const s = db();
+  const list = s.expenses || [];
+  const templates = new Map();
+  for (const e of list) if (e.repeat && e.date.slice(0, 7) < ym) {
+    const key = e.seriesId || e.id;
+    const prev = templates.get(key);
+    if (!prev || prev.date < e.date) templates.set(key, e);
+  }
+  let added = 0;
+  for (const [key, e] of templates) {
+    if (list.some((x) => (x.seriesId || x.id) === key && x.date.slice(0, 7) === ym)) continue;
+    const day = e.repeatDay || e.date.slice(8, 10); // keep the original day (31st stays 31st after February)
+    const [y, m] = ym.split('-').map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    list.push({ ...e, id: uid(), seriesId: key, repeatDay: day, date: `${ym}-${String(Math.min(+day, last)).padStart(2, '0')}`, createdAt: now(), auto: true });
+    added += 1;
+  }
+  if (added) { s.expenses = list; save(); logEvent('auto', `បានបន្ថែមចំណាយប្រចាំខែ ${kmDigits(added)}`); }
+  return added;
 }

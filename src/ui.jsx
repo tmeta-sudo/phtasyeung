@@ -101,8 +101,19 @@ export const STATUS = {
   claimed: ['រង់ចាំបញ្ជាក់', 'warn'],
   unpaid: ['មិនទាន់បង់', 'muted'],
   overdue: ['ហួសកំណត់', 'danger'],
+  partial: ['បង់ខ្លះ', 'warn'],
+  carried: ['ផ្ទេរទៅខែក្រោយ', 'muted'],
 };
-export const invStatus = (inv) => (inv.status !== 'paid' && inv.overdue ? 'overdue' : inv.status);
+export const invStatus = (inv) => {
+  if (inv.status === 'paid') return inv.paidVia === 'carried' ? 'carried' : 'paid';
+  if (inv.overdue) return 'overdue';
+  if (inv.status === 'unpaid' && inv.paid > 0) return 'partial';
+  return inv.status;
+};
+/** Amount billed for the month itself (not counting old balances carried onto it). */
+export const billedOf = (inv) => inv.total - (inv.items || []).filter((it) => it.key === 'arrears').reduce((s, it) => s + it.amount, 0);
+/** Money actually received for an invoice. */
+export const collectedOf = (inv) => inv.paid ?? (inv.status === 'paid' && inv.paidVia !== 'carried' ? inv.total : 0);
 export function StatusPill({ inv }) {
   const [label, tone] = STATUS[invStatus(inv)] || STATUS.unpaid;
   return <span className={'pill ' + tone}><i />{label}</span>;

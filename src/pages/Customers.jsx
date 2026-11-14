@@ -1,10 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { AddonsPicker, FeatureIcons, addonsTotal } from '../AddonsPicker.jsx';
 import {
   ScanText, Plus, Phone, Send, IdCard, Pencil, Trash2, ArrowLeft, Upload, Link2, RefreshCw, MapPin, HeartPulse, FileText, Unlink, ExternalLink, UserRound, Printer,
+  DoorOpen,
 } from 'lucide-react';
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR, AddressPicker, addressText, usePumi, useVillageName, StatusPill } from '../ui.jsx';
 import { uploadFile } from '../api.js';
 import ContractModal from './ContractModal.jsx';
+import MoveOutModal, { DepositCard } from './MoveOut.jsx';
 import { lazy, Suspense } from 'react';
 
 const IdScanner = lazy(() => import('../ocr/IdScanner.jsx'));
@@ -87,11 +90,12 @@ export function CustomerDetail({ id }) {
   const village = useVillageName(t?.address?.villageId);
   const [viewer, setViewer] = useState('');
   const [contract, setContract] = useState(() => new URLSearchParams(location.search).has('contract'));
+  const [moving, setMoving] = useState(false);
   if (!t) return <Empty icon={UserRound} title="រកមិនឃើញអតិថិជន"><button className="btn ghost" onClick={() => navigate('/customers')}>ត្រឡប់ក្រោយ</button></Empty>;
 
   const room = state.rooms.find((r) => r.id === t.roomId);
   const invoices = state.invoices.filter((i) => i.tenantId === t.id).sort((a, b) => b.month.localeCompare(a.month));
-  const owed = invoices.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0);
+  const owed = invoices.filter((i) => i.status !== 'paid').reduce((s, i) => s + (i.balance ?? i.total), 0);
   const portal = `${base}/p/${t.portalToken}`;
   const tgLink = state.bot.username ? `https://t.me/${state.bot.username}?start=${t.linkCode}` : '';
   const addr = [addressText({ ...t.address, communeId: '', districtId: '', provinceId: '' }), village, addressText({ ...t.address, detail: '' }, pumi)].filter(Boolean).join(', ');
@@ -110,6 +114,7 @@ export function CustomerDetail({ id }) {
         <div className="head-actions">
           <button className="btn ghost" onClick={() => print(<WelcomeSheet t={t} portal={portal} tgLink={tgLink} property={state.settings.propertyName} />)}><Printer size={16} /> បោះពុម្ពប័ណ្ណស្វាគមន៍</button>
           <button className="btn ghost danger" onClick={remove}><Trash2 size={16} /> លុប</button>
+          {t.status === 'active' && t.roomId && <button className="btn ghost" onClick={() => setMoving(true)}><DoorOpen size={16} /> ចាកចេញ</button>}
           <button className="btn ghost" onClick={() => setContract(true)}><FileText size={16} /> {t.lease?.required === false ? 'គ្មានកិច្ចសន្យា' : t.lease?.text ? 'កិច្ចសន្យា' : 'បង្កើតកិច្ចសន្យា'}</button>
           <button className="btn primary" onClick={() => openCustomerForm(t)}><Pencil size={16} /> កែប្រែព័ត៌មាន</button>
         </div>
@@ -189,9 +194,13 @@ export function CustomerDetail({ id }) {
                 <Info label="បន្ទប់" value={room ? `${room.id} · ${room.building} · ${$(room.rent)}/ខែ` : '—'} />
                 <Info label="រយៈពេល" value={t.contract?.start ? `${dateKm(t.contract.start, k)} — ${dateKm(t.contract.end, k) || '…'}` : ''} />
                 <Info label="ប្រាក់កក់" value={t.contract?.deposit ? $(t.contract.deposit) : ''} />
+                <Info label="សេវាបន្ថែម" value={(t.addons || []).map((x) => { const a = state.settings.addons?.find((y) => y.id === x.id); return a ? `${a.icon} ${a.label}${x.qty > 1 ? ` ×${n(x.qty)}` : ''}` : ''; }).filter(Boolean).join(' · ')} />
+                {room?.features?.length > 0 && <Info label="បរិក្ខារ" value={<FeatureIcons ids={room.features} labels />} wide />}
               </dl>
             </section>
           </div>
+
+          <DepositCard t={t} />
 
           {t.notes && <section className="card"><h3 className="sec-title">កំណត់ចំណាំ</h3><p className="notes">{t.notes}</p></section>}
 
@@ -210,6 +219,7 @@ export function CustomerDetail({ id }) {
           </section>
         </div>
       </div>
+      {moving && <MoveOutModal t={t} onClose={() => setMoving(false)} />}
       {contract && <ContractModal tenant={t} onClose={() => { setContract(false); if (location.search) history.replaceState({}, '', location.pathname); }} />}
       {viewer && <Modal title="មើលឯកសារ" onClose={() => setViewer('')} wide><img className="viewer-img" src={viewer} alt="" /></Modal>}
     </>
@@ -369,6 +379,18 @@ export function CustomerForm({ tenant, preset, onClose }) {
             <Field label="ប្រាក់កក់ ($)"><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
+        </fieldset>
+        <fieldset>
+          <legend>សេវាបន្ថែម (ធីកអ្វីដែលអតិថិជនប្រើ)</legend>
+          {(() => { const r = state.rooms.find((x) => x.id === f.roomId); return r?.features?.length ? <p className="small">បន្ទប់ {r.id}: <FeatureIcons ids={r.features} labels /></p> : null; })()}
+          <AddonsPicker catalog={state.settings.addons} value={f.addons || []} onChange={(v) => set('addons', v)} />
+          {(() => {
+            const r = state.rooms.find((x) => x.id === f.roomId);
+            const rent = +r?.rent || 0;
+            const extras = (r?.extras || []).reduce((a, x) => a + (+x.amount || 0), 0);
+            const add = addonsTotal(state.settings.addons, f.addons || []);
+            return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>${(rent + extras + add).toFixed(2)}</b><small>ថ្លៃជួល ${rent}{extras ? ` + ផ្សេងៗ $${extras}` : ''}{add ? ` + សេវា $${add}` : ''}</small></div> : null;
+          })()}
         </fieldset>
         {scan && (
           <Suspense fallback={null}>

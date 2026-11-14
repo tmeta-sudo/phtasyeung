@@ -5,6 +5,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { api } from './api.js';
+import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
 import { matchesQuery, greetingKm, num } from '../shared/khmer.js';
 import Home from './pages/Home.jsx';
@@ -21,6 +22,8 @@ import Super from './pages/Super.jsx';
 import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Reports from './pages/Reports.jsx';
+import Help from './help/Help.jsx';
+import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
@@ -43,7 +46,7 @@ const ROLE_PAGES = {
   manager: ['/', '/customers', '/rooms', '/invoices', '/meters', '/inbox', '/qr', '/reports'],
   staff: ['/meters', '/inbox', '/rooms'],
 };
-const allowedPage = (role, p) => !ROLE_PAGES[role] || ROLE_PAGES[role].includes(p) || ['/settings', '/tasks', '/news', '/feedback', '/super'].includes(p);
+const allowedPage = (role, p) => !ROLE_PAGES[role] || ROLE_PAGES[role].includes(p) || ['/settings', '/tasks', '/news', '/feedback', '/super', '/help'].includes(p);
 
 const Landing = lazy(() => import('./landing/Landing.jsx'));
 const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1'); else localStorage.removeItem('py-authed'); } catch { /* ignore */ } };
@@ -51,7 +54,11 @@ const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1
 export default function App() {
   const [auth, setAuth] = useState(null);
   const path = usePath();
-  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then((a) => { setAuthHint(a.authed); setAuth(a); }).catch(() => setAuth({ error: true })), []);
+  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then((a) => { setAuthHint(a.authed); setAuth(a); }).catch((e) => {
+    // No internet but signed in before on this phone: open the saved copy (meter reading still works).
+    let hint = false; try { hint = localStorage.getItem('py-authed') === '1'; } catch { /* ignore */ }
+    setAuth(isNetworkError(e) && hint && cachedState() ? { authed: true, offline: true } : { error: true });
+  }), []);
   useEffect(() => { refreshAuth(); }, [refreshAuth]);
   // After signing in from /login or /signup, land on the dashboard.
   useEffect(() => { if (auth?.authed && /^\/(login|signup)$/.test(path)) navigate('/', { replace: true }); }, [auth, path]);
@@ -206,7 +213,26 @@ function Admin({ onLogout }) {
     toastTimer.current = setTimeout(() => setToast(null), error ? 5000 : 3000);
   }, []);
 
-  const load = useCallback(() => api('GET', '/api/state').then(setState).catch((e) => (e.status === 401 ? onLogout() : notify(e.message, true))), [notify, onLogout]);
+  const load = useCallback(async () => {
+    try {
+      // Readings saved while offline go first, so the fresh state already includes them.
+      const q = await flushQueue(api);
+      if (q.sent) notify(`📶 បានផ្ញើលេខកុងទ័រ ${q.sent} ដែលកត់ពេលគ្មានអ៊ីនធឺណិត`);
+      for (const f of q.failed) notify(`${f.roomId}: ${f.error}`, true);
+      const st = await api('GET', '/api/state');
+      cacheState(st);
+      setState(st);
+    } catch (e) {
+      if (e.status === 401) return onLogout();
+      if (isNetworkError(e) && cachedState()) return setState((cur) => (cur && !cur.offline ? { ...cur, offline: true } : { ...cachedState(), offline: true }));
+      notify(e.message, true);
+    }
+  }, [notify, onLogout]);
+  useEffect(() => {
+    const back = () => load();
+    window.addEventListener('online', back);
+    return () => window.removeEventListener('online', back);
+  }, [load]);
   useEffect(() => {
     load();
     const t = setInterval(() => document.visibilityState === 'visible' && load(), 20000);
@@ -269,7 +295,7 @@ function Admin({ onLogout }) {
   const unreadMsgs = (state.tickets || []).reduce((a, t) => a + (t.unread || 0), 0);
   const badges = { '/invoices': claimed, '/customers': missingId, '/inbox': unreadMsgs };
   const section = '/' + (path.split('/')[1] || '');
-  const EXTRA = { '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
+  const EXTRA = { '/help': 'ជំនួយ', '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
   const shown = state.account.role === 'staff' && (section === '/' || !allowedPage('staff', section)) ? '/meters' : section;
   const current = NAV.find(([p]) => p === shown) || (EXTRA[section] ? [section, EXTRA[section]] : NAV[0]);
 
@@ -277,7 +303,8 @@ function Admin({ onLogout }) {
   const nav = NAV.filter(([p]) => allowedPage(role, p));
   let page;
   const customerMatch = path.match(/^\/customers\/(.+)$/);
-  if (!allowedPage(role, section) || (role === 'staff' && section === '/')) page = role === 'staff' ? <Meters /> : <Home />;
+  if (state.offline) page = <Meters />; // offline: the saved copy only has what meter reading needs
+  else if (!allowedPage(role, section) || (role === 'staff' && section === '/')) page = role === 'staff' ? <Meters /> : <Home />;
   else if (customerMatch) page = <CustomerDetail id={decodeURIComponent(customerMatch[1])} />;
   else if (section === '/customers') page = <Customers />;
   else if (section === '/rooms') page = <Rooms />;
@@ -286,6 +313,7 @@ function Admin({ onLogout }) {
   else if (section === '/invoices') page = <Invoices />;
   else if (section === '/meters') page = <Meters />;
   else if (section === '/reports') page = <Reports />;
+  else if (section === '/help') page = <Help />;
   else if (section === '/qr') page = <QrCenter />;
   else if (section === '/telegram') page = <TelegramPage />;
   else if (section === '/settings') page = <SettingsPage />;
@@ -313,12 +341,14 @@ function Admin({ onLogout }) {
             <button className={'nav-extra ' + (section === '/tasks' ? 'active' : '')} onClick={() => navigate('/tasks')}><Wrench size={16} /> <span>ការងារ</span></button>
             <button className={'nav-extra ' + (section === '/settings' ? 'active' : '')} onClick={() => navigate('/settings')}><Settings size={16} /> <span>ការកំណត់</span></button>
             <button className={'nav-extra ' + (section === '/feedback' ? 'active' : '')} onClick={() => navigate('/feedback')}><Lightbulb size={16} /> <span>មតិ និងសំណើ</span></button>
+            <button className={'nav-extra ' + (section === '/help' ? 'active' : '')} onClick={() => navigate('/help')}><span>❓</span> <span>ជំនួយ / ការណែនាំ</span></button>
             <button className={'nav-extra ' + (section === '/news' ? 'active' : '')} onClick={() => navigate('/news')}><Sparkles size={16} /> <span>មានអ្វីថ្មី</span></button>
             {state.account.super && <button className={'nav-extra ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')}><Shield size={16} /> <span>អ្នកគ្រប់គ្រងប្រព័ន្ធ</span></button>}
           </nav>
           {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
           <div className="topbar-right">
             <GlobalSearch />
+            <button className="icon-btn" onClick={() => navigate(PAGE_GUIDE[section] ? `/help?g=${PAGE_GUIDE[section]}` : '/help')} aria-label="ជំនួយ" title="ជំនួយសម្រាប់ទំព័រនេះ">❓</button>
             <button className="icon-btn hide-m" onClick={ctx.openScanner} aria-label="ស្កេន QR" title="ស្កេន QR"><ScanLine size={18} /></button>
             <span className="hide-m"><NewsButton path={path} /></span>
             {state.account.super && <button className={'hide-m super-pill ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')} title="អ្នកគ្រប់គ្រងប្រព័ន្ធ"><Shield size={16} /> <span>Super</span></button>}
