@@ -1298,3 +1298,15 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .inv-row.picking .tg-state, .inv-row.picking .pill { display: none; }
 .inv-row.picking > span:nth-child(2) small { display: none; }
 .room-tag.tag-on { background: var(--blue, #1f5bff); color: #fff; }
+
+.form-twin { margin: 6px 0 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--blue, #1f5bff) 8%, transparent); font-size: 13.5px; line-height: 1.6; }
+.form-twin.owes { background: color-mix(in srgb, #e5484d 10%, transparent); }
+.form-twin a { font-weight: 700; }
+
+.photo-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cover-btn { border: 0; cursor: pointer; font: inherit; display: inline-flex; gap: 6px; align-items: center; }
+.cover-btn .spinner.sm { width: 14px; height: 14px; }
+
+.cover-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: center; margin: 4px 0 12px; }
+.cover-row > span:nth-child(2) { display: grid; }
+.cover-thumb { width: 72px; height: 52px; border-radius: 12px; background: #9aa7bd center / cover no-repeat; }

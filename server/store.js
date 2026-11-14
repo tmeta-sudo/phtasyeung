@@ -25,6 +25,10 @@ ALTER TABLE files ADD COLUMN IF NOT EXISTS ref text NOT NULL DEFAULT '';
 ALTER TABLE files ALTER COLUMN data DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS rate_limits (key text PRIMARY KEY, window_start timestamptz NOT NULL, count int NOT NULL);
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS suspended boolean NOT NULL DEFAULT false;
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS listing_hidden boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS listing_reports (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, reason text NOT NULL,
+  note text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), resolved boolean NOT NULL DEFAULT false);
+CREATE INDEX IF NOT EXISTS listing_reports_org ON listing_reports(org_id);
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS last_active timestamptz;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS seen_news_at timestamptz;
 CREATE TABLE IF NOT EXISTS announcements (id text PRIMARY KEY, kind text NOT NULL DEFAULT 'feature', title text NOT NULL, body text NOT NULL DEFAULT '',

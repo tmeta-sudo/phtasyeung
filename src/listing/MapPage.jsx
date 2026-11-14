@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { LocateFixed, SlidersHorizontal, List, Map as MapIcon, X, Home } from 'lucide-react';
+import { LocateFixed, SlidersHorizontal, List, Map as MapIcon, X, Home, Search, Share2 } from 'lucide-react';
 import { api } from '../api.js';
 import { ROOM_FEATURES } from '../../shared/features.js';
 import { fmtMoney } from '../../shared/khmer.js';
@@ -15,6 +15,27 @@ const priceOf = (p, r) => fmtMoney(r.rent, p.currency, false).replace('.00', '')
 const usd = (p, r) => r.rent * p.usdRate;
 // Pins stay short: riel is said the Khmer way, in ម៉ឺន (10,000 ៛), e.g. 30ម៉ឺន៛.
 const pinPrice = (p, r) => (p.currency === 'KHR' && r.rent >= 10000 ? `${+(r.rent / 10000).toFixed(1)}ម៉ឺន៛` : priceOf(p, r));
+
+// Filters and the map position live in the address (?max=100&f=ac,wifi&c=11.55,104.92,15),
+// so a search can be shared on Facebook or Telegram and opens exactly the same view.
+function readUrl() {
+  const u = new URLSearchParams(location.search);
+  const c = (u.get('c') || '').split(',').map(Number);
+  return {
+    max: PRICES.some(([v]) => v === +u.get('max')) ? +u.get('max') : 0,
+    feats: (u.get('f') || '').split(',').filter((id) => QUICK.includes(id)),
+    center: c.length === 3 && c.every(Number.isFinite) ? c : null,
+  };
+}
+const START = readUrl();
+
+/** Find a place in Cambodia by name (Khmer or Latin), using OpenStreetMap's Nominatim. */
+async function findPlace(q) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=kh&limit=1&accept-language=km,en&q=${encodeURIComponent(q)}`;
+  const r = await fetch(url, { headers: { accept: 'application/json' } });
+  if (!r.ok) throw new Error('search');
+  return (await r.json())[0] || null;
+}
 
 /** Group pins that would overlap on screen at this zoom (simple grid clustering, no extra library). */
 function cluster(map, places) {
@@ -34,8 +55,11 @@ export default function MapPage() {
   const box = useRef(); const map = useRef(); const layer = useRef();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [maxUsd, setMaxUsd] = useState(0);
-  const [feats, setFeats] = useState([]);
+  const [maxUsd, setMaxUsd] = useState(START.max);
+  const [feats, setFeats] = useState(START.feats);
+  const [q, setQ] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [shared, setShared] = useState('');
   const [sel, setSel] = useState(null);
   const [view, setView] = useState(0); // bumps when the map moves
   const [listOpen, setListOpen] = useState(false);
@@ -44,7 +68,7 @@ export default function MapPage() {
   useEffect(() => {
     document.title = 'ផែនទីបន្ទប់ជួលទំនេរ · ផ្ទះយើង';
     api('GET', '/api/map').then(setData).catch((e) => setError(e.message));
-    const m = L.map(box.current, { zoomControl: false, attributionControl: true }).setView(PHNOM_PENH, 12);
+    const m = L.map(box.current, { zoomControl: false, attributionControl: true }).setView(START.center ? START.center.slice(0, 2) : PHNOM_PENH, START.center ? START.center[2] : 12);
     L.control.zoom({ position: 'bottomright' }).addTo(m);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
     layer.current = L.layerGroup().addTo(m);
@@ -62,7 +86,7 @@ export default function MapPage() {
   })).filter((p) => p.rooms.length), [data, maxUsd, feats]);
 
   // Fit the map to the results the first time they arrive.
-  const fitted = useRef(false);
+  const fitted = useRef(!!START.center); // a shared link keeps its own view
   useEffect(() => {
     if (fitted.current || !places.length || !map.current) return;
     fitted.current = true;
@@ -97,6 +121,39 @@ export default function MapPage() {
   }, [places, view]); // eslint-disable-line react-hooks/exhaustive-deps
   const roomsVisible = visible.reduce((a, p) => a + p.rooms.length, 0);
 
+  // Keep the address in step with what is on screen.
+  useEffect(() => {
+    const m = map.current; if (!m) return;
+    const c = m.getCenter();
+    const u = new URLSearchParams();
+    if (maxUsd) u.set('max', maxUsd);
+    if (feats.length) u.set('f', feats.join(','));
+    if (fitted.current) u.set('c', `${c.lat.toFixed(4)},${c.lng.toFixed(4)},${m.getZoom()}`);
+    history.replaceState(null, '', '/map' + (u.toString() ? '?' + u : ''));
+  }, [maxUsd, feats, view]);
+
+  async function search(e) {
+    e.preventDefault();
+    if (!q.trim()) return;
+    setSearching(true); setError('');
+    try {
+      const hit = await findPlace(q.trim());
+      if (!hit) { setShared('រកមិនឃើញកន្លែងនេះ — សាកល្បងឈ្មោះសង្កាត់ ឬខណ្ឌ'); return; }
+      fitted.current = true;
+      const b = hit.boundingbox?.map(Number);
+      if (b?.length === 4) map.current.fitBounds([[b[0], b[2]], [b[1], b[3]]], { maxZoom: 16 });
+      else map.current.setView([+hit.lat, +hit.lon], 15);
+      setSel(null);
+    } catch { setShared('មិនអាចស្វែងរកបានពេលនេះ'); } finally { setSearching(false); }
+  }
+  async function share() {
+    const url = location.href;
+    const text = 'បន្ទប់ជួលទំនេរនៅលើផែនទី · ផ្ទះយើង';
+    if (navigator.share) { try { await navigator.share({ title: text, url }); return; } catch (err) { if (err.name === 'AbortError') return; } }
+    try { await navigator.clipboard.writeText(url); setShared('បានចម្លងតំណ ✅'); } catch { setShared(url); }
+  }
+  useEffect(() => { if (!shared) return undefined; const t = setTimeout(() => setShared(''), 2600); return () => clearTimeout(t); }, [shared]);
+
   function nearMe() {
     if (!navigator.geolocation) return;
     setLocating(true);
@@ -108,6 +165,11 @@ export default function MapPage() {
     <div className="mpg">
       <header className="mpg-top">
         <a href="/" className="mpg-brand" aria-label="ផ្ទះយើង"><img src="/icons/icon-192.png" alt="" width="34" height="34" /><span><b>បន្ទប់ជួលទំនេរ</b><small>{data ? `${roomsVisible} បន្ទប់នៅលើផែនទីនេះ` : 'កំពុងផ្ទុក…'}</small></span></a>
+        <form className="mpg-search" onSubmit={search} role="search">
+          <Search size={16} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ស្វែងរកតំបន់ ឧ. ទួលគោក, សែនសុខ" aria-label="ស្វែងរកតំបន់" enterKeyHint="search" />
+          {searching ? <span className="spinner sm" /> : <button type="button" className="mpg-share" onClick={share} aria-label="ចែករំលែក"><Share2 size={16} /></button>}
+        </form>
         <div className="mpg-filters">
           <span className="mpg-chip-ico"><SlidersHorizontal size={15} /></span>
           {PRICES.map(([v, label]) => <button key={v} className={'mpg-chip ' + (maxUsd === v ? 'on' : '')} onClick={() => setMaxUsd(v)}>{label}</button>)}
@@ -118,6 +180,7 @@ export default function MapPage() {
       <button className="mpg-fab locate" onClick={nearMe} aria-label="នៅជិតខ្ញុំ"><LocateFixed size={20} className={locating ? 'spin' : ''} /> នៅជិតខ្ញុំ</button>
       <button className="mpg-fab list" onClick={() => setListOpen((v) => !v)}>{listOpen ? <><MapIcon size={18} /> ផែនទី</> : <><List size={18} /> បញ្ជី ({visible.length})</>}</button>
       {error && <div className="mpg-msg">{error}</div>}
+      {shared && <div className="mpg-toast">{shared}</div>}
       {data && !places.length && <div className="mpg-msg">{data.places.length ? 'គ្មានបន្ទប់ត្រូវនឹងតម្រង — សូមដកតម្រងខ្លះ' : 'មិនទាន់មានបន្ទប់ទំនេរនៅលើផែនទីទេ'}</div>}
 
       {sel && !listOpen && (

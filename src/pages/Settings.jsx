@@ -8,6 +8,7 @@ import { PLACEHOLDERS } from '../contract.js';
 import StorageCard from '../settings/StorageCard.jsx';
 import BackupCard from '../settings/BackupCard.jsx';
 import NotifyCard from '../settings/NotifyCard.jsx';
+import { CoverButton } from '../settings/CoverButton.jsx';
 import UtilityCard from '../settings/UtilityCard.jsx';
 import AddonsCard from '../settings/AddonsCard.jsx';
 import ListingCard from '../settings/ListingCard.jsx';
@@ -37,14 +38,18 @@ export default function SettingsPage() {
       <div className="page-head"><h1>ការកំណត់</h1></div>
       <div className="settings-grid">
         {isOwner && (<>
-        <form className="card" onSubmit={(e) => save(e, { propertyName: f.propertyName, propertyNameEn: f.propertyNameEn, address: f.address, phone: f.phone, coverUrl: f.coverUrl })}>
+        <form className="card" onSubmit={(e) => save(e, { propertyName: f.propertyName, propertyNameEn: f.propertyNameEn, address: f.address, phone: f.phone })}>
           <h3 className="sec-title"><Building2 size={17} /> អចលនទ្រព្យ</h3>
           <div className="form-grid">
             <Field label="ឈ្មោះ (ខ្មែរ)"><input value={f.propertyName} onChange={(e) => set('propertyName', e.target.value)} /></Field>
             <Field label="ឈ្មោះ (ឡាតាំង)" hint="ប្រើក្នុង KHQR"><input value={f.propertyNameEn} onChange={(e) => set('propertyNameEn', e.target.value)} /></Field>
             <Field label="អាសយដ្ឋាន" wide><input value={f.address} onChange={(e) => set('address', e.target.value)} /></Field>
             <Field label="ទូរស័ព្ទ"><input value={f.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
-            <Field label="តំណរូបភាពគម្រប (https://…)"><input value={f.coverUrl} onChange={(e) => set('coverUrl', e.target.value)} /></Field>
+          </div>
+          <div className="cover-row">
+            <span className="cover-thumb" style={state.settings.coverUrl ? { backgroundImage: `url("${state.settings.coverUrl}")` } : undefined} />
+            <span><b>រូបគម្រប</b><small className="muted">បង្ហាញនៅទំព័រដើម ទំព័រអតិថិជន និងទំព័របន្ទប់ទំនេរ</small></span>
+            <CoverButton>📷 ជ្រើសរូប</CoverButton>
           </div>
           <button className="btn primary">រក្សាទុក</button>
         </form>

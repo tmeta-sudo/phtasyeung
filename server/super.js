@@ -281,6 +281,31 @@ export function superRoutes(app) {
     res.json({ items: await listErrors() });
   });
 
+  // Reports about public listings / the map.
+  app.get('/api/super/reports', requireSuper, async (req, res) => {
+    const { rows } = await q(`SELECT o.id, o.doc->'settings'->>'propertyName' AS name, o.doc->'settings'->'listing'->>'slug' AS slug,
+        o.listing_hidden AS hidden, count(*)::int AS count, max(r.created_at) AS last_at,
+        json_agg(json_build_object('reason', r.reason, 'note', r.note, 'at', r.created_at) ORDER BY r.created_at DESC) AS items
+      FROM listing_reports r JOIN orgs o ON o.id = r.org_id
+      WHERE ${req.query.resolved === '1' ? 'r.resolved' : 'NOT r.resolved'}
+      GROUP BY o.id ORDER BY max(r.created_at) DESC LIMIT 200`);
+    res.json({ items: rows.map((r) => ({ ...r, items: (typeof r.items === 'string' ? JSON.parse(r.items) : r.items).slice(0, 20) })) });
+  });
+  app.post('/api/super/reports/:orgId/hide', requireSuper, async (req, res) => {
+    const hidden = !!req.body?.hidden;
+    const { rows } = await q('UPDATE orgs SET listing_hidden = $2 WHERE id = $1 RETURNING id', [req.params.orgId, hidden]);
+    if (!rows.length) fail('រកមិនឃើញ', 404);
+    await q('UPDATE listing_reports SET resolved = true WHERE org_id = $1', [req.params.orgId]);
+    await audit(req, hidden ? 'hide-listing' : 'show-listing', req.params.orgId, str(req.body?.reason, 300));
+    if (hidden) await notifyOrgOwners(req.params.orgId, '⚠️ <b>ទំព័របន្ទប់ទំនេររបស់អ្នកត្រូវបានលាក់ពីសាធារណៈ</b>\nមានអ្នករាយការណ៍ថាព័ត៌មានមិនត្រឹមត្រូវ។ សូមពិនិត្យតម្លៃ រូបភាព និងបន្ទប់ទំនេរ ហើយទាក់ទងក្រុមការងារផ្ទះយើង (មតិ និងសំណើ)។').catch(() => {});
+    res.json({ ok: true });
+  });
+  app.post('/api/super/reports/:orgId/dismiss', requireSuper, async (req, res) => {
+    await q('UPDATE listing_reports SET resolved = true WHERE org_id = $1', [req.params.orgId]);
+    await audit(req, 'dismiss-reports', req.params.orgId);
+    res.json({ ok: true });
+  });
+
   app.get('/api/super/audit', requireSuper, async (req, res) => {
     res.json({ items: (await q('SELECT * FROM admin_audit ORDER BY at DESC LIMIT 200')).rows });
   });

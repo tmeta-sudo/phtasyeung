@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { billedOf, collectedOf } from '../ui.jsx';
-import { ChevronRight, CalendarDays, CheckCircle2, Sparkles, Send, ScanLine, FileText, Bot } from 'lucide-react';
+import { ChevronRight, CalendarDays, CheckCircle2, Sparkles, Send, ScanLine, FileText, Bot, Camera } from 'lucide-react';
+import { CoverButton } from '../settings/CoverButton.jsx';
 import { useApp, useFmt, navigate, Avatar, tenantPhoto } from '../ui.jsx';
 import { greetingKm, dateKm, nowInCambodia, lunarKm, monthKm, holidaysBetween, MONTHS_KM, toRiel, khr, fmtAlt } from '../../shared/khmer.js';
 
@@ -111,7 +112,10 @@ export default function Home() {
       <div className="dash">
         {/* Property */}
         <section className="card photo-card" style={{ backgroundImage: settings.coverUrl ? `url("${settings.coverUrl}")` : undefined }}>
-          <span className="chip white"><i className="dot-blue" /> ជួលបាន {n(occPct)}%</span>
+          <div className="photo-top">
+            <span className="chip white"><i className="dot-blue" /> ជួលបាន {n(occPct)}%</span>
+            {(state.account.role || 'owner') === 'owner' && <CoverButton className="chip glass cover-btn"><Camera size={14} /> ប្តូររូប</CoverButton>}
+          </div>
           <div className="photo-bottom">
             <span className="chip glass"><Bot size={14} /> {state.bot.running ? `@${state.bot.username} កំពុងតាមដាន` : 'Telegram bot មិនទាន់ដំណើរការ'}</span>
             <button className="glass-card" onClick={() => navigate('/rooms')}>
