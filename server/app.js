@@ -189,6 +189,8 @@ function cleanProfile(input, existing = {}, { admin }) {
       roomId: str(p.roomId, 30),
       contract: { start: date(p.contract?.start), end: date(p.contract?.end), deposit: money(p.contract?.deposit) },
       addons: cleanAddons(p.addons ?? existing.addons),
+      // Payday: the day of the month this tenant pays (and an optional second day to pay in two halves).
+      pay: (() => { const src = p.pay ?? existing.pay ?? {}; const d = (v) => { const x = Math.round(+v || 0); return x >= 1 && x <= 31 ? x : null; }; const day = d(src.day); return { day, day2: day ? d(src.day2) : null }; })(),
     });
   }
   return { ...existing, ...out };
@@ -629,6 +631,7 @@ app.put('/api/settings', ...owner(async (req) => {
     convertCurrency(b.currency);
   }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (b.holidays) s.holidays = { ...(s.holidays || {}), pauseReminders: b.holidays.pauseReminders !== false, shiftDue: b.holidays.shiftDue !== false, greet: !!b.holidays.greet };
   if (b.listing) {
     const slug = String(b.listing.slug ?? s.listing?.slug ?? '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
     if (b.listing.enabled && slug.length < 3) fail('សូមដាក់ឈ្មោះតំណ (អក្សរឡាតាំង យ៉ាងហោចណាស់ ៣ តួ)');

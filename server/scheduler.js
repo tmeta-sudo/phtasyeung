@@ -7,8 +7,9 @@ import { googleUpload } from './blob.js';
 import { sendBackupToTelegram } from './backup.js';
 import { checkAllUnpaid } from './bakong.js';
 import { orgId } from './db.js';
-import { generateInvoices, isOverdue, applyLateFees, repeatMonthlyExpenses } from './invoices.js';
-import { sendInvoices, notifyAdmins, botStatus } from './telegram.js';
+import { generateInvoices, isOverdue, applyLateFees, repeatMonthlyExpenses, paidSoFar } from './invoices.js';
+import { isHoliday, holidayOn, addDays } from './due.js';
+import { sendInvoices, notifyAdmins, notifyTenant, botStatus } from './telegram.js';
 import { nowInCambodia, monthKm, kmDigits } from '../shared/khmer.js';
 import { fm as usd } from './db.js';
 
@@ -38,8 +39,16 @@ export async function runReminders() {
   const auto = s.settings.auto;
   const t = nowInCambodia();
   const every = Math.max(1, +auto.reminderDays || 3);
+  // No reminders on Khmer public holidays (Pchum Ben, Khmer New Year…): try again the next day.
+  if (s.settings.holidays?.pauseReminders !== false && isHoliday(t.ymd)) return { ok: 0, failed: 0, paused: true };
   const due = s.invoices.filter((i) => {
     if (i.status !== 'unpaid' || !i.sentAt) return false;
+    // A tenant with a payday is reminded from payday on, not before (second half: from its own date).
+    if (i.payday) {
+      const next = i.dueDate2 && paidSoFar(i) >= i.total / 2 - 0.005 ? i.dueDate2 : i.dueDate;
+      if (t.ymd < next) return false;
+      if (!i.reminders.some((r) => r.slice(0, 10) >= next)) return true;
+    }
     const last = i.reminders.at(-1) || i.sentAt;
     const days = (Date.now() - new Date(last).getTime()) / 86400000;
     return days >= every - 0.1 || (isOverdue(i, t.ymd) && i.reminders.length === 0);
@@ -83,6 +92,7 @@ async function dailyForOrg({ respectHour }) {
   await checkAllUnpaid({ limit: 60 }).catch((e) => console.error('[bakong]', e.message));
   applyLateFees();
   repeatMonthlyExpenses();
+  await holidayGreeting().catch((e) => console.error('[greeting]', e.message));
   if (!auto.enabled) return null;
   const t = nowInCambodia();
   if (respectHour && t.hour < +auto.hour) return null;
@@ -110,4 +120,33 @@ export async function runDailyAll({ respectHour = false, concurrency = 4 } = {})
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
   return results;
+}
+
+const GREETINGS = {
+  'Khmer New Year': '🎉 <b>សួស្តីឆ្នាំថ្មី ប្រពៃណីខ្មែរ!</b>\nសូមជូនពរឲ្យលោកអ្នក និងក្រុមគ្រួសារ ជួបតែសេចក្តីសុខ សុភមង្គល និងសុខភាពល្អ។ 🙏',
+  'Pchum Ben': '🙏 <b>រីករាយពិធីបុណ្យភ្ជុំបិណ្ឌ</b>\nសូមជូនពរឲ្យលោកអ្នក និងក្រុមគ្រួសារ ធ្វើដំណើរប្រកបដោយសុវត្ថិភាព និងជួបជុំគ្រួសារដោយក្តីសុខ។',
+  'Water Festival': '🚣 <b>រីករាយព្រះរាជពិធីបុណ្យអុំទូក</b>\nសូមជូនពរឲ្យលោកអ្នកសប្បាយរីករាយ និងមានសុវត្ថិភាព។',
+};
+const greetingKey = (h) => (/ចូលឆ្នាំខ្មែរ/.test(h.nameKm) ? 'Khmer New Year' : /ភ្ជុំបិណ្ឌ/.test(h.nameKm) ? 'Pchum Ben' : /អុំទូក/.test(h.nameKm) ? 'Water Festival' : '');
+
+/** On the first day of Khmer New Year, Pchum Ben and the Water Festival, greet tenants once (if turned on). */
+export async function holidayGreeting(today = nowInCambodia().ymd) {
+  const s = db();
+  const h = s.settings.holidays || {};
+  if (!h.greet) return 0;
+  const hol = holidayOn(today);
+  const key = hol && greetingKey(hol);
+  if (!key) return 0;
+  const prev = holidayOn(addDays(today, -1));
+  if (prev && greetingKey(prev) === key) return 0; // only the first day
+  if (h.lastGreet === `${key}:${today.slice(0, 4)}`) return 0;
+  s.settings.holidays = { ...h, lastGreet: `${key}:${today.slice(0, 4)}` };
+  save();
+  let n = 0;
+  for (const t of s.tenants.filter((x) => x.status === 'active' && x.telegram?.chatId)) {
+    await notifyTenant(t, `${GREETINGS[key]}\n\n— ${s.settings.propertyName}`);
+    n += 1;
+  }
+  if (n) logEvent('auto', `បានផ្ញើពរជ័យបុណ្យទៅអតិថិជន ${kmDigits(n)} នាក់`);
+  return n;
 }

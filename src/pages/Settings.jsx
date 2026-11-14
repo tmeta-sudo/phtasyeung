@@ -82,6 +82,13 @@ export default function SettingsPage() {
         <ListingCard />
         <AddonsCard />
         <UtilityCard />
+        <div className="card">
+          <h3 className="sec-title">🪷 ថ្ងៃបុណ្យខ្មែរ</h3>
+          {[['shiftDue', 'រំកិលថ្ងៃផុតកំណត់ចេញពីថ្ងៃបុណ្យ', 'បើថ្ងៃបង់ចំថ្ងៃចូលឆ្នាំ ភ្ជុំបិណ្ឌ… ប្តូរទៅថ្ងៃធ្វើការបន្ទាប់'], ['pauseReminders', 'មិនរំលឹកនៅថ្ងៃបុណ្យ', 'ការរំលឹកបង់ប្រាក់ផ្អាក ហើយបន្តនៅថ្ងៃបន្ទាប់'], ['greet', 'ផ្ញើពរជ័យទៅអតិថិជន', 'ចូលឆ្នាំខ្មែរ ភ្ជុំបិណ្ឌ និងអុំទូក — ម្តងក្នុងមួយបុណ្យ តាម Telegram']].map(([key, label, hint]) => (
+            <label key={key} className="switch-row"><input type="checkbox" checked={key === 'greet' ? !!state.settings.holidays?.greet : state.settings.holidays?.[key] !== false}
+              onChange={(e) => call('PUT', '/api/settings', { holidays: { ...state.settings.holidays, [key]: e.target.checked } })} /><span><b>{label}</b><small>{hint}</small></span></label>
+          ))}
+        </div>
         <form className="card" onSubmit={(e) => save(e, { lateFee: f.lateFee, carryOver: !!f.carryOver })}>
           <h3 className="sec-title"><AlarmClock size={17} /> ការបង់យឺត និងប្រាក់នៅជំពាក់</h3>
           <label className="switch-row"><input type="checkbox" checked={!!f.carryOver} onChange={(e) => set('carryOver', e.target.checked)} />

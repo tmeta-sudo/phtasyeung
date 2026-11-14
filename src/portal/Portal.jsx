@@ -185,7 +185,7 @@ export default function Portal({ token }) {
             </div>
             <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={{ ...data.property, addressText: data.location?.addressText, location: data.location }} khmer={k} design={data.invoiceDesign} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
             <div className="pt-bottom-bar">
-              <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>ផុត {dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}</small></div>
+              <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>{pay.dueDate2 ? `ពាក់កណ្តាល ${dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '').replace(/ ឆ្នាំ.*/, '')} · នៅសល់ ${dateKm(pay.dueDate2, k).replace('ថ្ងៃទី', '').replace(/ ឆ្នាំ.*/, '')}` : `ផុត ${dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}`}</small></div>
               {pay.status === 'unpaid' && <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>}
               {pay.status === 'claimed' && <span className="pt-wait">⏳ រង់ចាំបញ្ជាក់</span>}
               {pay.status === 'paid' && <span className="pt-done"><Check size={16} /> បានបង់</span>}

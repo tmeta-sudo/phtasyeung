@@ -50,7 +50,7 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
         <div><span>បន្ទប់</span><b>{inv.roomId}</b></div>
         <div><span>សម្រាប់</span><b>{inv.kind === 'movein' ? 'ចូលស្នាក់នៅ' : monthKm(inv.month, khmer)}</b></div>
         <div><span>ថ្ងៃចេញ</span><b>{dateKm(inv.issuedAt, khmer)}</b></div>
-        <div><span>ថ្ងៃផុតកំណត់</span><b>{dateKm(inv.dueDate, khmer)}</b></div>
+        <div><span>{inv.dueDate2 ? 'បង់ជា ២ លើក' : 'ថ្ងៃផុតកំណត់'}</span><b>{dateKm(inv.dueDate, khmer)}{inv.dueDate2 ? ` · ${dateKm(inv.dueDate2, khmer)}` : ''}</b></div>
         <div><span>ស្ថានភាព</span><b className={inv.status === 'paid' ? 'paid-t' : ''}>{inv.status === 'paid' ? (inv.paidVia === 'carried' ? 'ផ្ទេរទៅខែក្រោយ' : 'បានបង់ ✓') : inv.paid > 0 ? 'បង់ខ្លះ' : 'មិនទាន់បង់'}</b></div>
       </div>
     ),

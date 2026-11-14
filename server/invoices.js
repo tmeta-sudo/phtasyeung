@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent, cur, fm as usd, rm, words, fmAlt } from './db.js';
 import { khqrFor } from './khqr.js';
+import { dueDatesFor } from './due.js';
 import { nowInCambodia, monthKm, dateKm, kmDigits, altMoney } from '../shared/khmer.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -138,7 +139,7 @@ export function generateInvoices(month, actor = 'admin') {
       items,
       rate: +settings.exchangeRate || 4100,
       issuedAt: today,
-      dueDate: addDays(today, +settings.dueDays || 7),
+      ...dueDatesFor(tenant, month, today, settings),
       status: 'unpaid',
       hasMeter: !!meter,
       claims: [],
@@ -177,7 +178,10 @@ export function khqrOf(inv) {
 }
 
 export function isOverdue(inv, today = nowInCambodia().ymd) {
-  return inv.status !== 'paid' && inv.dueDate < today;
+  if (inv.status === 'paid') return false;
+  // Paying in two halves: late only if the first half is missing after the first date, or anything after the second.
+  if (inv.dueDate2) return inv.dueDate2 < today || (inv.dueDate < today && paidSoFar(inv) < inv.total / 2 - 0.005);
+  return inv.dueDate < today;
 }
 
 export function markPaid(inv, via = 'admin') {
@@ -265,7 +269,10 @@ export function invoiceTelegramHtml(inv, { reminder = false, hasQr = false } = {
   lines.push(`💰 <b>សរុប: ${usd(inv.total)}</b>  (≈ ${fmAlt(inv.total)})`);
   lines.push(`<i>${esc(words(inv.total))}</i>`);
   if (paidSoFar(inv) > 0 && inv.status !== 'paid') lines.push(`✅ បានបង់: ${usd(paidSoFar(inv))} · <b>នៅសល់: ${usd(balanceOf(inv))}</b>`);
-  lines.push(`📅 ថ្ងៃផុតកំណត់: ${esc(dateKm(inv.dueDate))}`);
+  if (inv.dueDate2) {
+    const half = rm(inv.total / 2);
+    lines.push(`📅 បង់ជា ២ លើក: ${usd(half)} ត្រឹម ${esc(dateKm(inv.dueDate).replace('ថ្ងៃទី', ''))} · ${usd(rm(inv.total - half))} ត្រឹម ${esc(dateKm(inv.dueDate2).replace('ថ្ងៃទី', ''))}`);
+  } else lines.push(`📅 ថ្ងៃផុតកំណត់: ${esc(dateKm(inv.dueDate))}`);
   if (inv.status === 'claimed') lines.push('⏳ កំពុងរង់ចាំការបញ្ជាក់ពីម្ចាស់ផ្ទះ');
   if (inv.status === 'paid') lines.push('✅ <b>បានបង់រួចរាល់</b> — សូមអរគុណ!');
   else {
@@ -291,7 +298,8 @@ export function applyLateFees(today = nowInCambodia().ymd) {
   const cutoff = limit.toISOString().slice(0, 10);
   const changed = [];
   for (const inv of s.invoices) {
-    if (inv.status !== 'unpaid' || !inv.dueDate || inv.dueDate >= cutoff || inv.items.some((it) => it.key === 'late')) continue;
+    const finalDue = inv.dueDate2 || inv.dueDate;
+    if (inv.status !== 'unpaid' || !finalDue || finalDue >= cutoff || inv.items.some((it) => it.key === 'late')) continue;
     inv.items.push({ key: 'late', label: 'ថ្លៃបង់យឺត', qty: 1, unit: 'ដង', rate: amount, amount });
     recalc(inv);
     inv.lateFeeAt = now();

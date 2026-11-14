@@ -194,6 +194,7 @@ export function CustomerDetail({ id }) {
                 <Info label="បន្ទប់" value={room ? `${room.id} · ${room.building} · ${$(room.rent)}/ខែ` : '—'} />
                 <Info label="រយៈពេល" value={t.contract?.start ? `${dateKm(t.contract.start, k)} — ${dateKm(t.contract.end, k) || '…'}` : ''} />
                 <Info label="ប្រាក់កក់" value={t.contract?.deposit ? $(t.contract.deposit) : ''} />
+                <Info label="ថ្ងៃបង់ប្រាក់" value={t.pay?.day ? `ថ្ងៃទី ${n(t.pay.day)}${t.pay.day2 ? ` និង ${n(t.pay.day2)} (២ លើក)` : ''} រៀងរាល់ខែ` : ''} />
                 <Info label="សេវាបន្ថែម" value={(t.addons || []).map((x) => { const a = state.settings.addons?.find((y) => y.id === x.id); return a ? `${a.icon} ${a.label}${x.qty > 1 ? ` ×${n(x.qty)}` : ''}` : ''; }).filter(Boolean).join(' · ')} />
                 {room?.features?.length > 0 && <Info label="បរិក្ខារ" value={<FeatureIcons ids={room.features} labels />} wide />}
               </dl>
@@ -379,6 +380,18 @@ export function CustomerForm({ tenant, preset, onClose }) {
             <Field label="ថ្ងៃចាប់ផ្តើម"><input type="date" value={f.contract.start} onChange={(e) => setIn('contract', 'start', e.target.value)} /></Field>
             <Field label="ថ្ងៃផុតកំណត់"><input type="date" value={f.contract.end} onChange={(e) => setIn('contract', 'end', e.target.value)} /></Field>
             <Field label={`ប្រាក់កក់ (${curSymbol(getClientCurrency())})`}><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
+            <Field label="ថ្ងៃបង់ប្រាក់រៀងរាល់ខែ (ថ្ងៃបើកប្រាក់ខែ)" hint="ទុកទំនេរ = តាមការកំណត់ទូទៅ។ រំលឹកចាប់ពីថ្ងៃនេះ មិនមែនមុនទេ។">
+              <select value={f.pay?.day || ''} onChange={(e) => set('pay', { ...(f.pay || {}), day: e.target.value ? +e.target.value : null, day2: e.target.value ? f.pay?.day2 || null : null })}>
+                <option value="">— តាមទូទៅ —</option>{Array.from({ length: 31 }, (_, i) => <option key={i + 1} value={i + 1}>ថ្ងៃទី {i + 1}</option>)}
+              </select>
+            </Field>
+            {f.pay?.day && (
+              <Field label="បង់ជា ២ លើក? ថ្ងៃទី ២" hint="សម្រាប់អ្នកបើកប្រាក់ខែ ២ ដង — បង់ពាក់កណ្តាលម្តង">
+                <select value={f.pay?.day2 || ''} onChange={(e) => set('pay', { ...f.pay, day2: e.target.value ? +e.target.value : null })}>
+                  <option value="">— បង់ម្តង —</option>{Array.from({ length: 31 }, (_, i) => i + 1).filter((d) => d !== f.pay.day).map((d) => <option key={d} value={d}>ថ្ងៃទី {d}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
         </fieldset>
