@@ -5,6 +5,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { api } from './api.js';
+import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
 import { matchesQuery, greetingKm, num } from '../shared/khmer.js';
 import Home from './pages/Home.jsx';
@@ -51,7 +52,11 @@ const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1
 export default function App() {
   const [auth, setAuth] = useState(null);
   const path = usePath();
-  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then((a) => { setAuthHint(a.authed); setAuth(a); }).catch(() => setAuth({ error: true })), []);
+  const refreshAuth = useCallback(() => api('GET', '/api/auth/state').then((a) => { setAuthHint(a.authed); setAuth(a); }).catch((e) => {
+    // No internet but signed in before on this phone: open the saved copy (meter reading still works).
+    let hint = false; try { hint = localStorage.getItem('py-authed') === '1'; } catch { /* ignore */ }
+    setAuth(isNetworkError(e) && hint && cachedState() ? { authed: true, offline: true } : { error: true });
+  }), []);
   useEffect(() => { refreshAuth(); }, [refreshAuth]);
   // After signing in from /login or /signup, land on the dashboard.
   useEffect(() => { if (auth?.authed && /^\/(login|signup)$/.test(path)) navigate('/', { replace: true }); }, [auth, path]);
@@ -206,7 +211,26 @@ function Admin({ onLogout }) {
     toastTimer.current = setTimeout(() => setToast(null), error ? 5000 : 3000);
   }, []);
 
-  const load = useCallback(() => api('GET', '/api/state').then(setState).catch((e) => (e.status === 401 ? onLogout() : notify(e.message, true))), [notify, onLogout]);
+  const load = useCallback(async () => {
+    try {
+      // Readings saved while offline go first, so the fresh state already includes them.
+      const q = await flushQueue(api);
+      if (q.sent) notify(`📶 បានផ្ញើលេខកុងទ័រ ${q.sent} ដែលកត់ពេលគ្មានអ៊ីនធឺណិត`);
+      for (const f of q.failed) notify(`${f.roomId}: ${f.error}`, true);
+      const st = await api('GET', '/api/state');
+      cacheState(st);
+      setState(st);
+    } catch (e) {
+      if (e.status === 401) return onLogout();
+      if (isNetworkError(e) && cachedState()) return setState((cur) => (cur && !cur.offline ? { ...cur, offline: true } : { ...cachedState(), offline: true }));
+      notify(e.message, true);
+    }
+  }, [notify, onLogout]);
+  useEffect(() => {
+    const back = () => load();
+    window.addEventListener('online', back);
+    return () => window.removeEventListener('online', back);
+  }, [load]);
   useEffect(() => {
     load();
     const t = setInterval(() => document.visibilityState === 'visible' && load(), 20000);
@@ -277,7 +301,8 @@ function Admin({ onLogout }) {
   const nav = NAV.filter(([p]) => allowedPage(role, p));
   let page;
   const customerMatch = path.match(/^\/customers\/(.+)$/);
-  if (!allowedPage(role, section) || (role === 'staff' && section === '/')) page = role === 'staff' ? <Meters /> : <Home />;
+  if (state.offline) page = <Meters />; // offline: the saved copy only has what meter reading needs
+  else if (!allowedPage(role, section) || (role === 'staff' && section === '/')) page = role === 'staff' ? <Meters /> : <Home />;
   else if (customerMatch) page = <CustomerDetail id={decodeURIComponent(customerMatch[1])} />;
   else if (section === '/customers') page = <Customers />;
   else if (section === '/rooms') page = <Rooms />;

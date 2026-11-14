@@ -4,6 +4,7 @@ import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { monthKm } from '../../shared/khmer.js';
 import MeterPhoto from '../MeterPhoto.jsx';
 import { api, uploadFile } from '../api.js';
+import { queueReading, queued, cachedState } from '../offline.js';
 
 export default function Meters() {
   const { state, call } = useApp();
@@ -17,10 +18,20 @@ export default function Meters() {
   const sharedDone = (g) => (state.sharedReadings || []).find((x) => x.groupId === g.id && x.month === month);
   const [gv, setGv] = useState({});
 
-  const { setState } = useApp();
+  const { setState, notify } = useApp();
+  const waiting = queued().length;
   const role = state.account?.role || 'owner';
   async function saveRow(r) {
     const v = rows[r.id] || {};
+    if (navigator.onLine === false || state.offline) {
+      // Save on the phone; it is sent automatically when the internet is back.
+      const n2 = queueReading({ roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric });
+      setRows((x) => ({ ...x, [r.id]: undefined }));
+      const c = cachedState();
+      if (c) setState({ ...c, offline: true });
+      notify(`📴 បានរក្សាទុកក្នុងទូរស័ព្ទ (${n2}) — នឹងផ្ញើពេលមានអ៊ីនធឺណិត`);
+      return;
+    }
     const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric }, `បានកត់ ${r.id}`);
     if (!res) return;
     setRows((x) => ({ ...x, [r.id]: undefined }));
@@ -57,6 +68,7 @@ export default function Meters() {
           ))}
         </section>
       )}
+      {(state.offline || waiting > 0) && <p className="form-warn">📴 {state.offline ? 'គ្មានអ៊ីនធឺណិត — អាចកត់កុងទ័របាន ហើយនឹងផ្ញើដោយស្វ័យប្រវត្តិ។' : ''} {waiting > 0 ? `រង់ចាំផ្ញើ ${n(waiting)}` : ''}</p>}
       <p className="lunar-line">{monthKm(month, k)} · កត់រួច {n(state.rooms.filter((r) => done(r.id)).length)}/{n(state.rooms.length)} · វាយលេខថ្មី ហើយចុច Enter</p>
       <section className="card">
         <div className="meter-table">
@@ -70,7 +82,7 @@ export default function Meters() {
                 <span><b>{r.id}</b><small className="muted">{tenantIn(r.id)?.nameKm || 'ទំនេរ'}</small></span>
                 {m ? (
                   <>
-                    <span>{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small>{m.photos?.water && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/water`} target="_blank" rel="noreferrer">📷</a>}</span>
+                    <span>{m.queued && '⏳ '}{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small>{m.photos?.water && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/water`} target="_blank" rel="noreferrer">📷</a>}</span>
                     <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small>{m.photos?.electric && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/electric`} target="_blank" rel="noreferrer">📷</a>}</span>
                     <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/${m.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
                   </>
