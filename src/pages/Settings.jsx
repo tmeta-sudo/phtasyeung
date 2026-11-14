@@ -9,6 +9,7 @@ import StorageCard from '../settings/StorageCard.jsx';
 import BackupCard from '../settings/BackupCard.jsx';
 import NotifyCard from '../settings/NotifyCard.jsx';
 import UtilityCard from '../settings/UtilityCard.jsx';
+import AddonsCard from '../settings/AddonsCard.jsx';
 import TeamCard from '../settings/TeamCard.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
@@ -60,6 +61,7 @@ export default function SettingsPage() {
           <button className="btn primary">រក្សាទុក</button>
         </form>
         
+        <AddonsCard />
         <UtilityCard />
         <form className="card" onSubmit={(e) => save(e, { lateFee: f.lateFee, carryOver: !!f.carryOver })}>
           <h3 className="sec-title"><AlarmClock size={17} /> ការបង់យឺត និងប្រាក់នៅជំពាក់</h3>

@@ -1,4 +1,5 @@
 // Per-request access to the current landlord's document (set up by store.withOrg).
+import { DEFAULT_ADDONS } from '../shared/features.js';
 import { als, uid, now } from './store.js';
 
 export { uid, now };
@@ -52,6 +53,7 @@ export function defaultSettings(name = 'ផ្ទះរបស់ខ្ញុំ'
     backup: { telegramWeekly: true, includeFiles: false, lastAt: '', lastTelegramAt: '' },
     lateFee: { enabled: false, amount: 5, afterDays: 5 },
     carryOver: true,
+    addons: DEFAULT_ADDONS.map((a) => ({ ...a })),
     tiers: { electric: [], water: [] },
     sharedMeters: [],
   };

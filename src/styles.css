@@ -1149,3 +1149,28 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .share-top:has(input + select + input) { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 .mt-shared { font-size: 12.5px; color: var(--muted); align-self: center; }
 .tier-note { display: block; color: var(--muted); font-size: 11px; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.feature-tick, .addon-tick { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 12px; background: var(--card); cursor: pointer; font-size: 13px; border: 1.5px solid transparent; }
+.feature-tick.on, .addon-row.on { border-color: var(--blue); background: var(--blue-soft); }
+.feature-tick input, .addon-tick input { width: 18px; height: 18px; accent-color: var(--blue); flex-shrink: 0; }
+.ft-icon { font-size: 18px; line-height: 1; }
+.feature-icons { display: inline-flex; flex-wrap: wrap; gap: 4px; font-size: 15px; }
+.feature-icons.labels { gap: 6px 10px; font-size: 13px; }
+.feature-icons.labels span { display: inline-flex; gap: 3px; align-items: center; }
+.feature-icons small { font-size: 12px; color: var(--ink-2); }
+.addon-list { display: grid; gap: 6px; }
+.addon-row { display: flex; align-items: center; gap: 8px; border-radius: 14px; background: var(--card); border: 1.5px solid transparent; padding-right: 10px; }
+.addon-row .addon-tick { flex: 1; background: none; border: 0; }
+.addon-tick > span:last-child { display: grid; }
+.addon-tick small { color: var(--muted); font-size: 12px; }
+.stepper { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border-radius: 999px; padding: 3px; }
+.stepper button { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--card); color: var(--ink); }
+.stepper b { min-width: 16px; text-align: center; }
+.addon-sum { font-size: 13px; white-space: nowrap; }
+.month-est { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 10px; padding: 12px; border-radius: 14px; background: var(--ok-soft); }
+.month-est b { font-size: 20px; color: var(--ok); grid-row: span 2; align-self: center; }
+.month-est small { color: var(--ink-2); font-size: 12px; }
+.addons-card { display: grid; gap: 10px; }
+.addon-edit { display: grid; grid-template-columns: 44px minmax(0, 1fr) 72px 52px auto; gap: 6px; align-items: center; }
+.addon-edit input { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 9px 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.addon-edit .ae-icon { text-align: center; }

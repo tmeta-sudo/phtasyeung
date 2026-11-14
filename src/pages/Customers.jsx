@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { AddonsPicker, FeatureIcons, addonsTotal } from '../AddonsPicker.jsx';
 import {
   ScanText, Plus, Phone, Send, IdCard, Pencil, Trash2, ArrowLeft, Upload, Link2, RefreshCw, MapPin, HeartPulse, FileText, Unlink, ExternalLink, UserRound, Printer,
   DoorOpen,
@@ -193,6 +194,8 @@ export function CustomerDetail({ id }) {
                 <Info label="បន្ទប់" value={room ? `${room.id} · ${room.building} · ${$(room.rent)}/ខែ` : '—'} />
                 <Info label="រយៈពេល" value={t.contract?.start ? `${dateKm(t.contract.start, k)} — ${dateKm(t.contract.end, k) || '…'}` : ''} />
                 <Info label="ប្រាក់កក់" value={t.contract?.deposit ? $(t.contract.deposit) : ''} />
+                <Info label="សេវាបន្ថែម" value={(t.addons || []).map((x) => { const a = state.settings.addons?.find((y) => y.id === x.id); return a ? `${a.icon} ${a.label}${x.qty > 1 ? ` ×${n(x.qty)}` : ''}` : ''; }).filter(Boolean).join(' · ')} />
+                {room?.features?.length > 0 && <Info label="បរិក្ខារ" value={<FeatureIcons ids={room.features} labels />} wide />}
               </dl>
             </section>
           </div>
@@ -376,6 +379,18 @@ export function CustomerForm({ tenant, preset, onClose }) {
             <Field label="ប្រាក់កក់ ($)"><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
+        </fieldset>
+        <fieldset>
+          <legend>សេវាបន្ថែម (ធីកអ្វីដែលអតិថិជនប្រើ)</legend>
+          {(() => { const r = state.rooms.find((x) => x.id === f.roomId); return r?.features?.length ? <p className="small">បន្ទប់ {r.id}: <FeatureIcons ids={r.features} labels /></p> : null; })()}
+          <AddonsPicker catalog={state.settings.addons} value={f.addons || []} onChange={(v) => set('addons', v)} />
+          {(() => {
+            const r = state.rooms.find((x) => x.id === f.roomId);
+            const rent = +r?.rent || 0;
+            const extras = (r?.extras || []).reduce((a, x) => a + (+x.amount || 0), 0);
+            const add = addonsTotal(state.settings.addons, f.addons || []);
+            return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>${(rent + extras + add).toFixed(2)}</b><small>ថ្លៃជួល ${rent}{extras ? ` + ផ្សេងៗ $${extras}` : ''}{add ? ` + សេវា $${add}` : ''}</small></div> : null;
+          })()}
         </fieldset>
         {scan && (
           <Suspense fallback={null}>

@@ -1,4 +1,5 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { FEATURE_IDS } from '../shared/features.js';
 import { recordError, installProcessHandlers } from './errors.js';
 installProcessHandlers();
 import { staffView, MANAGER_SETTINGS } from './roles.js';
@@ -153,6 +154,18 @@ async function fullState(req) {
   };
 }
 
+/** Paid add-ons a tenant uses: [{ id, qty }] limited to the landlord's price list. */
+function cleanAddons(list) {
+  const catalog = new Map((db().settings.addons || []).map((a) => [a.id, a]));
+  const out = [];
+  for (const x of Array.isArray(list) ? list : []) {
+    const a = catalog.get(String(x?.id));
+    const qty = Math.min(a?.max || 9, Math.max(0, Math.round(+x?.qty || 0)));
+    if (a && qty > 0 && !out.some((o) => o.id === a.id)) out.push({ id: a.id, qty });
+  }
+  return out;
+}
+
 function cleanProfile(input, existing = {}, { admin }) {
   const p = input || {};
   const out = {
@@ -172,6 +185,7 @@ function cleanProfile(input, existing = {}, { admin }) {
       status: ['active', 'former', 'prospect'].includes(p.status) ? p.status : 'active',
       roomId: str(p.roomId, 30),
       contract: { start: date(p.contract?.start), end: date(p.contract?.end), deposit: money(p.contract?.deposit) },
+      addons: cleanAddons(p.addons ?? existing.addons),
     });
   }
   return { ...existing, ...out };
@@ -201,6 +215,7 @@ function cleanRoom(p) {
   return {
     id: str(p.id, 30), building: str(p.building, 60), floor: str(p.floor, 10), rent: money(p.rent),
     water: Math.max(0, +p.water || 0), electric: Math.max(0, +p.electric || 0), note: str(p.note, 300),
+    features: [...new Set((Array.isArray(p.features) ? p.features : []).filter((f) => FEATURE_IDS.has(f)))],
     extras: (Array.isArray(p.extras) ? p.extras : []).slice(0, 6).map((e) => ({ label: str(e.label, 60), amount: money(e.amount) })).filter((e) => e.label),
   };
 }
@@ -570,6 +585,13 @@ app.put('/api/settings', ...owner(async (req) => {
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (Array.isArray(b.addons)) {
+    const seen = new Set();
+    s.addons = b.addons.slice(0, 20).map((a) => ({
+      id: /^[\w-]{1,20}$/.test(a.id || '') ? a.id : 'x' + uid(4),
+      icon: str(a.icon, 8) || '➕', label: str(a.label, 40), price: money(a.price), max: Math.min(20, Math.max(1, Math.round(+a.max || 1))),
+    })).filter((a) => a.label && !seen.has(a.id) && seen.add(a.id));
+  }
   if (b.tiers) {
     const clean = (list) => (Array.isArray(list) ? list : []).slice(0, 8)
       .map((t) => ({ upTo: t.upTo === '' || t.upTo == null ? null : Math.max(0, +t.upTo || 0), rate: Math.max(0, Math.round((+t.rate || 0) * 10000) / 10000) }))

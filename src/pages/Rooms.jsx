@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FeaturePicker, FeatureIcons } from '../AddonsPicker.jsx';
 import { Plus, Pencil, Trash2, Gauge, QrCode, DoorOpen, Droplets, Zap, Printer, Building2 } from 'lucide-react';
 import BuildingWizard, { Building3D } from './BuildingWizard.jsx';
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR } from '../ui.jsx';
@@ -44,6 +45,7 @@ export default function Rooms() {
               </div>
               <small className="muted">{r.building}{r.floor ? ` · ជាន់ ${n(r.floor)}` : ''}</small>
               <b className="room-rent">{$(r.rent)}<small>/ខែ</small></b>
+              <FeatureIcons ids={r.features} />
               {t ? (
                 <button className="room-tenant" onClick={() => navigate('/customers/' + t.id)}><Avatar name={t.nameKm} src={tenantPhoto(t)} size={30} /><span>{t.nameKm}<small>{n(t.phone)}</small></span></button>
               ) : (
@@ -116,7 +118,7 @@ export function StickerSheet({ rooms, base, name }) {
 
 function RoomForm({ room, onClose }) {
   const { call } = useApp();
-  const [f, setF] = useState({ ...room, extras: room.extras || [] });
+  const [f, setF] = useState({ ...room, extras: room.extras || [], features: room.features || [] });
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const setExtra = (i, k, v) => set('extras', f.extras.map((e, j) => (j === i ? { ...e, [k]: v } : e)));
   async function submit(e) {
@@ -138,7 +140,12 @@ function RoomForm({ room, onClose }) {
           <Field label="លេខកុងទ័រភ្លើងបច្ចុប្បន្ន (kWh)"><input type="number" min="0" step="any" value={f.electric} onChange={(e) => set('electric', e.target.value)} /></Field>
         </div>
         <fieldset>
-          <legend>ថ្លៃផ្សេងៗប្រចាំខែ (សំរាម ចំណតម៉ូតូ អ៊ីនធឺណិត…)</legend>
+          <legend>គ្រឿងបរិក្ខារក្នុងបន្ទប់</legend>
+          <FeaturePicker value={f.features} onChange={(v) => set('features', v)} />
+        </fieldset>
+        <fieldset>
+          <legend>ថ្លៃផ្សេងៗប្រចាំខែសម្រាប់បន្ទប់នេះ</legend>
+          <p className="muted small">ចំណតម៉ូតូ/ឡាន Wi-Fi… ធីកតាមអតិថិជនម្នាក់ៗវិញ (សេវាបន្ថែម)។</p>
           {f.extras.map((x, i) => (
             <div key={i} className="extra-row">
               <input value={x.label} onChange={(e) => setExtra(i, 'label', e.target.value)} placeholder="ឈ្មោះ" aria-label="ឈ្មោះ" />

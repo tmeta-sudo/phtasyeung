@@ -104,6 +104,12 @@ export function generateInvoices(month, actor = 'admin') {
     for (const extra of room.extras || []) {
       if (extra.label && +extra.amount) items.push({ key: 'extra', label: extra.label, qty: 1, unit: 'ខែ', rate: +extra.amount, amount: +extra.amount });
     }
+    // Paid add-ons the tenant ticked (parking, Wi-Fi, …).
+    for (const x of tenant.addons || []) {
+      const a = (settings.addons || []).find((y) => y.id === x.id);
+      if (!a || !(x.qty > 0) || !(+a.price > 0)) continue;
+      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: round2(a.price * x.qty) });
+    }
     // Unpaid balance of earlier months moves onto this invoice (one bill, one QR).
     const carried = settings.carryOver ? s.invoices.filter((i) => i.tenantId === tenant.id && i.month < month && i.status !== 'paid' && balanceOf(i) > 0) : [];
     for (const prev of carried) {
