@@ -24,6 +24,7 @@ import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Reports from './pages/Reports.jsx';
 import Help from './help/Help.jsx';
+import SimpleHome, { simpleMode } from './pages/SimpleHome.jsx';
 import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
@@ -204,6 +205,8 @@ function Admin({ onLogout }) {
   const [modal, setModal] = useState(null); // {type, ...}
   const [printing, setPrinting] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [simple, setSimple] = useState(simpleMode.get);
+  useEffect(() => { const on = () => setSimple(simpleMode.get()); window.addEventListener('py-simple', on); return () => window.removeEventListener('py-simple', on); }, []);
   const path = usePath();
   const toastTimer = useRef();
   useEffect(() => { if (!/^\/(feedback|news)/.test(path)) { try { sessionStorage.setItem('py-last-page', path); } catch { /* ignore */ } } }, [path]);
@@ -323,7 +326,7 @@ function Admin({ onLogout }) {
   else if (section === '/news') page = <News />;
   else if (section === '/feedback') page = <Feedback />;
   else if (section === '/super') page = <Super />;
-  else page = <Home />;
+  else page = simple && role !== 'staff' ? <SimpleHome onFull={() => { simpleMode.set(false); setSimple(false); }} /> : <Home />;
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -501,6 +504,7 @@ function ProfileMenu({ onLogout }) {
               {state.account.role === 'owner' && <button className="add" onClick={addProperty}>＋ បន្ថែមអចលនទ្រព្យ</button>}
             </div>
           )}
+          <button onClick={() => { const on = !simpleMode.get(); simpleMode.set(on); window.dispatchEvent(new Event('py-simple')); setOpen(false); navigate('/'); }}><span>🔠</span> {simpleMode.get() ? 'របៀបពេញលេញ' : 'របៀបងាយ (អក្សរធំ)'}</button>
           <button onClick={() => { setOpen(false); navigate('/settings'); }}><Settings size={16} /> ការកំណត់</button>
           <button onClick={() => { setOpen(false); navigate('/news'); }}><Sparkles size={16} /> មានអ្វីថ្មី</button>
           <button onClick={() => { setOpen(false); navigate('/feedback?tab=new'); }}><Lightbulb size={16} /> ស្នើមុខងារ</button>

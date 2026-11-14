@@ -18,7 +18,7 @@ import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
-  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, configureOwnBot,
+  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, setTenantMenuButton, clearTenantMenuButton, configureOwnBot,
   webhookRoute, registerAllWebhooks, sendResetCode, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
 } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
@@ -293,18 +293,19 @@ app.delete('/api/tenants/:id', ...owner(async (req) => {
   return adminState(req);
 }));
 
-app.post('/api/tenants/:id/rotate', ...owner((req) => {
+app.post('/api/tenants/:id/rotate', ...owner(async (req) => {
   const t = findTenant(req.params.id);
   if (!t) fail('រកមិនឃើញអតិថិជន', 404);
-  if (req.body?.what === 'portal') t.portalToken = uid(18);
+  if (req.body?.what === 'portal') { t.portalToken = uid(18); await setTenantMenuButton(t); } // the button in Telegram follows the new link
   else t.linkCode = uid(6);
   save();
   return adminState(req);
 }));
 
-app.post('/api/tenants/:id/unlink-telegram', ...owner((req) => {
+app.post('/api/tenants/:id/unlink-telegram', ...owner(async (req) => {
   const t = findTenant(req.params.id);
   if (!t) fail('រកមិនឃើញអតិថិជន', 404);
+  await clearTenantMenuButton(t.telegram?.chatId);
   t.telegram = null;
   t.linkCode = uid(6);
   save();

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Download, Printer, Plus, Trash2 } from 'lucide-react';
 import { useApp, useFmt, Empty, billedOf, collectedOf } from '../ui.jsx';
+import { ResidentList, IncomeSummary } from './Printouts.jsx';
 import { kmDigits } from '../../shared/khmer.js';
 
 const MONTHS_KM = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
@@ -187,6 +188,8 @@ export default function Reports() {
           <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="ឆ្នាំ">{years.map((y) => <option key={y} value={y}>{kmDigits(y)}</option>)}</select>
           <button className="btn ghost" onClick={exportCsv}><Download size={16} /> Excel</button>
           <button className="btn ghost" onClick={() => print(<div className="report-print"><h2>{state.settings.propertyName} — របាយការណ៍ឆ្នាំ {kmDigits(year)}</h2><MonthTable /></div>)}><Printer size={16} /> បោះពុម្ព</button>
+          <button className="btn ghost" onClick={() => print(<IncomeSummary state={state} year={year} />)}>🧾 សង្ខេបចំណូលឆ្នាំ</button>
+          <button className="btn ghost" onClick={() => print(<ResidentList state={state} />)}>📋 បញ្ជីអ្នកស្នាក់នៅ</button>
         </div>
       </div>
 

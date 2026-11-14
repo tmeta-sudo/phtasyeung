@@ -134,6 +134,14 @@ const latestInvoices = (tenant) => db().invoices
   .filter((i) => invoiceIsFor(i, tenant))
   .sort((a, b) => b.month.localeCompare(a.month) || b.createdAt.localeCompare(a.createdAt));
 
+/** Put a "my room" button next to the message box that opens the tenant's page inside Telegram. */
+export async function setTenantMenuButton(tenant) {
+  const url = portalUrl(tenant);
+  if (!tenant?.telegram?.chatId || !url.startsWith('https://')) return false;
+  await call('setChatMenuButton', { chat_id: tenant.telegram.chatId, menu_button: { type: 'web_app', text: 'បន្ទប់ខ្ញុំ', web_app: { url } } }).catch(() => {});
+  return true;
+}
+
 export function portalUrl(tenant) {
   const base = (db().settings.publicUrl || appUrl()).replace(/\/+$/, '');
   return base ? `${base}/p/${tenant.portalToken}` : '';
@@ -174,7 +182,7 @@ function invoiceButtons(inv, tenant) {
   const rows = [];
   if (inv.status === 'unpaid') rows.push([{ text: '✅ ខ្ញុំបានបង់ប្រាក់', callback_data: cb('p', inv) }]);
   const url = tenant && portalUrl(tenant);
-  if (url && url.startsWith('https://')) rows.push([{ text: '🔗 បើកគណនីរបស់ខ្ញុំ', url }]);
+  if (url && url.startsWith('https://')) rows.push([{ text: '📱 បើកគណនីរបស់ខ្ញុំ', web_app: { url } }]);
   return rows.length ? { inline_keyboard: rows } : undefined;
 }
 
@@ -415,6 +423,7 @@ async function linkTenant(botKey, m, code) {
   save();
   logEvent('tenant', `${target.nameKm} (${target.roomId || '—'}) បានភ្ជាប់ Telegram`, { tenantId: target.id });
   await send(chatId, `🙏 <b>សូមស្វាគមន៍ ${esc(target.nameKm)}!</b>\nគណនីរបស់អ្នកត្រូវបានភ្ជាប់ជាមួយ <b>${esc(s.settings.propertyName)}</b>។\nវិក្កយបត្រប្រចាំខែនឹងផ្ញើមកទីនេះដោយស្វ័យប្រវត្តិ។`, { reply_markup: MENU });
+  await setTenantMenuButton(target);
   const open = latestInvoices(target).find((i) => i.status !== 'paid');
   if (open) await sendInvoice(open);
 }
@@ -866,3 +875,6 @@ export async function approveAndNotify(sub, by) {
   await notifyTenant(t, `✅ ម្ចាស់ផ្ទះបានទទួលលេខកុងទ័ររបស់អ្នក (ទឹក ${kmDigits(sub.water)} · ភ្លើង ${kmDigits(sub.electric)})។ អរគុណ!`);
   return meter;
 }
+
+/** Remove the "my room" button for a chat (tenant unlinked or left). */
+export const clearTenantMenuButton = (chatId) => (chatId ? call('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'default' } }).catch(() => {}) : null);

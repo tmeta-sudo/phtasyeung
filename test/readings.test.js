@@ -98,3 +98,21 @@ test('a strange jump still waits for the owner even with auto-approval on', asyn
   const r = await client(env.url).post(`/api/portal/${state.tenants[0].portalToken}/readings`, { water: 900, electric: 9000 });
   assert.equal(r.result.approved, false);
 });
+
+test('linking Telegram adds a "my room" button that opens the tenant page inside Telegram', async () => {
+  const { landlord: _l } = await import('./helpers.js');
+  const prev = process.env.APP_URL;
+  process.env.APP_URL = 'https://rent.example.com';
+  try {
+    const { c, state } = await _l(env.url);
+    const code = state.tenants[0].linkCode;
+    await say(73001, `/start ${code}`);
+    const menu = env.tg.calls.filter((x) => x.method === 'setChatMenuButton' && String(x.payload.chat_id) === '73001').at(-1);
+    assert.ok(menu, 'menu button set');
+    assert.equal(menu.payload.menu_button.type, 'web_app');
+    assert.match(menu.payload.menu_button.web_app.url, /^https:\/\/rent\.example\.com\/p\/[\w-]{16,}$/);
+    const st = await c.post(`/api/tenants/${state.tenants[0].id}/unlink-telegram`, {});
+    assert.equal(st.tenants[0].telegram, null);
+    assert.equal(env.tg.calls.filter((x) => x.method === 'setChatMenuButton').at(-1).payload.menu_button.type, 'default');
+  } finally { if (prev === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev; }
+});

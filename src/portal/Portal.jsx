@@ -7,12 +7,14 @@ import InvoiceDoc from '../InvoiceDoc.jsx';
 import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords, fmtMoney, fmtAlt, moneyInWords, setClientCurrency } from '../../shared/khmer.js';
 import './portal.css';
 import MeterSubmit from './MeterSubmit.jsx';
+import { inTelegram } from './telegram.js';
 import SignaturePad from '../SignaturePad.jsx';
 import PwaBar from '../PwaBar.jsx';
 import { useAppIdentity } from '../pwa.js';
 import { ThemeToggle } from '../theme.jsx';
 
 export default function Portal({ token }) {
+  inTelegram(); // remember Telegram's launch data before anything changes the URL
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('home');
@@ -88,7 +90,7 @@ export default function Portal({ token }) {
               <div><b>{greetingKm(nowInCambodia().hour)}, {p.nameKm || p.nameEn}</b><small>📍 {data.property.name}{data.room ? ` · បន្ទប់ ${data.room.id}` : ''}</small></div>
               <span className="pt-top-actions"><ThemeToggle className="pt-round" /><button className="pt-round" onClick={() => setTab('bills')} aria-label="វិក្កយបត្រ"><Bell size={18} />{open.length > 0 && <i />}</button></span>
             </header>
-            <PwaBar appName={data.property.name} className="portal" />
+            {!inTelegram() && <PwaBar appName={data.property.name} className="portal" />}
             <h1 className="pt-title">គ្រប់គ្រង<b>ផ្ទះជួល</b><br /><b>របស់អ្នក</b>យ៉ាងងាយ</h1>
             <div className="pt-chips">
               <button className="active" onClick={() => setTab('home')}><span><Home size={15} /></span>ទំព័រដើម</button>

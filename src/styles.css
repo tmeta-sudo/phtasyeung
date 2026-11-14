@@ -1245,3 +1245,45 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .prop-list small { color: var(--muted); font-size: 11.5px; }
 .prop-list .current { background: var(--blue-soft); border-radius: 12px; }
 .prop-list .add { color: var(--blue); font-weight: 600; }
+.printout { color: #111; font-size: 12.5px; line-height: 1.7; }
+.printout h1 { font-family: 'Moul', serif; font-size: 18px; text-align: center; margin: 6px 0; font-weight: 400; }
+.po-kingdom { text-align: center; font-family: 'Moul', serif; margin: 0 0 8px; font-size: 14px; }
+.po-kingdom span { font-size: 12px; }
+.po-sub { text-align: center; margin: 0 0 12px; color: #333; }
+.printout table { width: 100%; border-collapse: collapse; }
+.printout th, .printout td { border: 1px solid #999; padding: 5px 6px; text-align: left; vertical-align: top; }
+.printout th { background: #f1f3f6; font-weight: 600; white-space: nowrap; }
+.printout td small { display: block; color: #555; font-size: 10.5px; }
+.printout tfoot td { font-weight: 700; }
+.po-signs { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 26px; text-align: center; min-height: 110px; }
+.po-words { margin: 12px 0 4px; } .po-note { color: #555; font-size: 11px; margin: 0; }
+/* ---------- simple mode: big text, big buttons ---------- */
+.simple-home { display: grid; gap: 16px; max-width: 640px; margin: 0 auto; font-size: 18px; }
+.simple-home h1 { font-size: 30px; margin: 4px 0 0; }
+.sh-date { margin: -10px 0 0; color: var(--muted); font-size: 15px; }
+.sh-money { display: grid; gap: 4px; padding: 22px; border-radius: 26px; background: linear-gradient(135deg, var(--blue), #0f2f99); color: #fff; }
+.sh-money small { font-size: 16px; opacity: .85; }
+.sh-money b { font-size: 42px; line-height: 1.25; letter-spacing: -.01em; }
+.sh-money span { font-size: 16px; opacity: .9; } .sh-money em { font-style: normal; font-weight: 700; }
+.sh-bar { height: 10px; border-radius: 6px; background: rgba(255,255,255,.25); overflow: hidden; margin-top: 8px; }
+.sh-bar i { display: block; height: 100%; background: #fff; border-radius: 6px; }
+.sh-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sh-tile { display: grid; gap: 6px; justify-items: start; text-align: left; padding: 20px 16px; border-radius: 24px; background: var(--card); min-height: 150px; }
+.sh-tile:disabled { opacity: .6; }
+.sh-tile b { font-size: 20px; } .sh-tile small { font-size: 15px; color: var(--ink-2); }
+.sh-ico { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; background: var(--surface); color: var(--ink); }
+.sh-ico.blue { background: var(--blue); color: #fff; }
+.sh-block { display: grid; gap: 8px; padding: 16px; border-radius: 24px; background: var(--card); }
+.sh-block.warn { background: var(--ok-soft); }
+.sh-block h2 { font-size: 20px; margin: 0 0 4px; }
+.sh-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.sh-who { flex: 1; min-width: 0; display: grid; text-align: left; gap: 1px; }
+.sh-who b { font-size: 19px; } .sh-who span { color: var(--ink-2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-who em { font-style: normal; font-weight: 700; font-size: 17px; }
+.sh-row.late .sh-who em { color: var(--danger); }
+.sh-act { min-width: 54px; height: 54px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--surface); color: var(--ink); font-weight: 700; font-size: 16px; padding: 0 12px; flex-shrink: 0; text-decoration: none; }
+.sh-act.ok { background: var(--ok); color: #fff; }
+.sh-act:disabled { opacity: .35; }
+.sh-empty { margin: 4px 0; font-size: 18px; }
+.sh-more { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px; color: var(--blue); font-weight: 700; font-size: 17px; }
+.sh-full { justify-self: center; color: var(--muted); padding: 12px; font-size: 15px; text-decoration: underline; }
