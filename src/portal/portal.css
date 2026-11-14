@@ -123,3 +123,6 @@
 .pt-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .pt-meter-sent { display: flex; gap: 10px; align-items: center; color: #12804f; }
 .pt-meter-sent span { display: grid; } .pt-meter-sent small { opacity: .75; }
+.pt-sign { display: grid; gap: 8px; margin: 14px 0; }
+.pt-sign small { opacity: .7; }
+.pt-signed { color: #12804f; font-weight: 600; margin: 12px 0; }

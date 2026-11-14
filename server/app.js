@@ -687,6 +687,38 @@ app.post('/api/rooms/bulk', ...owner((req) => {
 
 // ---------- contracts ----------
 
+// ---------- e-signatures ----------
+
+/** A drawn signature (PNG data URL from the signature pad) → stored image meta. */
+async function storeSignature(dataUrl, name) {
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m) fail('សូមចុះហត្ថលេខាជាមុនសិន');
+  const buffer = Buffer.from(m[1], 'base64');
+  if (buffer.length < 300 || buffer.length > 300 * 1024) fail('ហត្ថលេខាមិនត្រឹមត្រូវ');
+  const { meta, error } = await storeImage({ buffer }, name);
+  if (error) fail(error);
+  return meta;
+}
+const leaseHash = (text) => crypto.createHash('sha256').update(String(text || '')).digest('hex');
+
+app.post('/api/settings/signature', ...owner(async (req) => {
+  const meta = await storeSignature(req.body?.signature, 'owner signature');
+  const c = db().settings.contract;
+  await removeFile(c.ownerSignature);
+  c.ownerSignature = meta;
+  save();
+  return adminState(req);
+}));
+app.delete('/api/settings/signature', ...owner(async (req) => {
+  const c = db().settings.contract;
+  await removeFile(c.ownerSignature);
+  c.ownerSignature = null;
+  save();
+  return adminState(req);
+}));
+app.get('/api/settings/signature', ...owner((req, res) => sendStored(res, req.session.orgId, db().settings.contract.ownerSignature)));
+app.get('/api/tenants/:id/signature', ...owner((req, res) => sendStored(res, req.session.orgId, findTenant(req.params.id)?.lease?.signature?.file)));
+
 app.put('/api/tenants/:id/contract', ...owner((req) => {
   const t = findTenant(req.params.id);
   if (!t) fail('រកមិនឃើញអតិថិជន', 404);
@@ -697,7 +729,9 @@ app.put('/api/tenants/:id/contract', ...owner((req) => {
     prepaidMonths: Math.min(12, Math.max(0, Math.round(+(b.prepaidMonths ?? 1)))),
     text: str(b.text, 15000),
     updatedAt: now(),
+    signature: t.lease?.signature,
   };
+  if (t.lease.signature && t.lease.signature.hash !== leaseHash(t.lease.text)) t.lease.signature = { ...t.lease.signature, outdated: true };
   save();
   return adminState(req);
 }));
@@ -1070,7 +1104,7 @@ async function portalState(t) {
     meters: s.meters.filter((m) => m.roomId === t.roomId).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12),
     property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, waterRate: st.waterRate, electricRate: st.electricRate },
     telegram: { bot, linked: !!t.telegram?.chatId, link: bot ? `https://t.me/${bot}?start=${linkCode}` : '' },
-    lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths } : null,
+    lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths, signed: t.lease.signature ? { name: t.lease.signature.name, at: t.lease.signature.at, outdated: !!t.lease.signature.outdated } : null, ownerSigned: !!st.contract?.ownerSignature } : null,
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),
     invoiceDesign: st.invoiceDesign,
     autoConfirm: bakongEnabled(),
@@ -1150,6 +1184,20 @@ app.post('/api/portal/:token/readings/:id/photo/:kind', ...portal(async (req, re
   save();
   return { ok: true };
 }, upload));
+
+app.post('/api/portal/:token/sign', ...portal(async (req, res, t) => {
+  if (!t.lease?.text || t.lease.required === false) fail('មិនមានកិច្ចសន្យាត្រូវចុះហត្ថលេខា');
+  if (t.lease.signature && !t.lease.signature.outdated) fail('បានចុះហត្ថលេខារួចហើយ');
+  const name = str(req.body?.name, 80) || t.nameKm || t.nameEn;
+  const file = await storeSignature(req.body?.signature, `${t.roomId} ${name} signature`);
+  if (t.lease.signature?.file) await removeFile(t.lease.signature.file);
+  t.lease.signature = { file, name, at: now(), hash: leaseHash(t.lease.text), ip: String(req.ip || '').slice(0, 64), ua: String(req.headers['user-agent'] || '').slice(0, 160) };
+  save();
+  logEvent('tenant', `${name} (${t.roomId}) បានចុះហត្ថលេខាលើកិច្ចសន្យា`, { tenantId: t.id });
+  await notifyAdmins(`✍️ <b>${esc(name)}</b> (${esc(t.roomId)}) បានចុះហត្ថលេខាលើកិច្ចសន្យាជួល។`, {}, { url: `/customers/${t.id}?contract=1` }).catch(() => {});
+  return portalState(t);
+}));
+app.get('/api/portal/:token/signature/:who', ...portal((req, res, t, org) => sendStored(res, org, req.params.who === 'owner' ? db().settings.contract.ownerSignature : t.lease?.signature?.file)));
 
 app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);

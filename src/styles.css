@@ -1185,3 +1185,15 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .sub-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .sub-row > span:first-child { display: grid; gap: 2px; min-width: 0; }
 .auto-approve { margin-bottom: 10px; }
+.sig-pad { position: relative; border: 1.5px dashed var(--line); border-radius: 16px; background: #fff; touch-action: none; }
+.sig-pad canvas { display: block; width: 100%; touch-action: none; cursor: crosshair; }
+.sig-hint { position: absolute; inset: 0; display: grid; place-items: center; color: #9aa3b5; pointer-events: none; font-size: 14px; }
+.sig-clear { position: absolute; right: 8px; bottom: 8px; display: inline-flex; gap: 4px; align-items: center; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: #f1f3f7; color: #445; }
+.contract-signs { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; text-align: center; }
+.contract-signs > div { display: grid; gap: 4px; justify-items: center; }
+.contract-signs span { font-weight: 700; }
+.contract-signs img { height: 70px; max-width: 100%; object-fit: contain; }
+.contract-signs i { display: block; height: 70px; width: 80%; border-bottom: 1px dotted #888; }
+.contract-signs small { font-size: 11px; color: #666; }
+.sig-status { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 8px 12px; border-radius: 12px; background: var(--card); }
+.sig-status.ok { background: var(--ok-soft); color: var(--ok); }

@@ -30,6 +30,7 @@ const RULES = [
   ['POST', '/api/auth/telegram/unlink', 'staff'],
   ['GET', '/api/team/me', 'staff'],
 
+  ['GET', '/api/settings/signature', 'manager'],
   ['*', '/api/rooms*', 'manager'],
   ['*', '/api/tenants*', 'manager'],
   ['*', '/api/invoices*', 'manager'],
