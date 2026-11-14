@@ -50,6 +50,8 @@ CREATE INDEX IF NOT EXISTS invites_org ON invites(org_id);
 CREATE TABLE IF NOT EXISTS errors (fingerprint text PRIMARY KEY, source text NOT NULL, message text NOT NULL, stack text NOT NULL DEFAULT '',
   path text NOT NULL DEFAULT '', org_id text, ua text NOT NULL DEFAULT '', count int NOT NULL DEFAULT 1, resolved boolean NOT NULL DEFAULT false,
   first_at timestamptz NOT NULL DEFAULT now(), last_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS memberships (user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  role text NOT NULL DEFAULT 'owner', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, org_id));
 CREATE TABLE IF NOT EXISTS admin_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, action text NOT NULL, target text NOT NULL DEFAULT '', detail text NOT NULL DEFAULT '');
 `;
 
@@ -215,8 +217,13 @@ export async function createSession(userId, orgId, days, { canReset = false } = 
 }
 export async function getSession(token) {
   if (!token) return null;
-  const { rows } = await q('SELECT s.*, u.email, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = $1 AND s.expires > now()', [sha256(token)]);
-  return rows[0] || null;
+  // The role is for the property the session is looking at: the user's own account, or an extra property they added.
+  const { rows } = await q(`SELECT s.*, u.email, u.org_id AS home_org,
+      COALESCE(m.role, CASE WHEN u.org_id = s.org_id THEN u.role END) AS role
+    FROM sessions s JOIN users u ON u.id = s.user_id
+    LEFT JOIN memberships m ON m.user_id = s.user_id AND m.org_id = s.org_id
+    WHERE s.id = $1 AND s.expires > now()`, [sha256(token)]);
+  return rows[0]?.role ? rows[0] : null;
 }
 export const deleteSession = (token) => q('DELETE FROM sessions WHERE id = $1', [sha256(token)]);
 export const deleteUserSessions = (userId) => q('DELETE FROM sessions WHERE user_id = $1', [userId]);
@@ -249,3 +256,16 @@ export async function rateLimit(key, max, windowSec) {
   return rows[0].count <= max;
 }
 export const clearRateLimit = (key) => q('DELETE FROM rate_limits WHERE key = $1', [key]);
+
+// ---------- several properties under one login ----------
+
+export async function propertiesOf(userId) {
+  const { rows } = await q(`SELECT o.id, o.doc->'settings'->>'propertyName' AS name, x.role, x.home, o.suspended,
+      jsonb_array_length(COALESCE(o.doc->'rooms', '[]'::jsonb)) AS rooms
+    FROM (SELECT org_id, role, true AS home FROM users WHERE id = $1
+          UNION ALL SELECT org_id, role, false FROM memberships WHERE user_id = $1) x
+    JOIN orgs o ON o.id = x.org_id ORDER BY x.home DESC, o.created_at`, [userId]);
+  return rows;
+}
+export const addMembership = (userId, orgId, role = 'owner') => q('INSERT INTO memberships (user_id, org_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [userId, orgId, role]);
+export const switchSessionOrg = (token, orgId) => q('UPDATE sessions SET org_id = $2 WHERE id = $1', [sha256(token), orgId]);

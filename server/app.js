@@ -8,11 +8,11 @@ import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent, migrateDoc, orgId, fm as usdFmt, cur } from './db.js';
+import { db, save, uid, now, logEvent, migrateDoc, orgId, fm as usdFmt, cur, newOrgDoc } from './db.js';
 import { convertCurrency } from './currency.js';
 
 setDocMigrator(migrateDoc);
-import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
+import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession, propertiesOf, addMembership, switchSessionOrg, createOrg } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
@@ -127,6 +127,7 @@ async function accountInfo(req) {
     telegram: u.telegram_id ? { name: u.telegram_name || '' } : null,
     platformLogin: !!process.env.TELEGRAM_BOT_TOKEN,
     role: req.session.role || 'owner',
+    home: req.session.orgId === req.session.homeOrg,
   };
 }
 
@@ -1121,6 +1122,32 @@ app.delete('/api/notices/:id', ...owner(async (req) => {
   return adminState(req);
 }));
 
+// ---------- several properties under one login ----------
+
+const propertyList = async (req) => (await propertiesOf(req.session.userId)).map((r) => ({ id: r.id, name: r.name, role: r.role, home: r.home, rooms: Number(r.rooms) || 0, current: r.id === req.session.orgId, suspended: r.suspended }));
+app.get('/api/properties', requireOwner, async (req, res) => res.json({ properties: await propertyList(req) }));
+app.post('/api/properties', requireOwner, async (req, res) => {
+  const name = str(req.body?.name, 80);
+  if (!name) fail('សូមបញ្ចូលឈ្មោះអចលនទ្រព្យ');
+  const mine = await propertiesOf(req.session.userId);
+  if (mine.length >= 10) fail('អចលនទ្រព្យអតិបរមា ១០');
+  // Start the new place with the same currency, prices and KHQR as the current one (less typing).
+  const base = await withOrg(req.session.orgId, () => { const st = db().settings; return { currency: st.currency, exchangeRate: st.exchangeRate, waterRate: st.waterRate, electricRate: st.electricRate, dueDays: st.dueDays, khqr: { ...st.khqr }, addons: st.addons, tiers: st.tiers, ownerName: st.ownerName, phone: st.phone, khmerNumerals: st.khmerNumerals }; });
+  const doc = newOrgDoc({ name, phone: base.phone });
+  Object.assign(doc.settings, { ...base, contract: { ...doc.settings.contract } });
+  const orgId = await createOrg(doc);
+  await addMembership(req.session.userId, orgId, 'owner');
+  await switchSessionOrg(cookies(req).py_session, orgId);
+  res.json({ ok: true, id: orgId });
+});
+app.post('/api/properties/switch', requireOwner, async (req, res) => {
+  const target = (await propertiesOf(req.session.userId)).find((r) => r.id === req.body?.id);
+  if (!target) fail('រកមិនឃើញអចលនទ្រព្យ', 404);
+  if (target.suspended) fail('អចលនទ្រព្យនេះត្រូវបានផ្អាក', 403);
+  await switchSessionOrg(cookies(req).py_session, target.id);
+  res.json({ ok: true });
+});
+
 // ---------- browser error reports (no login needed: the portal reports too) ----------
 
 app.post('/api/errors', async (req, res) => {
@@ -1172,13 +1199,22 @@ app.post('/api/backup/restore', ...owner(async (req) => {
 app.post('/api/backup/restore/finish', ...owner(async (req) => ({ ...(await adminState(req)), result: await cleanupOrphanFiles() })));
 
 app.post('/api/account/delete', requireOwner, async (req, res) => {
-  const { rows } = await q(`SELECT u.pass_hash, o.doc->'settings'->>'propertyName' AS name FROM users u JOIN orgs o ON o.id = u.org_id WHERE u.id = $1`, [req.session.userId]);
+  if (req.session.role !== 'owner') fail('មានតែម្ចាស់ផ្ទះទេ', 403);
+  const { rows } = await q(`SELECT u.pass_hash, (SELECT doc->'settings'->>'propertyName' FROM orgs WHERE id = $2) AS name FROM users u WHERE u.id = $1`, [req.session.userId, req.session.orgId]);
   if (!rows[0]) fail('រកមិនឃើញគណនី', 404);
   if (rows[0].pass_hash) {
     if (!verifyPassword(req.body?.password, rows[0].pass_hash)) fail('ពាក្យសម្ងាត់មិនត្រឹមត្រូវ');
   } else if (String(req.body?.confirm || '').trim() !== rows[0].name) fail('ឈ្មោះមិនត្រូវគ្នា');
   const { rows: blobs } = await q("SELECT id FROM files WHERE org_id = $1 AND backend = 'r2'", [req.session.orgId]);
   for (const b of blobs) await deleteBlob(req.session.orgId, {}, b.id);
+  if (req.session.orgId !== req.session.homeOrg) {
+    // An extra property: remove just that place and go back to the main one.
+    await q('DELETE FROM orgs WHERE id = $1', [req.session.orgId]);
+    await switchSessionOrg(cookies(req).py_session, req.session.homeOrg);
+    return res.json({ ok: true, switched: true });
+  }
+  const extra = (await propertiesOf(req.session.userId)).filter((r) => !r.home && r.role === 'owner');
+  if (extra.length) fail(`សូមលុបអចលនទ្រព្យផ្សេងទៀតជាមុនសិន (${extra.map((r) => r.name).join(', ')})`);
   await q('DELETE FROM orgs WHERE id = $1', [req.session.orgId]); // cascades to users, sessions' users, files, lookups
   res.setHeader('Set-Cookie', 'py_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ ok: true });

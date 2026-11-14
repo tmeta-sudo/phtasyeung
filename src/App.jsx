@@ -473,9 +473,16 @@ function NewsButton({ path }) {
 }
 
 function ProfileMenu({ onLogout }) {
-  const { state } = useApp();
+  const { state, notify } = useApp();
   const pwa = usePwa();
   const [open, setOpen] = useState(false);
+  const [props, setProps] = useState(null);
+  useEffect(() => { if (open && !props) api('GET', '/api/properties').then((r) => setProps(r.properties)).catch(() => setProps([])); }, [open, props]);
+  const go = async (fn) => { try { await fn(); location.href = '/'; } catch (e) { notify(e.message, true); } };
+  const addProperty = () => {
+    const name = window.prompt('ឈ្មោះអចលនទ្រព្យថ្មី (ឧ. ផ្ទះជួលទី ២ សៀមរាប)');
+    if (name?.trim()) go(() => api('POST', '/api/properties', { name: name.trim() }));
+  };
   return (
     <div className="pop-wrap">
       <button className="profile-btn" onClick={() => setOpen((v) => !v)} aria-label="គណនី">
@@ -484,6 +491,16 @@ function ProfileMenu({ onLogout }) {
       {open && (
         <div className="dropdown right" onMouseLeave={() => setOpen(false)}>
           <p className="pad"><b>{greetingKm(state.today.hour)}!</b><br /><small className="muted">{state.account.email || (state.account.telegram ? `Telegram · ${state.account.telegram.name}` : '')} · {state.settings.propertyName}</small></p>
+          {props?.length > 0 && (
+            <div className="prop-list">
+              {props.map((p) => (
+                <button key={p.id} className={p.current ? 'current' : ''} onClick={() => !p.current && go(() => api('POST', '/api/properties/switch', { id: p.id }))}>
+                  <span className="logo sm">{(p.name || 'ផ').trim()[0]}</span><span><b>{p.name}</b><small>{p.rooms} បន្ទប់{p.current ? ' · កំពុងមើល' : ''}</small></span>
+                </button>
+              ))}
+              {state.account.role === 'owner' && <button className="add" onClick={addProperty}>＋ បន្ថែមអចលនទ្រព្យ</button>}
+            </div>
+          )}
           <button onClick={() => { setOpen(false); navigate('/settings'); }}><Settings size={16} /> ការកំណត់</button>
           <button onClick={() => { setOpen(false); navigate('/news'); }}><Sparkles size={16} /> មានអ្វីថ្មី</button>
           <button onClick={() => { setOpen(false); navigate('/feedback?tab=new'); }}><Lightbulb size={16} /> ស្នើមុខងារ</button>
