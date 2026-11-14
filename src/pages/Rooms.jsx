@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { uploadFile } from '../api.js';
 import { FeaturePicker, FeatureIcons } from '../AddonsPicker.jsx';
 import { Plus, Pencil, Trash2, Gauge, QrCode, DoorOpen, Droplets, Zap, Printer, Building2 } from 'lucide-react';
 import BuildingWizard, { Building3D } from './BuildingWizard.jsx';
@@ -139,6 +140,7 @@ function RoomForm({ room, onClose }) {
           <Field label="លេខកុងទ័រទឹកបច្ចុប្បន្ន (m³)"><input type="number" min="0" step="any" value={f.water} onChange={(e) => set('water', e.target.value)} /></Field>
           <Field label="លេខកុងទ័រភ្លើងបច្ចុប្បន្ន (kWh)"><input type="number" min="0" step="any" value={f.electric} onChange={(e) => set('electric', e.target.value)} /></Field>
         </div>
+        {room.originalId && <RoomPhotos roomId={room.originalId} />}
         <fieldset>
           <legend>គ្រឿងបរិក្ខារក្នុងបន្ទប់</legend>
           <FeaturePicker value={f.features} onChange={(v) => set('features', v)} />
@@ -158,5 +160,31 @@ function RoomForm({ room, onClose }) {
         <div className="form-actions"><button type="button" className="btn ghost" onClick={onClose}>បោះបង់</button><button className="btn primary">រក្សាទុក</button></div>
       </form>
     </Modal>
+  );
+}
+
+/** Photos of a room (shown on the public vacant-rooms page). */
+function RoomPhotos({ roomId }) {
+  const { state, call, setState, notify } = useApp();
+  const room = state.rooms.find((r) => r.id === roomId);
+  const [busy, setBusy] = useState(false);
+  const photos = room?.photos || [];
+  async function add(files) {
+    setBusy(true);
+    try { for (const f of [...files].slice(0, 8 - photos.length)) setState(await uploadFile(`/api/rooms/${encodeURIComponent(roomId)}/photos`, f)); } catch (e) { notify(e.message, true); } finally { setBusy(false); }
+  }
+  return (
+    <fieldset>
+      <legend>រូបបន្ទប់ (សម្រាប់ទំព័របន្ទប់ទំនេរ)</legend>
+      <div className="room-photos">
+        {photos.map((p) => (
+          <span key={p.id} className="rp">
+            <img src={`/api/rooms/${encodeURIComponent(roomId)}/photos/${p.id}`} alt="" />
+            <button type="button" aria-label="លុប" onClick={() => call('DELETE', `/api/rooms/${encodeURIComponent(roomId)}/photos/${p.id}`)}>×</button>
+          </span>
+        ))}
+        {photos.length < 8 && <label className="rp add">{busy ? '…' : '＋ រូប'}<input type="file" accept="image/*" multiple hidden onChange={(e) => { add(e.target.files); e.target.value = ''; }} /></label>}
+      </div>
+    </fieldset>
   );
 }

@@ -167,6 +167,7 @@ function lookupKeys(doc) {
   }
   for (const c of doc.settings?.telegram?.adminChats || []) keys.push([`chat:${botKey}`, String(c.chatId)]);
   if (doc.settings?.telegram?.adminLinkCode) keys.push(['admin-link', doc.settings.telegram.adminLinkCode]);
+  if (doc.settings?.listing?.enabled && doc.settings.listing.slug) keys.push(['listing', doc.settings.listing.slug]);
   return keys;
 }
 

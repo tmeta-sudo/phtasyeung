@@ -154,3 +154,19 @@ test('one-click Telegram backup sends a zip to the owner chat', async () => {
   assert.equal(data.app, 'phteah-yeung');
   assert.ok(r.settings.backup.lastTelegramAt);
 });
+
+test('restore cleanup keeps meter photos and other non-tenant files', async () => {
+  const { c, state } = await landlord(env.url);
+  await c.post('/api/meters', { roomId: 'A1', month: state.today.ym, water: 5, electric: 50 });
+  const st = await c.get('/api/state');
+  const m = st.meters[0];
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const form = new FormData(); form.set('file', new Blob([png], { type: 'image/png' }), 'm.png');
+  const up = await c.raw(`/api/meters/${m.id}/photo/water`, { method: 'POST', body: form });
+  assert.equal(up.status, 200);
+  const data = await c.get('/api/account/export');
+  await c.post('/api/backup/restore', { data });
+  const done = await c.post('/api/backup/restore/finish', {});
+  assert.equal(done.result.removed, 0);
+  assert.equal((await c.raw(`/api/meters/${m.id}/photo/water`)).status, 200, 'meter photo still there');
+});

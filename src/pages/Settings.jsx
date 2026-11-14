@@ -10,6 +10,7 @@ import BackupCard from '../settings/BackupCard.jsx';
 import NotifyCard from '../settings/NotifyCard.jsx';
 import UtilityCard from '../settings/UtilityCard.jsx';
 import AddonsCard from '../settings/AddonsCard.jsx';
+import ListingCard from '../settings/ListingCard.jsx';
 import TeamCard from '../settings/TeamCard.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
@@ -61,6 +62,7 @@ export default function SettingsPage() {
           <button className="btn primary">រក្សាទុក</button>
         </form>
         
+        <ListingCard />
         <AddonsCard />
         <UtilityCard />
         <form className="card" onSubmit={(e) => save(e, { lateFee: f.lateFee, carryOver: !!f.carryOver })}>

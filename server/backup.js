@@ -116,7 +116,16 @@ export async function restoreData(data) {
 /** After documents are re-uploaded: drop files that no customer references any more. */
 export async function cleanupOrphanFiles() {
   const s = db();
-  const used = new Set(s.tenants.flatMap((t) => Object.values(t.files || {}).map((m) => m.id)));
+  // Every stored file is described by a { id, ext, type, size } object somewhere in the data
+  // (tenant documents, meter photos, room photos, signatures…). Keep all of them.
+  const used = new Set();
+  const walk = (v) => {
+    if (!v || typeof v !== 'object') return;
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (typeof v.id === 'string' && typeof v.ext === 'string' && typeof v.type === 'string') used.add(v.id);
+    for (const x of Object.values(v)) walk(x);
+  };
+  walk(s);
   for (const t of s.tenants) delete t.restoredFiles;
   save();
   const { rows } = await q('SELECT id FROM files WHERE org_id = $1', [orgId()]);

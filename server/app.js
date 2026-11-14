@@ -8,7 +8,7 @@ import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent, migrateDoc } from './db.js';
+import { db, save, uid, now, logEvent, migrateDoc, orgId } from './db.js';
 
 setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
@@ -617,6 +617,15 @@ app.put('/api/settings', ...owner(async (req) => {
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
+  if (b.listing) {
+    const slug = String(b.listing.slug ?? s.listing?.slug ?? '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    if (b.listing.enabled && slug.length < 3) fail('សូមដាក់ឈ្មោះតំណ (អក្សរឡាតាំង យ៉ាងហោចណាស់ ៣ តួ)');
+    if (slug && b.listing.enabled) {
+      const taken = (await findOrgs('listing', slug)).filter((id) => id !== orgId());
+      if (taken.length || ['admin', 'api', 'login', 'signup'].includes(slug)) fail('ឈ្មោះតំណនេះមានគេប្រើហើយ — សូមជ្រើសឈ្មោះផ្សេង');
+    }
+    s.listing = { enabled: !!b.listing.enabled, slug, intro: str(b.listing.intro ?? s.listing?.intro, 600), showPhone: b.listing.showPhone !== false };
+  }
   if (typeof b.autoApproveReadings === 'boolean') s.autoApproveReadings = b.autoApproveReadings;
   if (Array.isArray(b.addons)) {
     const seen = new Set();
@@ -658,6 +667,87 @@ app.put('/api/settings', ...owner(async (req) => {
 }));
 
 // ---------- building designer: create many rooms at once ----------
+
+// ---------- room photos (for the public listing) ----------
+
+app.post('/api/rooms/:id/photos', ...owner(async (req) => {
+  const room = db().rooms.find((r) => r.id === req.params.id);
+  if (!room) fail('រកមិនឃើញបន្ទប់', 404);
+  if ((room.photos || []).length >= 8) fail('រូបភាពអតិបរមា ៨');
+  const { meta, error } = await storeImage(req.file, `room ${room.id}`);
+  if (error) fail(error);
+  room.photos = [...(room.photos || []), meta];
+  save();
+  return adminState(req);
+}, upload));
+app.delete('/api/rooms/:id/photos/:pid', ...owner(async (req) => {
+  const room = db().rooms.find((r) => r.id === req.params.id);
+  const ph = room?.photos?.find((p) => p.id === req.params.pid);
+  if (!ph) fail('រកមិនឃើញ', 404);
+  await removeFile(ph);
+  room.photos = room.photos.filter((p) => p.id !== ph.id);
+  save();
+  return adminState(req);
+}));
+app.get('/api/rooms/:id/photos/:pid', ...owner((req, res) => sendStored(res, req.session.orgId, db().rooms.find((r) => r.id === req.params.id)?.photos?.find((p) => p.id === req.params.pid))));
+
+// ---------- public listing of vacant rooms ----------
+
+async function listingOrg(slug) {
+  const ids = await findOrgs('listing', String(slug || '').toLowerCase());
+  if (ids.length !== 1) fail('រកមិនឃើញទំព័រនេះ', 404);
+  return ids[0];
+}
+const vacantRooms = () => db().rooms.filter((r) => !tenantOfRoom(r.id));
+
+app.get('/api/listing/:slug', async (req, res) => {
+  if (!(await rateLimit(`listing:${req.ip}`, 120, 600))) fail('ព្យាយាមច្រើនដងពេក', 429);
+  const org = await listingOrg(req.params.slug);
+  const out = await withOrg(org, () => {
+    const st = db().settings;
+    if (!st.listing?.enabled) fail('រកមិនឃើញទំព័រនេះ', 404);
+    const L = st.location || {};
+    return {
+      property: { name: st.propertyName, nameEn: st.propertyNameEn, phone: st.listing.showPhone ? st.phone : '', coverUrl: st.coverUrl, address: [L.addressText || st.address].filter(Boolean).join(', '), lat: L.lat, lng: L.lng, khmerNumerals: st.khmerNumerals },
+      intro: st.listing.intro,
+      rooms: vacantRooms().map((r) => ({ id: r.id, building: r.building, floor: r.floor, rent: r.rent, features: r.features || [], note: r.note, photos: (r.photos || []).map((p) => p.id) })),
+      addons: (st.addons || []).map(({ icon, label, price }) => ({ icon, label, price })),
+      deposit: { months: st.contract?.depositMonths, prepaid: st.contract?.prepaidMonths },
+    };
+  });
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json(out);
+});
+app.get('/api/listing/:slug/photo/:roomId/:pid', async (req, res) => {
+  const org = await listingOrg(req.params.slug);
+  await withOrg(org, async () => {
+    if (!db().settings.listing?.enabled) return res.status(404).end();
+    const room = vacantRooms().find((r) => r.id === req.params.roomId);
+    return sendStored(res, org, room?.photos?.find((p) => p.id === req.params.pid));
+  });
+});
+app.post('/api/listing/:slug/inquiry', async (req, res) => {
+  if (!(await rateLimit(`inquiry:${req.ip}`, 5, 3600))) fail('ផ្ញើច្រើនដងពេក សូមព្យាយាមម្តងទៀតក្រោយ', 429);
+  const b = req.body || {};
+  if (b.website) return res.json({ ok: true }); // bots fill the hidden field
+  const name = str(b.name, 60); const phone = normalizePhone(b.phone) || str(b.phone, 30);
+  if (!name || !/\d{8,}/.test(String(phone).replace(/\D/g, ''))) fail('សូមបញ្ចូលឈ្មោះ និងលេខទូរស័ព្ទ');
+  const org = await listingOrg(req.params.slug);
+  await withOrg(org, async () => {
+    const s = db();
+    if (!s.settings.listing?.enabled) fail('រកមិនឃើញទំព័រនេះ', 404);
+    const roomId = vacantRooms().some((r) => r.id === b.roomId) ? b.roomId : '';
+    s.counters.ticket = (s.counters.ticket || 0) + 1;
+    const text = [`📞 ${phone}`, b.moveIn ? `📅 ចង់ចូលនៅ ${str(b.moveIn, 20)}` : '', str(b.message, 1000)].filter(Boolean).join('\n');
+    const t = { id: uid(), no: s.counters.ticket, kind: 'inquiry', tenantId: null, phone, roomId, name, status: 'open', createdAt: now(), updatedAt: now(), unread: 1, messages: [{ from: 'tenant', text, at: now(), via: 'listing' }], adminMsgIds: [], tenantMsgIds: [] };
+    s.tickets.push(t);
+    if (s.tickets.length > 500) s.tickets.splice(0, s.tickets.length - 500);
+    save();
+    logEvent('tenant', `🏠 សំណួរពីអ្នកចង់ជួល ${name}${roomId ? ` (បន្ទប់ ${roomId})` : ''}`, { ticketId: t.id });
+    await notifyAdmins(`🏠 <b>អ្នកចង់ជួលបន្ទប់</b>${roomId ? ` · ${esc(roomId)}` : ''}\n👤 ${esc(name)}\n${esc(text)}`, {}, { url: `/inbox?t=${t.id}`, tag: 'inquiry-' + t.id }).catch(() => {});
+  });
+  res.json({ ok: true });
+});
 
 app.post('/api/rooms/bulk', ...owner((req) => {
   const b = req.body || {};
