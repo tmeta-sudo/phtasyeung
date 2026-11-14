@@ -5,7 +5,13 @@ import { nowInCambodia, monthKm, dateKm, kmDigits, altMoney } from '../shared/kh
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-export const tenantOfRoom = (roomId) => db().tenants.find((t) => t.roomId === roomId && t.status === 'active');
+/** Everyone living in a room (roommates), longest-staying first. The first one is the bill's main name. */
+export const tenantsOfRoom = (roomId) => db().tenants.filter((t) => t.roomId === roomId && t.status === 'active')
+  .sort((a, b) => String(a.contract?.start || a.createdAt || '').localeCompare(String(b.contract?.start || b.createdAt || '')));
+export const tenantOfRoom = (roomId) => tenantsOfRoom(roomId)[0];
+/** A room's invoice belongs to all its roommates: any of them can see it, pay it and gets the receipt. */
+export const invoiceIsFor = (inv, t) => !!t && (inv.tenantId === t.id || (inv.tenantIds || []).includes(t.id));
+export const payersOf = (inv) => db().tenants.filter((t) => invoiceIsFor(inv, t));
 export const roomOf = (tenant) => db().rooms.find((r) => r.id === tenant?.roomId);
 
 function addDays(ymd, days) {
@@ -76,7 +82,8 @@ export function generateInvoices(month, actor = 'admin') {
   const today = nowInCambodia().ymd;
   const created = [];
   for (const room of s.rooms) {
-    const tenant = tenantOfRoom(room.id);
+    const mates = tenantsOfRoom(room.id);
+    const tenant = mates[0];
     if (!tenant) continue;
     if (s.invoices.some((i) => i.roomId === room.id && i.month === month)) continue;
     const meter = s.meters.find((m) => m.roomId === room.id && m.month === month);
@@ -107,13 +114,14 @@ export function generateInvoices(month, actor = 'admin') {
       if (extra.label && +extra.amount) items.push({ key: 'extra', label: extra.label, qty: 1, unit: 'ខែ', rate: +extra.amount, amount: +extra.amount });
     }
     // Paid add-ons the tenant ticked (parking, Wi-Fi, …).
-    for (const x of tenant.addons || []) {
+    for (const mate of mates) for (const x of mate.addons || []) {
       const a = (settings.addons || []).find((y) => y.id === x.id);
       if (!a || !(x.qty > 0) || !(+a.price > 0)) continue;
-      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: rm(a.price * x.qty) });
+      const who = mates.length > 1 ? ` (${mate.nameKm || mate.nameEn})` : '';
+      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}${who}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: rm(a.price * x.qty) });
     }
     // Unpaid balance of earlier months moves onto this invoice (one bill, one QR).
-    const carried = settings.carryOver ? s.invoices.filter((i) => i.tenantId === tenant.id && i.month < month && i.status !== 'paid' && balanceOf(i) > 0) : [];
+    const carried = settings.carryOver ? s.invoices.filter((i) => mates.some((mt) => invoiceIsFor(i, mt)) && i.roomId === room.id && i.month < month && i.status !== 'paid' && balanceOf(i) > 0) : [];
     for (const prev of carried) {
       const b = balanceOf(prev);
       items.push({ key: 'arrears', label: `នៅជំពាក់ ${monthKm(prev.month)}`, qty: 1, unit: '', rate: b, amount: b, ref: prev.id });
@@ -125,7 +133,8 @@ export function generateInvoices(month, actor = 'admin') {
       month,
       roomId: room.id,
       tenantId: tenant.id,
-      name: tenant.nameKm || tenant.nameEn,
+      tenantIds: mates.map((mt) => mt.id),
+      name: mates.map((mt) => mt.nameKm || mt.nameEn).join(' · '),
       items,
       rate: +settings.exchangeRate || 4100,
       issuedAt: today,
@@ -199,7 +208,14 @@ export function moveOut(t, { date, deductions = [], useDeposit = true }) {
   const deposit = rm(t.deposit?.held || 0);
   const ded = deductions.map((d) => ({ label: String(d.label || '').trim().slice(0, 80), amount: rm(Math.abs(+d.amount || 0)) })).filter((d) => d.label && d.amount > 0).slice(0, 20);
   const dedTotal = rm(ded.reduce((a, d) => a + d.amount, 0));
-  const open = s.invoices.filter((i) => i.tenantId === t.id && i.status !== 'paid' && balanceOf(i) > 0).sort((a, b) => a.month.localeCompare(b.month));
+  const staying = tenantsOfRoom(t.roomId).filter((x) => x.id !== t.id);
+  // Roommates staying on keep the room's unpaid bills; they are only settled when the last person leaves.
+  const open = staying.length ? [] : s.invoices.filter((i) => invoiceIsFor(i, t) && i.status !== 'paid' && balanceOf(i) > 0).sort((a, b) => a.month.localeCompare(b.month));
+  for (const i of staying.length ? s.invoices.filter((x) => x.status !== 'paid' && invoiceIsFor(x, t)) : []) {
+    i.tenantIds = (i.tenantIds || [i.tenantId]).filter((id) => id !== t.id);
+    if (i.tenantId === t.id) i.tenantId = staying[0].id;
+    i.name = staying.map((x) => x.nameKm || x.nameEn).join(' · ');
+  }
   const unpaid = rm(open.reduce((a, i) => a + balanceOf(i), 0));
   let available = useDeposit ? Math.max(0, rm(deposit - dedTotal)) : 0;
   let applied = 0;

@@ -15,7 +15,7 @@ setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
 import { authRoutes, requireOwner, verifyPassword, cookies } from './auth.js';
 import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
-import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
+import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
 import {
   botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, configureOwnBot,
@@ -200,8 +200,12 @@ function validateTenant(t) {
   if (t.contract?.start && t.contract?.end && t.contract.end < t.contract.start) return 'ថ្ងៃផុតកំណត់ត្រូវនៅក្រោយថ្ងៃចាប់ផ្តើម';
   if (t.roomId) {
     if (!db().rooms.some((r) => r.id === t.roomId)) return 'រកមិនឃើញបន្ទប់';
-    const other = db().tenants.find((x) => x.id !== t.id && x.status === 'active' && x.roomId === t.roomId);
-    if (t.status === 'active' && other) return `បន្ទប់ ${t.roomId} មានអ្នកជួលរួចហើយ (${other.nameKm || other.nameEn})`;
+    const room = db().rooms.find((r) => r.id === t.roomId);
+    const others = db().tenants.filter((x) => x.id !== t.id && x.status === 'active' && x.roomId === t.roomId);
+    const cap = Math.max(1, +room.capacity || 1);
+    if (t.status === 'active' && others.length >= cap) {
+      return cap === 1 ? `បន្ទប់ ${t.roomId} មានអ្នកជួលរួចហើយ (${others[0].nameKm || others[0].nameEn}) — បើជួលរួមគ្នា សូមកែបន្ទប់ ហើយដំឡើង «ចំនួនអ្នកស្នាក់នៅ»` : `បន្ទប់ ${t.roomId} ពេញហើយ (${cap} នាក់)`;
+    }
   }
   return '';
 }
@@ -219,12 +223,14 @@ function cleanRoom(p) {
     id: str(p.id, 30), building: str(p.building, 60), floor: str(p.floor, 10), rent: money(p.rent),
     water: Math.max(0, +p.water || 0), electric: Math.max(0, +p.electric || 0), note: str(p.note, 300),
     features: [...new Set((Array.isArray(p.features) ? p.features : []).filter((f) => FEATURE_IDS.has(f)))],
+    capacity: Math.min(20, Math.max(1, Math.round(+p.capacity || 1))),
+    ...(Array.isArray(p.photos) ? { photos: p.photos } : {}),
     extras: (Array.isArray(p.extras) ? p.extras : []).slice(0, 6).map((e) => ({ label: str(e.label, 60), amount: money(e.amount) })).filter((e) => e.label),
   };
 }
 
 app.post('/api/rooms', ...owner((req) => {
-  const room = cleanRoom(req.body || {});
+  const room = cleanRoom({ ...(req.body || {}), photos: undefined });
   if (!room.id) fail('សូមបញ្ចូលលេខបន្ទប់');
   if (db().rooms.length >= 500) fail('ចំនួនបន្ទប់អតិបរមា ៥០០');
   if (db().rooms.some((r) => r.id === room.id)) fail('លេខបន្ទប់នេះមានរួចហើយ');
@@ -236,7 +242,9 @@ app.post('/api/rooms', ...owner((req) => {
 app.put('/api/rooms/:id', ...owner((req) => {
   const i = db().rooms.findIndex((r) => r.id === req.params.id);
   if (i < 0) fail('រកមិនឃើញបន្ទប់', 404);
-  db().rooms[i] = { ...cleanRoom({ ...db().rooms[i], ...req.body }), id: req.params.id };
+  const curRoom = db().rooms[i];
+  if (Math.round(+req.body?.capacity || curRoom.capacity || 1) < tenantsOfRoom(curRoom.id).length) fail('ចំនួនអ្នកស្នាក់នៅតិចជាងអ្នកជួលបច្ចុប្បន្ន');
+  db().rooms[i] = { ...cleanRoom({ ...curRoom, ...req.body, photos: curRoom.photos }), id: req.params.id };
   save();
   return adminState(req);
 }));
@@ -453,8 +461,7 @@ app.post('/api/invoices/:id/payments', ...owner(async (req) => {
   if (full) await confirmPayment(inv, via);
   else {
     logEvent('admin', `បានទទួលប្រាក់ខ្លះ ${usdFmt(+req.body.amount)} ពី ${inv.roomId} · នៅសល់ ${usdFmt(balanceOf(inv))}`, { invoiceId: inv.id });
-    const t = db().tenants.find((x) => x.id === inv.tenantId);
-    await notifyTenant(t, `✅ <b>បានទទួលប្រាក់ ${usdFmt(+req.body.amount)}</b>\n🧾 ${inv.number}\nនៅសល់: <b>${usdFmt(balanceOf(inv))}</b>`);
+    for (const t of payersOf(inv)) await notifyTenant(t, `✅ <b>បានទទួលប្រាក់ ${usdFmt(+req.body.amount)}</b>\n🧾 ${inv.number}\nនៅសល់: <b>${usdFmt(balanceOf(inv))}</b>`);
   }
   return adminState(req);
 }));
@@ -1196,7 +1203,7 @@ async function portalState(t) {
   return {
     profile,
     room: room ? { id: room.id, building: room.building, floor: room.floor, rent: room.rent, water: room.water, electric: room.electric } : null,
-    invoices: s.invoices.filter((i) => i.tenantId === t.id).sort((a, b) => b.month.localeCompare(a.month)).map(withQr),
+    invoices: s.invoices.filter((i) => invoiceIsFor(i, t)).sort((a, b) => b.month.localeCompare(a.month)).map(withQr),
     meters: s.meters.filter((m) => m.roomId === t.roomId).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12),
     property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, currency: st.currency === 'KHR' ? 'KHR' : 'USD', exchangeRate: st.exchangeRate, waterRate: st.waterRate, electricRate: st.electricRate },
     telegram: { bot, linked: !!t.telegram?.chatId, link: bot ? `https://t.me/${bot}?start=${linkCode}` : '' },
@@ -1205,6 +1212,7 @@ async function portalState(t) {
     invoiceDesign: st.invoiceDesign,
     autoConfirm: bakongEnabled(),
     today: nowInCambodia(),
+    roommates: tenantsOfRoom(t.roomId).filter((x) => x.id !== t.id).map((x) => ({ name: x.nameKm || x.nameEn })),
     myReading: (s.meterSubmissions || []).filter((x) => x.tenantId === t.id).at(-1) || null,
     sharedKinds: ['water', 'electric'].filter((k) => (st.sharedMeters || []).some((g) => g.kind === k && g.rooms.includes(t.roomId))),
     notices: (s.notices || []).filter((n) => n.rooms?.includes(t.roomId) && Date.now() - new Date(n.at).getTime() < 60 * 86400000).slice(0, 5).map(({ id, at, text }) => ({ id, at, text })),
@@ -1297,14 +1305,14 @@ app.get('/api/portal/:token/signature/:who', ...portal((req, res, t, org) => sen
 
 app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
-  if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (!inv || !invoiceIsFor(inv, t)) fail('រកមិនឃើញវិក្កយបត្រ', 404);
   const r = await checkInvoice(inv, { minIntervalMs: 4000 });
   return { status: inv.status, bakong: r !== 'skip' };
 }));
 
 app.post('/api/portal/:token/invoices/:id/claim', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
-  if (!inv || inv.tenantId !== t.id) fail('រកមិនឃើញវិក្កយបត្រ', 404);
+  if (!inv || !invoiceIsFor(inv, t)) fail('រកមិនឃើញវិក្កយបត្រ', 404);
   if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') await claimPayment(inv, 'portal');
   return portalState(t);
 }));

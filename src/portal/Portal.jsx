@@ -102,6 +102,7 @@ export default function Portal({ token }) {
                   {data.room && <span className="pt-glass">{$(data.room.rent)}<small>/ខែ</small></span>}
                   <span className="pt-glass">{owed ? `ជំពាក់ ${$(owed)}` : '✓ គ្មានជំពាក់'}</span>
                 </div>
+                {data.roommates?.length > 0 && <small className="pt-mates">👥 រួមបន្ទប់ជាមួយ {data.roommates.map((x) => x.name).join(', ')}{owed ? ` · ចំណែកម្នាក់ ≈ ${$(owed / (data.roommates.length + 1))}` : ''}</small>}
                 {open[0]
                   ? <button className="pt-glass-btn" onClick={() => setPay(open[0])}>បង់វិក្កយបត្រ {monthKm(open[0].month, k).replace(/ ឆ្នាំ.*/, '')}<i><ChevronRight size={16} /></i></button>
                   : <button className="pt-glass-btn" onClick={() => setTab('bills')}>មើលវិក្កយបត្រ<i><ChevronRight size={16} /></i></button>}

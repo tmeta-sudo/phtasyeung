@@ -126,3 +126,4 @@
 .pt-sign { display: grid; gap: 8px; margin: 14px 0; }
 .pt-sign small { opacity: .7; }
 .pt-signed { color: #12804f; font-weight: 600; margin: 12px 0; }
+.pt-mates { display: block; opacity: .9; margin-top: 2px; }

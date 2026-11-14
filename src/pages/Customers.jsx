@@ -300,7 +300,9 @@ export function CustomerForm({ tenant, preset, onClose }) {
   const [error, setError] = useState('');
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const setIn = (o, k, v) => setF((x) => ({ ...x, [o]: { ...x[o], [k]: v } }));
-  const occupied = new Set(state.tenants.filter((x) => x.status === 'active' && x.id !== tenant?.id).map((x) => x.roomId));
+  // A room is "full" when it already has as many tenants as its capacity (1 unless it is a shared room).
+  const livingIn = (id) => state.tenants.filter((x) => x.status === 'active' && x.id !== tenant?.id && x.roomId === id).length;
+  const occupied = { has: (id) => livingIn(id) >= (state.rooms.find((r) => r.id === id)?.capacity || 1) };
 
   const warnings = [];
   if (f.nameKm && !isKhmerName(f.nameKm)) warnings.push('ឈ្មោះខ្មែរគួរសរសេរជាអក្សរខ្មែរ');
@@ -373,7 +375,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
           <legend>បន្ទប់ និងកិច្ចសន្យា</legend>
           <div className="form-grid">
             <Field label="ស្ថានភាព"><select value={f.status} onChange={(e) => set('status', e.target.value)}><option value="active">កំពុងជួល</option><option value="prospect">អ្នកចាប់អារម្មណ៍</option><option value="former">អតីតអ្នកជួល</option></select></Field>
-            <Field label="បន្ទប់"><select value={f.roomId} onChange={(e) => set('roomId', e.target.value)}><option value="">— គ្មាន —</option>{state.rooms.map((r) => <option key={r.id} value={r.id} disabled={occupied.has(r.id)}>{r.id} · {r.building}{occupied.has(r.id) ? ' (មានអ្នកជួល)' : ''}</option>)}</select></Field>
+            <Field label="បន្ទប់"><select value={f.roomId} onChange={(e) => set('roomId', e.target.value)}><option value="">— គ្មាន —</option>{state.rooms.map((r) => <option key={r.id} value={r.id} disabled={occupied.has(r.id)}>{r.id} · {r.building}{occupied.has(r.id) ? ' (ពេញ)' : livingIn(r.id) ? ` (រួមបន្ទប់ ${livingIn(r.id)}/${r.capacity})` : ''}</option>)}</select></Field>
             <Field label="ថ្ងៃចាប់ផ្តើម"><input type="date" value={f.contract.start} onChange={(e) => setIn('contract', 'start', e.target.value)} /></Field>
             <Field label="ថ្ងៃផុតកំណត់"><input type="date" value={f.contract.end} onChange={(e) => setIn('contract', 'end', e.target.value)} /></Field>
             <Field label={`ប្រាក់កក់ (${curSymbol(getClientCurrency())})`}><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>

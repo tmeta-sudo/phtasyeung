@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import { db, save, uid, now, logEvent, orgId } from './db.js';
 import { withOrg, findOrgs, q, listOrgIds } from './store.js';
-import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices } from './invoices.js';
+import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices, invoiceIsFor, payersOf } from './invoices.js';
 import { monthKm, kmDigits, nowInCambodia, dateKm, asciiDigits } from '../shared/khmer.js';
 import { fm as usd, fmAlt } from './db.js';
 import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
@@ -131,7 +131,7 @@ export async function registerBot(token, botKey) {
 const tenantByChat = (chatId) => db().tenants.find((t) => t.telegram?.chatId === chatId);
 const isAdminChat = (chatId) => db().settings.telegram.adminChats.some((c) => c.chatId === chatId);
 const latestInvoices = (tenant) => db().invoices
-  .filter((i) => i.tenantId === tenant.id)
+  .filter((i) => invoiceIsFor(i, tenant))
   .sort((a, b) => b.month.localeCompare(a.month) || b.createdAt.localeCompare(a.createdAt));
 
 export function portalUrl(tenant) {
@@ -179,10 +179,17 @@ function invoiceButtons(inv, tenant) {
 }
 
 /** Send one invoice (with its KHQR) to the tenant's Telegram. */
-export async function sendInvoice(inv, { reminder = false, image = null } = {}) {
-  const tenant = db().tenants.find((t) => t.id === inv.tenantId);
+export async function sendInvoice(inv, opts = {}) {
   if (!tokenOf(db())) return { ok: false, error: 'Telegram bot មិនទាន់ដំណើរការ' };
-  if (!tenant?.telegram?.chatId) return { ok: false, error: 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram' };
+  // A shared room's bill goes to every roommate who linked Telegram.
+  const linked = payersOf(inv).filter((t) => t.telegram?.chatId);
+  if (!linked.length) return { ok: false, error: 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram' };
+  let last = { ok: false, error: '' }; let any = false;
+  for (const tenant of linked) { last = await sendInvoiceTo(inv, tenant, { ...opts, counted: any }); any = any || last.ok; }
+  return any ? { ok: true } : last;
+}
+
+async function sendInvoiceTo(inv, tenant, { reminder = false, image = null, counted = false } = {}) {
   const qr = khqrOf(inv);
   const caption = invoiceTelegramHtml(inv, { reminder, hasQr: !!qr });
   const reply_markup = invoiceButtons(inv, tenant);
@@ -201,8 +208,7 @@ export async function sendInvoice(inv, { reminder = false, image = null } = {}) 
     } else {
       msg = await send(tenant.telegram.chatId, caption, reply_markup ? { reply_markup } : {});
     }
-    if (reminder) inv.reminders.push(now());
-    else inv.sentAt = now();
+    if (reminder) { if (!counted) inv.reminders.push(now()); } else inv.sentAt = now();
     inv.sendError = '';
     inv.telegramMessageId = msg.message_id;
     if (tenant.telegram.blocked) tenant.telegram.blocked = false;
@@ -261,8 +267,7 @@ export async function claimPayment(inv, source, proof) {
 export async function confirmPayment(inv, via = 'admin') {
   markPaid(inv, via);
   logEvent('admin', `បានបញ្ជាក់ការបង់ប្រាក់ ${inv.roomId} ${usd(inv.total)}`, { invoiceId: inv.id });
-  const tenant = db().tenants.find((t) => t.id === inv.tenantId);
-  await notifyTenant(tenant, `✅ <b>បានទទួលការបង់ប្រាក់</b>\n${propertyTag()}🧾 ${esc(inv.number)} · ${esc(monthKm(inv.month))}\n💰 ${usd(inv.total)}\nសូមអរគុណច្រើន! 🙏`);
+  for (const tenant of payersOf(inv)) await notifyTenant(tenant, `✅ <b>បានទទួលការបង់ប្រាក់</b>\n${propertyTag()}🧾 ${esc(inv.number)} · ${esc(monthKm(inv.month))}\n💰 ${usd(inv.total)}\nសូមអរគុណច្រើន! 🙏`);
 }
 
 export async function rejectClaim(inv) {
@@ -270,8 +275,7 @@ export async function rejectClaim(inv) {
   inv.status = 'unpaid';
   save();
   logEvent('admin', `បានបដិសេធការជូនដំណឹងបង់ប្រាក់ ${inv.roomId}`, { invoiceId: inv.id });
-  const tenant = db().tenants.find((t) => t.id === inv.tenantId);
-  await notifyTenant(tenant, `⚠️ ${propertyTag()}ម្ចាស់ផ្ទះមិនទាន់ទទួលបានការបង់ប្រាក់សម្រាប់ ${esc(inv.number)} ទេ។ សូមពិនិត្យម្តងទៀត ឬទាក់ទងម្ចាស់ផ្ទះ។`);
+  for (const tenant of payersOf(inv)) await notifyTenant(tenant, `⚠️ ${propertyTag()}ម្ចាស់ផ្ទះមិនទាន់ទទួលបានការបង់ប្រាក់សម្រាប់ ${esc(inv.number)} ទេ។ សូមពិនិត្យម្តងទៀត ឬទាក់ទងម្ចាស់ផ្ទះ។`);
 }
 
 // ---------- update handling ----------
@@ -452,7 +456,7 @@ async function handleCallback(botKey, token, query) {
       if (!inv) return answer('រកមិនឃើញវិក្កយបត្រ');
       if (action === 'p') {
         const tenant = tenantByChat(chatId);
-        if (!tenant || tenant.id !== inv.tenantId) return answer('មិនមានសិទ្ធិ');
+        if (!invoiceIsFor(inv, tenant)) return answer('មិនមានសិទ្ធិ');
         if (inv.status === 'paid') return answer('បានបង់រួចហើយ ✅');
         if (await checkInvoice(inv, { minIntervalMs: 0 }) === 'paid') return answer('បានទទួលការបង់ប្រាក់ ✅');
         await claimPayment(inv, 'telegram');
