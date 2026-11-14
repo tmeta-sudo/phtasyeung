@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent } from './db.js';
+import { db, save, uid, now, logEvent, cur, fm as usd, rm, words, fmAlt } from './db.js';
 import { khqrFor } from './khqr.js';
-import { nowInCambodia, toRiel, monthKm, usd, khr, dateKm, usdInWords, kmDigits } from '../shared/khmer.js';
+import { nowInCambodia, monthKm, dateKm, kmDigits, altMoney } from '../shared/khmer.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -21,7 +21,7 @@ function addDays(ymd, days) {
 export function tieredCost(qty, tiers, rate) {
   const q = Math.max(0, +qty || 0);
   const bands = (tiers || []).filter((t) => +t.rate >= 0).sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
-  if (!bands.length) return { amount: round2(q * (+rate || 0)), parts: [] };
+  if (!bands.length) return { amount: rm(q * (+rate || 0)), parts: [] };
   let left = q; let from = 0; let amount = 0; const parts = [];
   for (const b of bands) {
     if (left <= 0) break;
@@ -31,7 +31,7 @@ export function tieredCost(qty, tiers, rate) {
     from = cap;
   }
   if (left > 0) { const last = bands.at(-1); amount += left * +last.rate; parts.push({ qty: round2(left), rate: +last.rate }); }
-  return { amount: round2(amount), parts };
+  return { amount: rm(amount), parts };
 }
 
 const tierNote = (parts) => (parts.length > 1 ? parts.map((p) => `${p.qty}x$${p.rate}`).join(' + ') : '');
@@ -39,18 +39,18 @@ const tierNote = (parts) => (parts.length > 1 ? parts.map((p) => `${p.qty}x$${p.
 /** Money received so far on an invoice (all recorded payments). */
 export const paidSoFar = (inv) => {
   // Invoices paid before payments were recorded one by one count as fully paid.
-  if (inv.status === 'paid' && !(inv.payments || []).length && inv.paidVia !== 'carried') return round2(inv.total);
-  return round2((inv.payments || []).reduce((s, p) => s + (+p.amount || 0), 0));
+  if (inv.status === 'paid' && !(inv.payments || []).length && inv.paidVia !== 'carried') return rm(inv.total);
+  return rm((inv.payments || []).reduce((s, p) => s + (+p.amount || 0), 0));
 };
 /** What the tenant still owes on it. */
-export const balanceOf = (inv) => (inv.status === 'paid' ? 0 : Math.max(0, round2(inv.total - paidSoFar(inv))));
+export const balanceOf = (inv) => (inv.status === 'paid' ? 0 : Math.max(0, rm(inv.total - paidSoFar(inv))));
 
 /**
  * Record money received. Returns { full } — true when this payment settles the invoice
  * (the caller then sends the receipt via confirmPayment).
  */
 export function addPayment(inv, { amount, via = 'cash', note = '', at = now() }) {
-  const a = round2(amount);
+  const a = rm(amount);
   if (!(a > 0)) throw Object.assign(new Error('ចំនួនទឹកប្រាក់មិនត្រឹមត្រូវ'), { status: 400 });
   const due = balanceOf(inv);
   if (a - due > 0.005) throw Object.assign(new Error(`លើសចំនួនដែលនៅជំពាក់ (${usd(due)})`), { status: 400 });
@@ -61,9 +61,11 @@ export function addPayment(inv, { amount, via = 'cash', note = '', at = now() })
 }
 
 export function recalc(inv) {
-  inv.items = inv.items.map((it) => ({ ...it, amount: round2(it.amount) }));
-  inv.total = round2(inv.items.reduce((s, it) => s + it.amount, 0));
-  inv.totalKhr = toRiel(inv.total, inv.rate);
+  inv.items = inv.items.map((it) => ({ ...it, amount: rm(it.amount) }));
+  inv.total = rm(inv.items.reduce((s, it) => s + it.amount, 0));
+  inv.currency = cur();
+  inv.totalKhr = inv.currency === 'KHR' ? inv.total : altMoney(inv.total, 'USD', inv.rate);
+  inv.totalAlt = altMoney(inv.total, inv.currency, inv.rate);
   return inv;
 }
 
@@ -92,7 +94,7 @@ export function generateInvoices(month, actor = 'admin') {
         const used = Math.max(0, read.value - read.old);
         const c = tieredCost(used, tiers[kind], settings[rateKey]);
         const note = tierNote(c.parts);
-        items.push({ key: kind, label: `${label} (កុងទ័ររួម ${g.name} ÷ ${kmDigits(parts)})`, qty: round2(used / parts), unit, rate: note ? undefined : +settings[rateKey], amount: round2(c.amount / parts), from: read.old, to: read.value, shared: g.id, note });
+        items.push({ key: kind, label: `${label} (កុងទ័ររួម ${g.name} ÷ ${kmDigits(parts)})`, qty: round2(used / parts), unit, rate: note ? undefined : +settings[rateKey], amount: rm(c.amount / parts), from: read.old, to: read.value, shared: g.id, note });
         continue;
       }
       if (!meter) continue;
@@ -108,7 +110,7 @@ export function generateInvoices(month, actor = 'admin') {
     for (const x of tenant.addons || []) {
       const a = (settings.addons || []).find((y) => y.id === x.id);
       if (!a || !(x.qty > 0) || !(+a.price > 0)) continue;
-      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: round2(a.price * x.qty) });
+      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: rm(a.price * x.qty) });
     }
     // Unpaid balance of earlier months moves onto this invoice (one bill, one QR).
     const carried = settings.carryOver ? s.invoices.filter((i) => i.tenantId === tenant.id && i.month < month && i.status !== 'paid' && balanceOf(i) > 0) : [];
@@ -155,12 +157,12 @@ export function khqrOf(inv) {
   const k = db().settings.khqr || {};
   const amount = balanceOf(inv);
   if (amount <= 0) return '';
-  const sig = `${k.accountId}|${k.type}|${k.merchantId}|${amount}`;
+  const sig = `${k.accountId}|${k.type}|${k.merchantId}|${amount}|${cur()}`;
   if (inv.khqrStr && inv.khqrSig === sig && (!inv.khqrExp || inv.khqrExp > Date.now() + 86400000)) return inv.khqrStr;
   const exp = Math.max(new Date(inv.dueDate + 'T23:59:59+07:00').getTime() + 30 * 86400000, Date.now() + 30 * 86400000);
-  const qr = khqrFor(db().settings, { amount, bill: inv.number, expiresAt: exp });
+  const qr = khqrFor(db().settings, { amount, bill: inv.number, expiresAt: exp, currency: cur() });
   if (!qr) return '';
-  Object.assign(inv, { khqrStr: qr, khqrSig: sig, khqrExp: exp, khqrAmount: amount, khqrMd5: crypto.createHash('md5').update(qr).digest('hex') });
+  Object.assign(inv, { khqrStr: qr, khqrSig: sig, khqrExp: exp, khqrAmount: amount, khqrCurrency: cur(), khqrMd5: crypto.createHash('md5').update(qr).digest('hex') });
   save();
   return qr;
 }
@@ -171,14 +173,14 @@ export function isOverdue(inv, today = nowInCambodia().ymd) {
 
 export function markPaid(inv, via = 'admin') {
   // Record whatever is still owed as the final payment, so totals collected stay exact.
-  const rest = round2(inv.total - paidSoFar(inv));
+  const rest = rm(inv.total - paidSoFar(inv));
   if (rest > 0.005 && via !== 'carried') inv.payments = [...(inv.payments || []), { id: uid(), amount: rest, via, note: '', at: now() }];
   inv.status = 'paid';
   inv.paidAt = now();
   inv.paidVia = via;
   // A paid move-in invoice means the deposit is now held for this tenant.
   if (inv.kind === 'movein') {
-    const dep = round2(inv.items.filter((it) => it.key === 'deposit').reduce((s, it) => s + it.amount, 0));
+    const dep = rm(inv.items.filter((it) => it.key === 'deposit').reduce((s, it) => s + it.amount, 0));
     const t = db().tenants.find((x) => x.id === inv.tenantId);
     if (t && dep > 0) {
       t.deposit = { held: dep, receivedAt: now().slice(0, 10), note: inv.number, source: 'movein' };
@@ -194,12 +196,12 @@ export function markPaid(inv, via = 'admin') {
  */
 export function moveOut(t, { date, deductions = [], useDeposit = true }) {
   const s = db();
-  const deposit = round2(t.deposit?.held || 0);
-  const ded = deductions.map((d) => ({ label: String(d.label || '').trim().slice(0, 80), amount: round2(Math.abs(+d.amount || 0)) })).filter((d) => d.label && d.amount > 0).slice(0, 20);
-  const dedTotal = round2(ded.reduce((a, d) => a + d.amount, 0));
+  const deposit = rm(t.deposit?.held || 0);
+  const ded = deductions.map((d) => ({ label: String(d.label || '').trim().slice(0, 80), amount: rm(Math.abs(+d.amount || 0)) })).filter((d) => d.label && d.amount > 0).slice(0, 20);
+  const dedTotal = rm(ded.reduce((a, d) => a + d.amount, 0));
   const open = s.invoices.filter((i) => i.tenantId === t.id && i.status !== 'paid' && balanceOf(i) > 0).sort((a, b) => a.month.localeCompare(b.month));
-  const unpaid = round2(open.reduce((a, i) => a + balanceOf(i), 0));
-  let available = useDeposit ? Math.max(0, round2(deposit - dedTotal)) : 0;
+  const unpaid = rm(open.reduce((a, i) => a + balanceOf(i), 0));
+  let available = useDeposit ? Math.max(0, rm(deposit - dedTotal)) : 0;
   let applied = 0;
   const settled = [];
   for (const inv of open) {
@@ -207,13 +209,13 @@ export function moveOut(t, { date, deductions = [], useDeposit = true }) {
     const take = Math.min(available, balanceOf(inv));
     addPayment(inv, { amount: take, via: 'deposit', note: 'កាត់ពីប្រាក់កក់ពេលចាកចេញ', at: `${date}T12:00:00+07:00` });
     if (balanceOf(inv) <= 0.005) markPaid(inv, 'deposit');
-    available = round2(available - take); applied = round2(applied + take); settled.push(inv.number);
+    available = rm(available - take); applied = rm(applied + take); settled.push(inv.number);
   }
-  const left = useDeposit ? round2(deposit - dedTotal - applied) : deposit;
-  const stillUnpaid = round2(unpaid - applied);
+  const left = useDeposit ? rm(deposit - dedTotal - applied) : deposit;
+  const stillUnpaid = rm(unpaid - applied);
   // Refund what is left of the deposit; anything not covered (extra deductions + unpaid bills) is still owed.
   const refund = Math.max(0, left);
-  const owes = round2(Math.max(0, -left) + stillUnpaid);
+  const owes = rm(Math.max(0, -left) + stillUnpaid);
   const result = { date, deposit, deductions: ded, deductionsTotal: dedTotal, unpaid, applied, settled, refund, owes, useDeposit, at: now() };
   t.moveOut = result;
   t.status = 'former';
@@ -244,8 +246,8 @@ export function invoiceTelegramHtml(inv, { reminder = false, hasQr = false } = {
     lines.push(`• ${esc(it.label)}${detail}: <b>${usd(it.amount)}</b>`);
   }
   lines.push('');
-  lines.push(`💰 <b>សរុប: ${usd(inv.total)}</b>  (${khr(inv.totalKhr)})`);
-  lines.push(`<i>${esc(usdInWords(inv.total))}</i>`);
+  lines.push(`💰 <b>សរុប: ${usd(inv.total)}</b>  (≈ ${fmAlt(inv.total)})`);
+  lines.push(`<i>${esc(words(inv.total))}</i>`);
   if (paidSoFar(inv) > 0 && inv.status !== 'paid') lines.push(`✅ បានបង់: ${usd(paidSoFar(inv))} · <b>នៅសល់: ${usd(balanceOf(inv))}</b>`);
   lines.push(`📅 ថ្ងៃផុតកំណត់: ${esc(dateKm(inv.dueDate))}`);
   if (inv.status === 'claimed') lines.push('⏳ កំពុងរង់ចាំការបញ្ជាក់ពីម្ចាស់ផ្ទះ');

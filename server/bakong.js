@@ -1,11 +1,10 @@
 // Automatic payment confirmation with the NBC Bakong Open API.
 // Each invoice keeps one KHQR and its MD5; Bakong tells us when that exact QR was paid.
 // Token: BAKONG_TOKEN (platform) or the landlord's own developer token (Settings → KHQR).
-import { db, save, now, logEvent } from './db.js';
+import { db, save, now, logEvent, cur, fm as usd } from './db.js';
 import { unseal } from './blob.js';
 import { khqrOf } from './invoices.js';
 import { confirmPayment, notifyAdmins } from './telegram.js';
-import { usd } from '../shared/khmer.js';
 
 const BASE = (process.env.BAKONG_API_BASE || 'https://api-bakong.nbc.gov.kh').replace(/\/+$/, '');
 
@@ -52,7 +51,7 @@ export async function checkInvoice(inv, { minIntervalMs = 15000 } = {}) {
   if (!tx) return 'pending';
   const k = db().settings.khqr || {};
   const toOk = !tx.toAccountId || String(tx.toAccountId).toLowerCase() === String(k.accountId).toLowerCase();
-  const amountOk = Math.abs(Number(tx.amount) - Number(inv.khqrAmount ?? inv.total)) < 0.011 && (!tx.currency || String(tx.currency).toUpperCase() === 'USD');
+  const amountOk = Math.abs(Number(tx.amount) - Number(inv.khqrAmount ?? inv.total)) < (cur() === 'KHR' ? 1 : 0.011) && (!tx.currency || String(tx.currency).toUpperCase() === (inv.khqrCurrency || cur()));
   if (!toOk || !amountOk) {
     logEvent('alert', `Bakong: ការបង់ប្រាក់សម្រាប់ ${inv.number} មិនត្រូវគ្នា (${tx.amount} ${tx.currency} → ${tx.toAccountId})`, { invoiceId: inv.id });
     return 'pending';

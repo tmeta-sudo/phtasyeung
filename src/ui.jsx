@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useSync
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import { X, Check, AlertTriangle } from 'lucide-react';
-import { usd, num, normalizeText } from '../shared/khmer.js';
+import { usd, num, normalizeText, fmtMoney, curSymbol } from '../shared/khmer.js';
 
 // ---------- router ----------
 const listeners = new Set();
@@ -23,7 +23,9 @@ export const useApp = () => useContext(AppCtx);
 export function useFmt() {
   const app = useApp();
   const k = app?.state?.settings?.khmerNumerals ?? true;
-  return useMemo(() => ({ k, n: (v) => num(v, k), $: (v) => usd(v, k) }), [k]);
+  const c = app?.state?.settings?.currency === 'KHR' ? 'KHR' : 'USD';
+  // cs = currency sign for labels ("ថ្លៃជួល ($/ខែ)"), c = 'USD' | 'KHR'
+  return useMemo(() => ({ k, c, cs: curSymbol(c), n: (v) => num(v, k), $: (v) => fmtMoney(v, c, k) }), [k, c]);
 }
 
 // ---------- toast ----------

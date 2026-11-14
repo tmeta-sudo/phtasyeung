@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { billedOf, collectedOf } from '../ui.jsx';
 import { ChevronRight, CalendarDays, CheckCircle2, Sparkles, Send, ScanLine, FileText, Bot } from 'lucide-react';
 import { useApp, useFmt, navigate, Avatar, tenantPhoto } from '../ui.jsx';
-import { greetingKm, dateKm, nowInCambodia, lunarKm, monthKm, holidaysBetween, MONTHS_KM, toRiel, khr } from '../../shared/khmer.js';
+import { greetingKm, dateKm, nowInCambodia, lunarKm, monthKm, holidaysBetween, MONTHS_KM, toRiel, khr, fmtAlt } from '../../shared/khmer.js';
 
 const ppHour = (iso) => +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Phnom_Penh', hour: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 const ppDate = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Phnom_Penh' }).format(new Date(iso));
@@ -171,7 +171,7 @@ export default function Home() {
           <p className="muted">ប្រាក់ជួលបានប្រមូលខែនេះ</p>
           <div className="rent-top"><b className="money-big">{$(d.paidAmt)}</b><span className="chip white sm">{n(d.paid.length)}/{n(d.inv.length)}</span></div>
           <StepChart curve={d.curve} total={d.billed} days={d.daysInMonth} today={today.day} />
-          <p className="muted foot"><FileText size={13} /> នៅសល់ {$(d.billed - d.paidAmt)} ({khr(toRiel(d.billed - d.paidAmt, settings.exchangeRate), k)})</p>
+          <p className="muted foot"><FileText size={13} /> នៅសល់ {$(d.billed - d.paidAmt)} (≈ {fmtAlt(d.billed - d.paidAmt, settings.currency, settings.exchangeRate, k)})</p>
         </section>
 
         {/* Payment clock */}

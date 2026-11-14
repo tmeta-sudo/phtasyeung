@@ -8,7 +8,8 @@ import { teamRoutes } from './team.js';
 import { publicKey, subscribe, unsubscribe, devices, pushToOrg } from './push.js';
 import express from 'express';
 import crypto from 'node:crypto';
-import { db, save, uid, now, logEvent, migrateDoc, orgId } from './db.js';
+import { db, save, uid, now, logEvent, migrateDoc, orgId, fm as usdFmt, cur } from './db.js';
+import { convertCurrency } from './currency.js';
 
 setDocMigrator(migrateDoc);
 import { withOrg, findOrgs, q, init, storeKind, setDocMigrator, rateLimit, getSession } from './store.js';
@@ -29,7 +30,7 @@ import {
 } from './blob.js';
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
-import { normalizePhone, nowInCambodia, kmDigits, usd as usdFmt } from '../shared/khmer.js';
+import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -616,6 +617,10 @@ app.put('/api/settings', ...owner(async (req) => {
     if (tok && !/^[\w.-]{20,}$/.test(tok)) fail('Bakong token មិនត្រឹមត្រូវ');
     s.khqr = { ...s.khqr, bakongToken: tok ? seal(tok) : '', bakongError: '' };
   }
+  if (b.currency && ['USD', 'KHR'].includes(b.currency) && b.currency !== cur()) {
+    if (req.session.role !== 'owner') fail('មានតែម្ចាស់ផ្ទះទេដែលអាចប្តូររូបិយប័ណ្ណ', 403);
+    convertCurrency(b.currency);
+  }
   if (typeof b.carryOver === 'boolean') s.carryOver = b.carryOver;
   if (b.listing) {
     const slug = String(b.listing.slug ?? s.listing?.slug ?? '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
@@ -710,6 +715,7 @@ app.get('/api/listing/:slug', async (req, res) => {
     return {
       property: { name: st.propertyName, nameEn: st.propertyNameEn, phone: st.listing.showPhone ? st.phone : '', coverUrl: st.coverUrl, address: [L.addressText || st.address].filter(Boolean).join(', '), lat: L.lat, lng: L.lng, khmerNumerals: st.khmerNumerals },
       intro: st.listing.intro,
+      currency: st.currency === 'KHR' ? 'KHR' : 'USD',
       rooms: vacantRooms().map((r) => ({ id: r.id, building: r.building, floor: r.floor, rent: r.rent, features: r.features || [], note: r.note, photos: (r.photos || []).map((p) => p.id) })),
       addons: (st.addons || []).map(({ icon, label, price }) => ({ icon, label, price })),
       deposit: { months: st.contract?.depositMonths, prepaid: st.contract?.prepaidMonths },
@@ -1192,7 +1198,7 @@ async function portalState(t) {
     room: room ? { id: room.id, building: room.building, floor: room.floor, rent: room.rent, water: room.water, electric: room.electric } : null,
     invoices: s.invoices.filter((i) => i.tenantId === t.id).sort((a, b) => b.month.localeCompare(a.month)).map(withQr),
     meters: s.meters.filter((m) => m.roomId === t.roomId).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12),
-    property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, waterRate: st.waterRate, electricRate: st.electricRate },
+    property: { name: st.propertyName, nameEn: st.propertyNameEn, address: st.address, phone: st.phone, coverUrl: st.coverUrl, khmerNumerals: st.khmerNumerals, currency: st.currency === 'KHR' ? 'KHR' : 'USD', exchangeRate: st.exchangeRate, waterRate: st.waterRate, electricRate: st.electricRate },
     telegram: { bot, linked: !!t.telegram?.chatId, link: bot ? `https://t.me/${bot}?start=${linkCode}` : '' },
     lease: t.lease?.required !== false && t.lease?.text ? { text: t.lease.text, depositMonths: t.lease.depositMonths, prepaidMonths: t.lease.prepaidMonths, signed: t.lease.signature ? { name: t.lease.signature.name, at: t.lease.signature.at, outdated: !!t.lease.signature.outdated } : null, ownerSigned: !!st.contract?.ownerSignature } : null,
     location: (() => { const L = st.location || {}; return { lat: L.lat, lng: L.lng, addressText: [L.houseNo && `ផ្ទះលេខ ${L.houseNo}`, L.street && `ផ្លូវ ${L.street}`, L.addressText || st.address].filter(Boolean).join(', ') }; })(),

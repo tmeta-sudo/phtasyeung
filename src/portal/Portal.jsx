@@ -4,7 +4,7 @@ import { ContractDoc } from '../ContractDoc.jsx';
 import { api, uploadFile } from '../api.js';
 import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
-import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords } from '../../shared/khmer.js';
+import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords, fmtMoney, fmtAlt, moneyInWords, setClientCurrency } from '../../shared/khmer.js';
 import './portal.css';
 import MeterSubmit from './MeterSubmit.jsx';
 import SignaturePad from '../SignaturePad.jsx';
@@ -47,7 +47,9 @@ export default function Portal({ token }) {
 
   const k = data.property.khmerNumerals;
   const n = (v) => num(v, k);
-  const $ = (v) => usd(v, k);
+  const cur = data.property.currency === 'KHR' ? 'KHR' : 'USD';
+  setClientCurrency(cur);
+  const $ = (v) => fmtMoney(v, cur, k);
   const open = data.invoices.filter((i) => i.status !== 'paid');
   const owed = open.reduce((s, i) => s + i.total, 0);
   const p = data.profile;
@@ -173,7 +175,7 @@ export default function Portal({ token }) {
               <small>{pay.number}</small>
               <b className="pt-amount">{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b>
               {pay.status !== 'paid' && pay.paid > 0 && <small>បានបង់ {$(pay.paid)} នៃ {$(pay.total)}</small>}
-              <small>{khr(pay.totalKhr, k)} · {usdInWords(pay.total)}</small>
+              <small>≈ {fmtAlt(pay.total, cur, pay.rate, k)} · {moneyInWords(pay.total, cur)}</small>
               {pay.khqr && pay.status !== 'paid' && data.autoConfirm && <p className="pt-auto"><span className="dot-pulse" /> រង់ចាំការបង់ប្រាក់ — នឹងបញ្ជាក់ដោយស្វ័យប្រវត្តិ</p>}
               {pay.khqr && pay.status !== 'paid' && <div className="pt-khqr"><span>KHQR</span><QR value={pay.khqr} size={210} label="KHQR" /><small>ថតរូបអេក្រង់ ឬស្កេនដោយកម្មវិធីធនាគារ ABA, ACLEDA, Wing, Bakong…</small></div>}
             </div>

@@ -1,6 +1,7 @@
 // Per-request access to the current landlord's document (set up by store.withOrg).
 import { DEFAULT_ADDONS } from '../shared/features.js';
 import { als, uid, now } from './store.js';
+import { fmtMoney, roundMoney, moneyInWords, fmtAlt } from '../shared/khmer.js';
 
 export { uid, now };
 
@@ -10,6 +11,14 @@ export function db() {
   return ctx.doc;
 }
 export const orgId = () => als.getStore()?.orgId;
+
+/** The landlord's billing currency ('USD' unless they chose riel). Safe outside a request. */
+export const cur = () => (als.getStore()?.doc?.settings?.currency === 'KHR' ? 'KHR' : 'USD');
+/** Format / round an amount in the landlord's currency. */
+export const fm = (amount) => fmtMoney(amount, cur(), false);
+export const rm = (amount) => roundMoney(amount, cur());
+export const words = (amount) => moneyInWords(amount, cur());
+export const fmAlt = (amount) => fmtAlt(amount, cur(), als.getStore()?.doc?.settings?.exchangeRate, false);
 
 /** Mark the current document as changed; it is written when the request's transaction ends. */
 export function save() {
@@ -53,6 +62,7 @@ export function defaultSettings(name = 'ផ្ទះរបស់ខ្ញុំ'
     backup: { telegramWeekly: true, includeFiles: false, lastAt: '', lastTelegramAt: '' },
     lateFee: { enabled: false, amount: 5, afterDays: 5 },
     carryOver: true,
+    currency: 'USD',
     listing: { enabled: false, slug: '', intro: '', showPhone: true },
     addons: DEFAULT_ADDONS.map((a) => ({ ...a })),
     tiers: { electric: [], water: [] },

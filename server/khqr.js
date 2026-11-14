@@ -28,15 +28,15 @@ export function parseKhqrUpload(text) {
   };
 }
 
-/** Build a dynamic KHQR string for an amount (USD). Returns '' when not configured. */
-export function khqrFor(settings, { amount, bill, expiresAt }) {
+/** Build a dynamic KHQR string for an amount in USD or KHR. Returns '' when not configured. */
+export function khqrFor(settings, { amount, bill, expiresAt, currency = 'USD' }) {
   const k = settings.khqr || {};
   if (!isBakongId(k.accountId)) return '';
   const merchantName = ascii(k.merchantName || settings.propertyNameEn || 'Rental', 25) || 'Rental';
   const city = ascii(k.city || 'Phnom Penh', 15) || 'Phnom Penh';
   const optional = {
-    currency: khqrData.currency.usd,
-    amount: Math.round(Number(amount) * 100) / 100,
+    currency: currency === 'KHR' ? khqrData.currency.khr : khqrData.currency.usd,
+    amount: currency === 'KHR' ? Math.round(Number(amount)) : Math.round(Number(amount) * 100) / 100,
     billNumber: ascii(bill, 25),
     storeLabel: ascii(settings.propertyNameEn, 25) || undefined,
     expirationTimestamp: Math.max(expiresAt || 0, Date.now() + 60 * 60 * 1000),

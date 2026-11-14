@@ -11,7 +11,7 @@ import MoveOutModal, { DepositCard } from './MoveOut.jsx';
 import { lazy, Suspense } from 'react';
 
 const IdScanner = lazy(() => import('../ocr/IdScanner.jsx'));
-import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm } from '../../shared/khmer.js';
+import { matchesQuery, dateKm, GENDERS, ID_TYPES, labelOf, normalizePhone, isKhmerName, monthKm, money, curSymbol, getClientCurrency } from '../../shared/khmer.js';
 
 const FILTERS = [
   ['active', 'កំពុងជួល'], ['all', 'ទាំងអស់'], ['noid', 'ខ្វះអត្តសញ្ញាណប័ណ្ណ'], ['notg', 'មិនទាន់ភ្ជាប់ Telegram'],
@@ -376,7 +376,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
             <Field label="បន្ទប់"><select value={f.roomId} onChange={(e) => set('roomId', e.target.value)}><option value="">— គ្មាន —</option>{state.rooms.map((r) => <option key={r.id} value={r.id} disabled={occupied.has(r.id)}>{r.id} · {r.building}{occupied.has(r.id) ? ' (មានអ្នកជួល)' : ''}</option>)}</select></Field>
             <Field label="ថ្ងៃចាប់ផ្តើម"><input type="date" value={f.contract.start} onChange={(e) => setIn('contract', 'start', e.target.value)} /></Field>
             <Field label="ថ្ងៃផុតកំណត់"><input type="date" value={f.contract.end} onChange={(e) => setIn('contract', 'end', e.target.value)} /></Field>
-            <Field label="ប្រាក់កក់ ($)"><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
+            <Field label={`ប្រាក់កក់ (${curSymbol(getClientCurrency())})`}><input type="number" min="0" step="any" value={f.contract.deposit} onChange={(e) => setIn('contract', 'deposit', e.target.value)} /></Field>
             <Field label="កំណត់ចំណាំ (ម្ចាស់ផ្ទះមើលឃើញតែម្នាក់ឯង)" wide><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
           </div>
         </fieldset>
@@ -389,7 +389,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
             const rent = +r?.rent || 0;
             const extras = (r?.extras || []).reduce((a, x) => a + (+x.amount || 0), 0);
             const add = addonsTotal(state.settings.addons, f.addons || []);
-            return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>${(rent + extras + add).toFixed(2)}</b><small>ថ្លៃជួល ${rent}{extras ? ` + ផ្សេងៗ $${extras}` : ''}{add ? ` + សេវា $${add}` : ''}</small></div> : null;
+            return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>{money(rent + extras + add)}</b><small>ថ្លៃជួល {money(rent)}{extras ? ` + ផ្សេងៗ ${money(extras)}` : ''}{add ? ` + សេវា ${money(add)}` : ''}</small></div> : null;
           })()}
         </fieldset>
         {scan && (

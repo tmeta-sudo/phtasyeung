@@ -9,7 +9,8 @@ import { checkAllUnpaid } from './bakong.js';
 import { orgId } from './db.js';
 import { generateInvoices, isOverdue, applyLateFees, repeatMonthlyExpenses } from './invoices.js';
 import { sendInvoices, notifyAdmins, botStatus } from './telegram.js';
-import { nowInCambodia, monthKm, kmDigits, usd } from '../shared/khmer.js';
+import { nowInCambodia, monthKm, kmDigits } from '../shared/khmer.js';
+import { fm as usd } from './db.js';
 
 /** Generate this month's invoices for the current org and send them. */
 export async function runAutoInvoices({ force = false } = {}) {

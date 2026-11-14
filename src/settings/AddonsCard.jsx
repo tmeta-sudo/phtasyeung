@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { curSymbol, getClientCurrency } from '../../shared/khmer.js';
 import { PackagePlus, Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../ui.jsx';
 import { DEFAULT_ADDONS } from '../../shared/features.js';
@@ -17,7 +18,7 @@ export default function AddonsCard() {
         <div key={a.id || i} className="addon-edit">
           <input className="ae-icon" value={a.icon} onChange={(e) => upd(i, 'icon', e.target.value)} aria-label="រូប" maxLength={4} />
           <input value={a.label} onChange={(e) => upd(i, 'label', e.target.value)} placeholder="ឈ្មោះ" aria-label="ឈ្មោះ" />
-          <input type="number" inputMode="decimal" step="0.5" min="0" value={a.price} onChange={(e) => upd(i, 'price', e.target.value)} aria-label="តម្លៃ $/ខែ" placeholder="$" />
+          <input type="number" inputMode="decimal" step="0.5" min="0" value={a.price} onChange={(e) => upd(i, 'price', e.target.value)} aria-label="តម្លៃ/ខែ" placeholder={curSymbol(getClientCurrency())} />
           <input type="number" min="1" max="20" value={a.max} onChange={(e) => upd(i, 'max', e.target.value)} aria-label="ចំនួនអតិបរមា" title="ចំនួនអតិបរមាក្នុងមួយអតិថិជន (ឧ. ម៉ូតូ ៥ គ្រឿង)" />
           <button type="button" className="icon-btn" aria-label="លុប" onClick={() => setList(list.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
         </div>

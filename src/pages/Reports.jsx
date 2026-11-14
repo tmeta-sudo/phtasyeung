@@ -81,7 +81,7 @@ export const EXP_CATS = { electric: '⚡ ភ្លើង (EDC)', water: '💧 �
 /** Expenses for the year: quick add (category chips), monthly repeat, list. */
 function Expenses({ year }) {
   const { state, call } = useApp();
-  const { $ } = useFmt();
+  const { $, cs } = useFmt();
   const blank = { date: state.today.ymd, category: 'electric', amount: '', note: '', repeat: false };
   const [f, setF] = useState(blank);
   const [open, setOpen] = useState(false);
@@ -97,7 +97,7 @@ function Expenses({ year }) {
         <form className="exp-form" onSubmit={add}>
           <div className="room-chips">{Object.entries(EXP_CATS).map(([k, v]) => <button type="button" key={k} className={'chip-toggle ' + (f.category === k ? 'on' : '')} onClick={() => setF({ ...f, category: k })}>{v}</button>)}</div>
           <div className="pay-form">
-            <input type="number" inputMode="decimal" step="0.01" min="0.01" required placeholder="ចំនួន $" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} autoFocus />
+            <input type="number" inputMode="decimal" step="0.01" min="0.01" required placeholder={`ចំនួន ${cs}`} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} autoFocus />
             <input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="ថ្ងៃ" />
             <input placeholder="កំណត់ចំណាំ (មិនចាំបាច់)" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} style={{ gridColumn: '1 / -1' }} />
           </div>
@@ -119,7 +119,7 @@ function Expenses({ year }) {
 
 export default function Reports() {
   const { state, print } = useApp();
-  const { $, n } = useFmt();
+  const { $, n, c } = useFmt();
   const years = useMemo(() => [...new Set([state.today.ym.slice(0, 4), ...state.invoices.map((i) => i.month.slice(0, 4))])].sort().reverse(), [state]);
   const [year, setYear] = useState(years[0]);
 
@@ -154,7 +154,7 @@ export default function Reports() {
   }, [state, year]);
 
   const rate = r.billed ? Math.round((r.collected / r.billed) * 100) : 0;
-  const money = (v, short) => (short && v >= 1000 ? `$${n(Math.round(v / 100) / 10)}k` : $(v));
+  const money = (v, short) => (!short ? $(v) : c === 'KHR' ? (v >= 1e6 ? `${n(Math.round(v / 1e5) / 10)}M៛` : v >= 1000 ? `${n(Math.round(v / 1000))}k៛` : $(v)) : v >= 1000 ? `$${n(Math.round(v / 100) / 10)}k` : $(v));
   const ym = (m) => `${MONTHS_KM[+m.slice(5) - 1]} ${kmDigits(m.slice(0, 4))}`;
 
   function exportCsv() {

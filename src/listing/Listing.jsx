@@ -15,7 +15,7 @@ export default function Listing({ slug }) {
   if (error) return <div className="ls-shell"><div className="ls-empty"><Home size={40} /><b>{error}</b></div></div>;
   if (!d) return <div className="ls-shell"><div className="ls-empty"><span className="spinner" /></div></div>;
   const k = d.property.khmerNumerals;
-  const money = (v) => `$${num(Number(v).toFixed(0), k)}`;
+  const money = (v) => (d.currency === 'KHR' ? `${num(Math.round(v).toLocaleString('en-US'), k)}៛` : `$${num(Number(v).toFixed(0), k)}`);
   const url = location.href.split('#')[0];
   const shareText = `${d.property.name} — បន្ទប់ទំនេរ ${d.rooms.length} · ចាប់ពី ${d.rooms.length ? money(Math.min(...d.rooms.map((r) => r.rent))) : ''}/ខែ`;
   async function share() {

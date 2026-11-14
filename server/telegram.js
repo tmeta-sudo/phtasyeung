@@ -10,7 +10,8 @@ import QRCode from 'qrcode';
 import { db, save, uid, now, logEvent, orgId } from './db.js';
 import { withOrg, findOrgs, q, listOrgIds } from './store.js';
 import { invoiceTelegramHtml, khqrOf, markPaid, roomOf, isOverdue, generateInvoices } from './invoices.js';
-import { usd, khr, monthKm, kmDigits, nowInCambodia, dateKm, asciiDigits } from '../shared/khmer.js';
+import { monthKm, kmDigits, nowInCambodia, dateKm, asciiDigits } from '../shared/khmer.js';
+import { fm as usd, fmAlt } from './db.js';
 import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
 import { checkInvoice } from './bakong.js';
 
@@ -244,7 +245,7 @@ export async function claimPayment(inv, source, proof) {
   inv.claims.push({ id: uid(), at: now(), source, ...(proof || {}) });
   save();
   logEvent('tenant', `${inv.name} (${inv.roomId}) បានជូនដំណឹងថាបានបង់ ${usd(inv.total)}`, { invoiceId: inv.id });
-  const html = `💸 <b>ការជូនដំណឹងការបង់ប្រាក់</b>\n${propertyTag()}🚪 ${esc(inv.roomId)} · ${esc(inv.name)}\n🧾 ${esc(inv.number)} · ${esc(monthKm(inv.month))}\n💰 <b>${usd(inv.total)}</b> (${khr(inv.totalKhr)})\nតាមរយៈ: ${source === 'portal' ? 'គេហទំព័រអតិថិជន' : 'Telegram'}`;
+  const html = `💸 <b>ការជូនដំណឹងការបង់ប្រាក់</b>\n${propertyTag()}🚪 ${esc(inv.roomId)} · ${esc(inv.name)}\n🧾 ${esc(inv.number)} · ${esc(monthKm(inv.month))}\n💰 <b>${usd(inv.total)}</b> (≈ ${fmAlt(inv.total)})\nតាមរយៈ: ${source === 'portal' ? 'គេហទំព័រអតិថិជន' : 'Telegram'}`;
   const reply_markup = { inline_keyboard: [[{ text: '✅ បញ្ជាក់ថាបានទទួល', callback_data: cb('ok', inv) }, { text: '❌ មិនទាន់ទទួល', callback_data: cb('no', inv) }]] };
   if (proof?.telegramFileId) {
     const [pt, ...pb] = htmlToText(html).split('\n');

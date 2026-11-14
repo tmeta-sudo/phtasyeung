@@ -1230,3 +1230,6 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .guide-auto b { display: flex; gap: 6px; align-items: center; color: var(--ok); }
 .guide-auto p, .guide-tips p { margin: 0; line-height: 1.7; font-size: 14px; }
 .guide-tips { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--card); }
+.cur-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px; border-radius: 14px; background: var(--card-2, var(--surface)); margin-bottom: 10px; }
+.cur-switch > span { display: grid; } .cur-switch small { color: var(--muted); font-size: 12px; }
+.cur-switch .seg { min-width: 220px; }

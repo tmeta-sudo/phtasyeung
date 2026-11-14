@@ -59,6 +59,24 @@ export function rielInWords(riel) {
   return khmerInteger(Math.round(Number(riel) || 0)) + 'រៀលគត់';
 }
 
+// ---------- one billing currency per landlord: USD or KHR ----------
+
+export const CURRENCIES = ['USD', 'KHR'];
+export const curSymbol = (c) => (c === 'KHR' ? '៛' : '$');
+/** Money is kept to cents in USD and to the nearest 100 ៛ in riel. */
+export const roundMoney = (amount, c = 'USD') => (c === 'KHR' ? Math.round((Number(amount) || 0) / 100) * 100 : round2(amount));
+export const fmtMoney = (amount, c = 'USD', khmer = false) => (c === 'KHR' ? khr(roundMoney(amount, 'KHR'), khmer) : usd(amount, khmer));
+export const moneyInWords = (amount, c = 'USD') => (c === 'KHR' ? rielInWords(amount) : usdInWords(amount));
+/** The same amount in the other currency (for the "≈" line on invoices). */
+export const altMoney = (amount, c, rate) => (c === 'KHR' ? round2((Number(amount) || 0) / (Number(rate) || 4100)) : toRiel(amount, rate));
+export const fmtAlt = (amount, c, rate, khmer = false) => (c === 'KHR' ? usd(altMoney(amount, c, rate), khmer) : khr(altMoney(amount, c, rate), khmer));
+
+// Browser only (one landlord per page): the app sets this once from settings so every screen formats alike.
+let clientCurrency = 'USD';
+export const setClientCurrency = (c) => { clientCurrency = c === 'KHR' ? 'KHR' : 'USD'; };
+export const getClientCurrency = () => clientCurrency;
+export const money = (amount, khmer = false) => fmtMoney(amount, clientCurrency, khmer);
+
 /** Date parts as seen on a wall clock in Phnom Penh. */
 export function nowInCambodia(date = new Date()) {
   const parts = Object.fromEntries(
