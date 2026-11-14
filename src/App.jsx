@@ -22,6 +22,8 @@ import Super from './pages/Super.jsx';
 import InvoiceDesigner from './pages/InvoiceDesigner.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Reports from './pages/Reports.jsx';
+import Help from './help/Help.jsx';
+import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
@@ -44,7 +46,7 @@ const ROLE_PAGES = {
   manager: ['/', '/customers', '/rooms', '/invoices', '/meters', '/inbox', '/qr', '/reports'],
   staff: ['/meters', '/inbox', '/rooms'],
 };
-const allowedPage = (role, p) => !ROLE_PAGES[role] || ROLE_PAGES[role].includes(p) || ['/settings', '/tasks', '/news', '/feedback', '/super'].includes(p);
+const allowedPage = (role, p) => !ROLE_PAGES[role] || ROLE_PAGES[role].includes(p) || ['/settings', '/tasks', '/news', '/feedback', '/super', '/help'].includes(p);
 
 const Landing = lazy(() => import('./landing/Landing.jsx'));
 const setAuthHint = (on) => { try { if (on) localStorage.setItem('py-authed', '1'); else localStorage.removeItem('py-authed'); } catch { /* ignore */ } };
@@ -293,7 +295,7 @@ function Admin({ onLogout }) {
   const unreadMsgs = (state.tickets || []).reduce((a, t) => a + (t.unread || 0), 0);
   const badges = { '/invoices': claimed, '/customers': missingId, '/inbox': unreadMsgs };
   const section = '/' + (path.split('/')[1] || '');
-  const EXTRA = { '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
+  const EXTRA = { '/help': 'ជំនួយ', '/settings': 'ការកំណត់', '/tasks': 'ការងារ', '/news': 'មានអ្វីថ្មី', '/feedback': 'មតិ និងសំណើ', '/super': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' };
   const shown = state.account.role === 'staff' && (section === '/' || !allowedPage('staff', section)) ? '/meters' : section;
   const current = NAV.find(([p]) => p === shown) || (EXTRA[section] ? [section, EXTRA[section]] : NAV[0]);
 
@@ -311,6 +313,7 @@ function Admin({ onLogout }) {
   else if (section === '/invoices') page = <Invoices />;
   else if (section === '/meters') page = <Meters />;
   else if (section === '/reports') page = <Reports />;
+  else if (section === '/help') page = <Help />;
   else if (section === '/qr') page = <QrCenter />;
   else if (section === '/telegram') page = <TelegramPage />;
   else if (section === '/settings') page = <SettingsPage />;
@@ -338,12 +341,14 @@ function Admin({ onLogout }) {
             <button className={'nav-extra ' + (section === '/tasks' ? 'active' : '')} onClick={() => navigate('/tasks')}><Wrench size={16} /> <span>ការងារ</span></button>
             <button className={'nav-extra ' + (section === '/settings' ? 'active' : '')} onClick={() => navigate('/settings')}><Settings size={16} /> <span>ការកំណត់</span></button>
             <button className={'nav-extra ' + (section === '/feedback' ? 'active' : '')} onClick={() => navigate('/feedback')}><Lightbulb size={16} /> <span>មតិ និងសំណើ</span></button>
+            <button className={'nav-extra ' + (section === '/help' ? 'active' : '')} onClick={() => navigate('/help')}><span>❓</span> <span>ជំនួយ / ការណែនាំ</span></button>
             <button className={'nav-extra ' + (section === '/news' ? 'active' : '')} onClick={() => navigate('/news')}><Sparkles size={16} /> <span>មានអ្វីថ្មី</span></button>
             {state.account.super && <button className={'nav-extra ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')}><Shield size={16} /> <span>អ្នកគ្រប់គ្រងប្រព័ន្ធ</span></button>}
           </nav>
           {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
           <div className="topbar-right">
             <GlobalSearch />
+            <button className="icon-btn" onClick={() => navigate(PAGE_GUIDE[section] ? `/help?g=${PAGE_GUIDE[section]}` : '/help')} aria-label="ជំនួយ" title="ជំនួយសម្រាប់ទំព័រនេះ">❓</button>
             <button className="icon-btn hide-m" onClick={ctx.openScanner} aria-label="ស្កេន QR" title="ស្កេន QR"><ScanLine size={18} /></button>
             <span className="hide-m"><NewsButton path={path} /></span>
             {state.account.super && <button className={'hide-m super-pill ' + (section === '/super' ? 'active' : '')} onClick={() => navigate('/super')} title="អ្នកគ្រប់គ្រងប្រព័ន្ធ"><Shield size={16} /> <span>Super</span></button>}

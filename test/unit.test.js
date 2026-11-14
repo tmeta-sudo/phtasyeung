@@ -44,3 +44,19 @@ test('meter reading candidates: drum digits, decimal wheel, never below last mon
   assert.deepEqual(best([{ text: '0950', confidence: 0.9 }], 1000), [], 'a reading below last month is never suggested');
   assert.equal(best([{ text: '០១២៣៤', confidence: 0.9 }], 1200)[0], 1234, 'Khmer digits');
 });
+
+test('help guides: every guide is complete and every link points to a real screen', async () => {
+  const { GUIDES, CATEGORIES, PAGE_GUIDE } = await import('../src/help/guides.js');
+  const screens = new Set(['/', '/customers', '/rooms', '/invoices', '/meters', '/inbox', '/qr', '/telegram', '/settings', '/reports', '/tasks', '/help']);
+  const cats = new Set(CATEGORIES.map(([c]) => c));
+  const ids = new Set();
+  for (const g of GUIDES) {
+    assert.ok(!ids.has(g.id), `duplicate ${g.id}`); ids.add(g.id);
+    assert.ok(cats.has(g.cat), `${g.id}: category`);
+    assert.ok(g.title && g.steps.length >= 2, `${g.id}: needs a title and steps`);
+    assert.ok(/[ក-៿]/.test(g.title), `${g.id}: title in Khmer`);
+    if (g.go) assert.ok(screens.has(g.go), `${g.id}: go ${g.go}`);
+    for (const p of g.pages) assert.ok(screens.has(p), `${g.id}: page ${p}`);
+  }
+  for (const [page, id] of Object.entries(PAGE_GUIDE)) { assert.ok(screens.has(page)); assert.ok(ids.has(id), `❓ on ${page} → ${id}`); }
+});

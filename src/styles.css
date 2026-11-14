@@ -1209,3 +1209,24 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .rp img { width: 100%; height: 100%; object-fit: cover; }
 .rp button { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; line-height: 1; }
 .rp.add { border: 1.5px dashed var(--line); }
+.help { display: grid; gap: 14px; }
+.help-search { display: flex; align-items: center; gap: 8px; background: var(--card); border-radius: 999px; padding: 0 16px; color: var(--muted); }
+.help-search input { border: 0; background: none; outline: none; padding: 13px 0; flex: 1; min-width: 0; color: var(--ink); font: inherit; }
+.help-cat h2 { font-size: 16px; margin: 6px 0 8px; }
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.guide-card { display: flex; gap: 12px; align-items: center; text-align: left; padding: 14px; transition: transform .1s; }
+.guide-card:active { transform: scale(.98); }
+.guide-card > span:last-child { display: grid; gap: 2px; }
+.guide-card small { color: var(--muted); font-size: 12px; }
+.gc-icon { font-size: 26px; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; background: var(--surface); flex-shrink: 0; }
+.guide { display: grid; gap: 14px; }
+.guide h1 { font-size: 22px; margin: 0; display: flex; gap: 10px; align-items: center; line-height: 1.5; }
+.guide-intro { margin: 0; color: var(--ink-2); }
+.guide-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.guide-steps li { display: flex; gap: 12px; align-items: flex-start; }
+.guide-steps li > span { width: 28px; height: 28px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 700; flex-shrink: 0; font-size: 14px; }
+.guide-steps p { margin: 3px 0 0; line-height: 1.75; }
+.guide-auto { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--ok-soft); }
+.guide-auto b { display: flex; gap: 6px; align-items: center; color: var(--ok); }
+.guide-auto p, .guide-tips p { margin: 0; line-height: 1.7; font-size: 14px; }
+.guide-tips { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--card); }

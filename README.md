@@ -53,3 +53,15 @@ Forgot your password? A 6-digit reset code is sent to the owner Telegram you lin
 | **Reports** | Billed vs collected per month, who still owes and since when, occupancy, water and electricity usage, with Excel export and print. |
 | **Smarter ID scanning** | The photo is cropped to the card, straightened and turned the right way up before OCR, so a quick photo on a table works. |
 | **Error monitoring** | Server and browser errors are grouped in the super admin **Errors** tab (emails, phone numbers and links are scrubbed). A crash shows a friendly Khmer screen instead of a blank page. |
+| **Partial payments** | Record several payments per invoice (cash, KHQR, ABA, ACLEDA, Wing…). The KHQR asks only for what is left; unpaid balance moves onto next month's invoice automatically (can be turned off). |
+| **Deposit & move-out** | The deposit is recorded when the move-in invoice is paid. Move-out subtracts damages and unpaid bills, shows the refund or what is still owed, prints a Khmer settlement slip, and frees the room. |
+| **Expenses & profit** | Record EDC/water bills, repairs, salaries… (monthly ones repeat automatically). Reports show money collected, expenses and real profit per month. |
+| **Meter photos** | Tap 📷: the phone reads the meter number on the device and suggests values that make sense; the photo is kept as proof for the tenant. |
+| **Tenants send readings** | Tenants send meter numbers through the bot (📟) or their page; the owner taps ✅ in Telegram, or normal readings are approved automatically. |
+| **Works offline** | No signal in the basement? Record meters anyway; they are sent when the phone is back online. |
+| **E-signature** | Tenants sign the Khmer contract with a finger; the owner signs once. Changing the contract asks for a new signature. |
+| **Vacant rooms page** | A public page per landlord (/v/name) with photos, prices and features to share on Facebook/Telegram; inquiries land in the Inbox. |
+| **Tiered prices & shared meters** | EDC-style price bands for electricity/water, and one meter split fairly between several rooms. |
+| **Room features & add-ons** | Tick air-con, hot water… per room; tick motorbike/car parking, Wi-Fi… per tenant (with quantity) — billed monthly. |
+| **Announcements & late fees** | Send notices to all tenants, a building or chosen rooms; optional automatic late fee. |
+| **Khmer user guide** | ❓ on every screen opens the guide for that screen; the Help page has searchable step-by-step guides in Khmer. |
