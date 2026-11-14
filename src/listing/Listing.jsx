@@ -65,6 +65,7 @@ export default function Listing({ slug }) {
       <footer className="ls-foot">
         <a href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer"><Send size={14} /> Telegram</a>
         <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Facebook</a>
+        <a href="/map"><MapPin size={14} /> បន្ទប់ផ្សេងទៀតលើផែនទី</a>
         <span>ដំណើរការដោយ <b>ផ្ទះយើង</b></span>
       </footer>
       {ask && <Inquiry slug={slug} room={ask} sent={sent} onSent={() => setSent(true)} onClose={() => setAsk(null)} />}

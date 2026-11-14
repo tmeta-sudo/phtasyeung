@@ -48,6 +48,7 @@ export default function Landing() {
           <a href="#how" onClick={jump('how')}>របៀបប្រើ</a>
           <a href="#try" onClick={jump('try')}>សាកល្បង</a>
           <a href="#faq" onClick={jump('faq')}>សំណួរ</a>
+          <a href="/map">🗺️ រកបន្ទប់ជួល</a>
         </nav>
         <div className="lp-nav-right">
           <ThemeToggle />
@@ -232,6 +233,7 @@ export default function Landing() {
         <nav>
           <a href="/login" onClick={(e) => { e.preventDefault(); navigate('/login'); }}>ចូលគណនី</a>
           <a href="#faq" onClick={jump('faq')}>សំណួរ</a>
+          <a href="/map">🗺️ ផែនទីបន្ទប់ជួលទំនេរ</a>
           <a href="https://github.com/tmeta-sudo/phtasyeung" target="_blank" rel="noreferrer"><Code size={14} /> GitHub</a>
         </nav>
         <small>© {nowInCambodia().year} ផ្ទះយើង · ឥតគិតថ្លៃ · {lunarKm(nowInCambodia().ymd)}</small>
