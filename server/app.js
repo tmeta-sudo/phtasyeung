@@ -43,7 +43,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
   next();
 });
 // Cross-site write guard (alongside SameSite cookies). Telegram webhooks carry no Origin.
@@ -669,7 +669,8 @@ app.put('/api/settings', ...owner(async (req) => {
       const taken = (await findOrgs('listing', slug)).filter((id) => id !== orgId());
       if (taken.length || ['admin', 'api', 'login', 'signup'].includes(slug)) fail('ឈ្មោះតំណនេះមានគេប្រើហើយ — សូមជ្រើសឈ្មោះផ្សេង');
     }
-    s.listing = { enabled: !!b.listing.enabled, slug, intro: str(b.listing.intro ?? s.listing?.intro, 600), showPhone: b.listing.showPhone !== false };
+    s.listing = { enabled: !!b.listing.enabled, slug, intro: str(b.listing.intro ?? s.listing?.intro, 600), showPhone: b.listing.showPhone !== false, onMap: (b.listing.onMap ?? s.listing?.onMap) !== false };
+    mapCache.at = 0;
   }
   if (typeof b.autoApproveReadings === 'boolean') s.autoApproveReadings = b.autoApproveReadings;
   if (Array.isArray(b.addons)) {
@@ -772,6 +773,47 @@ app.get('/api/listing/:slug/photo/:roomId/:pid', async (req, res) => {
     return sendStored(res, org, room?.photos?.find((p) => p.id === req.params.pid));
   });
 });
+// ---------- public map of vacant rooms (all landlords who opted in) ----------
+
+let mapCache = { at: 0, data: null };
+/** Every landlord with a public vacant-rooms page, a map pin and at least one empty room. Cached for a minute. */
+async function publicMap() {
+  if (mapCache.data && Date.now() - mapCache.at < Number(process.env.MAP_CACHE_MS ?? 60000)) return mapCache.data;
+  const { rows } = await q(`SELECT o.doc FROM orgs o
+    WHERE NOT o.suspended AND o.doc->'settings'->'listing'->>'enabled' = 'true'
+      AND COALESCE(o.doc->'settings'->'listing'->>'onMap', 'true') <> 'false'
+      AND o.doc->'settings'->'location'->>'lat' IS NOT NULL LIMIT 5000`);
+  const places = [];
+  for (const r of rows) {
+    const doc = typeof r.doc === 'string' ? JSON.parse(r.doc) : r.doc;
+    const st = doc.settings || {};
+    const lat = Number(st.location?.lat); const lng = Number(st.location?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !st.listing?.slug) continue;
+    const living = new Set((doc.tenants || []).filter((t) => t.status === 'active' && t.roomId).map((t) => t.roomId));
+    const rooms = (doc.rooms || []).filter((rm) => !living.has(rm.id));
+    if (!rooms.length) continue;
+    const currency = st.currency === 'KHR' ? 'KHR' : 'USD';
+    const rate = Number(st.exchangeRate) || 4100;
+    places.push({
+      slug: st.listing.slug,
+      name: String(st.propertyName || '').slice(0, 80),
+      address: String(st.location?.addressText || st.address || '').slice(0, 160),
+      lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5,
+      currency,
+      // Prices compared on one scale (US$) so filters work across riel and dollar landlords.
+      usdRate: currency === 'KHR' ? 1 / rate : 1,
+      rooms: rooms.slice(0, 50).map((rm) => ({ id: rm.id, rent: Number(rm.rent) || 0, features: rm.features || [], photo: rm.photos?.[0]?.id || '', capacity: rm.capacity || 1 })),
+    });
+  }
+  mapCache = { at: Date.now(), data: { places, updatedAt: now() } };
+  return mapCache.data;
+}
+app.get('/api/map', async (req, res) => {
+  if (!(await rateLimit(`map:${req.ip}`, 120, 600))) fail('ព្យាយាមច្រើនដងពេក', 429);
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json(await publicMap());
+});
+
 app.post('/api/listing/:slug/inquiry', async (req, res) => {
   if (!(await rateLimit(`inquiry:${req.ip}`, 5, 3600))) fail('ផ្ញើច្រើនដងពេក សូមព្យាយាមម្តងទៀតក្រោយ', 429);
   const b = req.body || {};

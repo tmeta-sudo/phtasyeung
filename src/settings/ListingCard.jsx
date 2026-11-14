@@ -7,7 +7,7 @@ export default function ListingCard() {
   const { state, call, notify, base } = useApp();
   const L = state.settings.listing || {};
   const suggest = (state.settings.propertyNameEn || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
-  const [f, setF] = useState({ enabled: !!L.enabled, slug: L.slug || suggest, intro: L.intro || '', showPhone: L.showPhone !== false });
+  const [f, setF] = useState({ enabled: !!L.enabled, slug: L.slug || suggest, intro: L.intro || '', showPhone: L.showPhone !== false, onMap: L.onMap !== false });
   const url = `${base}/v/${L.slug}`;
   const vacant = state.rooms.filter((r) => !state.tenants.some((t) => t.status === 'active' && t.roomId === r.id)).length;
   return (
@@ -20,6 +20,8 @@ export default function ListingCard() {
           <label className="field"><span>តំណ</span><div className="slug-row"><small>{base.replace(/^https?:\/\//, '')}/v/</small><input value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} placeholder="sokha-rooms" /></div></label>
           <label className="field"><span>សេចក្តីណែនាំ (មិនចាំបាច់)</span><textarea rows={2} value={f.intro} onChange={(e) => setF({ ...f, intro: e.target.value })} placeholder="ឧ. ជិតផ្សារ ជិតសាលា មានសន្តិសុខ ២៤ម៉ោង" /></label>
           <label className="switch-row small"><input type="checkbox" checked={f.showPhone} onChange={(e) => setF({ ...f, showPhone: e.target.checked })} /><span><b>បង្ហាញលេខទូរស័ព្ទ</b></span></label>
+          <label className="switch-row small"><input type="checkbox" checked={f.onMap} onChange={(e) => setF({ ...f, onMap: e.target.checked })} /><span><b>បង្ហាញលើផែនទីបន្ទប់ជួលសាធារណៈ</b><small className="muted"> · <a href="/map" target="_blank" rel="noreferrer">មើលផែនទី</a></small></span></label>
+          {f.onMap && !Number.isFinite(state.settings.location?.lat) && <p className="muted small">📍 ដាក់ទីតាំងផ្ទះនៅ «ព័ត៌មានផ្ទះ» ជាមុនសិន ដើម្បីបង្ហាញលើផែនទី។</p>}
         </>
       )}
       <button className="btn primary" onClick={() => call('PUT', '/api/settings', { listing: f }, 'បានរក្សាទុក')}>រក្សាទុក</button>

@@ -60,6 +60,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - A private page per tenant (no app to install) that also **opens inside Telegram**.
 - Announcements to everyone, one building, or chosen rooms.
 - A **public vacant-rooms page** to share on Facebook and Telegram; inquiries arrive in the Inbox.
+- A **public map of vacant rooms** (`/map`) from every landlord who opts in: price pins, filters for price, air-con, hot water and Wi-Fi, "near me", and a list view. Only empty rooms are shown, never tenant details.
 
 ### Made for Cambodia
 - Khmer interface, Khmer numerals, Chhankitek lunar date, and public holidays: due dates move off holidays, reminders pause, and optional greetings go out for Khmer New Year, Pchum Ben and the Water Festival.
@@ -94,7 +95,7 @@ npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm test           # 63 tests: embedded database, fake Telegram, Bakong and push services
+npm test           # 64 tests: embedded database, fake Telegram, Bakong and push services
 npm run build && npm start
 ```
 
