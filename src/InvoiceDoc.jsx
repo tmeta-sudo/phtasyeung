@@ -58,7 +58,7 @@ export default function InvoiceDoc({ inv, property, khmer = true, design: d0, in
         <tbody>
           {inv.items.map((it, i) => (
             <tr key={i}>
-              <td>{it.label}{it.from !== undefined && <small> ({n(it.from)} → {n(it.to)})</small>}</td>
+              <td>{it.label}{it.from !== undefined && <small> ({n(it.from)} → {n(it.to)})</small>}{it.note && <small className="tier-note">{it.note}</small>}</td>
               <td>{n(it.qty)} {it.unit}</td>
               <td>{it.rate !== undefined ? usd(it.rate, khmer) : ''}</td>
               <td>{usd(it.amount, khmer)}</td>
