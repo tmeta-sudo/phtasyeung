@@ -451,6 +451,33 @@ app.put('/api/invoices/:id', ...owner(async (req) => {
   return adminState(req);
 }));
 
+// ---------- bank transfer screenshots (read in the landlord's browser, never on a server) ----------
+
+const findClaim = (inv, cid) => (inv?.claims || []).find((c) => c.id === cid);
+app.get('/api/invoices/:id/claims/:cid/photo', ...owner(async (req, res) => {
+  const c = findClaim(findInvoice(req.params.id), req.params.cid);
+  if (c?.telegramFileId) {
+    try { const f = await fetchTelegramFile(c.telegramFileId); res.setHeader('Content-Type', f.type); res.setHeader('Cache-Control', 'private, max-age=600'); return res.end(f.data); } catch { return res.status(404).end(); }
+  }
+  return sendStored(res, req.session.orgId, c?.file);
+}));
+/** Save what was read from the slip; tells the owner if the same transaction number was used before. */
+app.post('/api/invoices/:id/claims/:cid/slip', ...owner(async (req) => {
+  const inv = findInvoice(req.params.id);
+  const c = findClaim(inv, req.params.cid);
+  if (!c) fail('រកមិនឃើញ', 404);
+  const b = req.body || {};
+  c.slip = {
+    status: ['match', 'partial', 'mismatch', 'unreadable'].includes(b.status) ? b.status : 'unreadable',
+    amount: Math.max(0, +b.amount || 0), paid: Math.max(0, +b.paid || 0), currency: b.currency === 'KHR' ? 'KHR' : 'USD',
+    ref: str(b.ref, 30).replace(/[^A-Za-z0-9]/g, ''), bank: str(b.bank, 20), readAt: now(),
+  };
+  const dup = c.slip.ref && db().invoices.find((i) => (i.claims || []).some((x) => x !== c && x.slip?.ref === c.slip.ref) || (i.payments || []).some((pm) => pm.ref === c.slip.ref && i.id !== inv.id));
+  c.slip.duplicateOf = dup ? dup.number : '';
+  save();
+  return adminState(req);
+}));
+
 const PAY_METHODS = ['cash', 'bank', 'khqr', 'aba', 'acleda', 'wing', 'other'];
 
 app.post('/api/invoices/:id/payments', ...owner(async (req) => {
@@ -460,6 +487,7 @@ app.post('/api/invoices/:id/payments', ...owner(async (req) => {
   const via = PAY_METHODS.includes(req.body?.via) ? req.body.via : 'cash';
   const at = date(req.body?.date) ? `${req.body.date}T12:00:00+07:00` : now();
   const { full } = addPayment(inv, { amount: req.body?.amount, via, note: str(req.body?.note, 200), at });
+  if (req.body?.ref) inv.payments.at(-1).ref = str(req.body.ref, 30).replace(/[^A-Za-z0-9]/g, '');
   if (full) await confirmPayment(inv, via);
   else {
     logEvent('admin', `បានទទួលប្រាក់ខ្លះ ${usdFmt(+req.body.amount)} ពី ${inv.roomId} · នៅសល់ ${usdFmt(balanceOf(inv))}`, { invoiceId: inv.id });
@@ -1316,9 +1344,14 @@ app.get('/api/portal/:token/invoices/:id/status', ...portal(async (req, res, t) 
 app.post('/api/portal/:token/invoices/:id/claim', ...portal(async (req, res, t) => {
   const inv = findInvoice(req.params.id);
   if (!inv || !invoiceIsFor(inv, t)) fail('រកមិនឃើញវិក្កយបត្រ', 404);
-  if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') await claimPayment(inv, 'portal');
+  if (inv.status === 'unpaid' && await checkInvoice(inv, { minIntervalMs: 0 }) !== 'paid') {
+    // Optional: the tenant attaches their bank transfer screenshot.
+    let proof;
+    if (req.file) { const { meta, error } = await storeImage(req.file, `slip ${inv.number}`); if (error) fail(error); proof = { file: meta }; }
+    await claimPayment(inv, 'portal', proof);
+  }
   return portalState(t);
-}));
+}, upload));
 
 // ---------- cron (Vercel Cron sends "Authorization: Bearer $CRON_SECRET") ----------
 

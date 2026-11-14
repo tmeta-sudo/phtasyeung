@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Home, ReceiptText, UserRound, Send, ArrowLeft, Bell, Droplets, Zap, CalendarDays, IdCard, Upload, Check, ChevronRight, ShieldCheck, Download, MapPin, FileText } from 'lucide-react';
 import { ContractDoc } from '../ContractDoc.jsx';
-import { api, uploadFile } from '../api.js';
+import { api, uploadFile, compressImage } from '../api.js';
 import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
 import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords, fmtMoney, fmtAlt, moneyInWords, setClientCurrency } from '../../shared/khmer.js';
@@ -70,8 +70,13 @@ export default function Portal({ token }) {
     );
   }
 
-  async function claim(inv) {
-    try { setData(await api('POST', `/api/portal/${token}/invoices/${inv.id}/claim`)); notify('បានជូនដំណឹងម្ចាស់ផ្ទះ ✅'); setPay(null); } catch (e) { notify(e.message, true); }
+  async function claim(inv, slipFile) {
+    try {
+      let body;
+      if (slipFile) { body = new FormData(); body.set('file', await compressImage(slipFile, 1600)); }
+      setData(await api('POST', `/api/portal/${token}/invoices/${inv.id}/claim`, body));
+      notify(slipFile ? 'បានផ្ញើបង្កាន់ដៃទៅម្ចាស់ផ្ទះ ✅' : 'បានជូនដំណឹងម្ចាស់ផ្ទះ ✅'); setPay(null);
+    } catch (e) { notify(e.message, true); }
   }
 
   return (
@@ -186,7 +191,12 @@ export default function Portal({ token }) {
             <details className="pt-details"><summary>មើលវិក្កយបត្រពេញ</summary><InvoiceDoc inv={pay} property={{ ...data.property, addressText: data.location?.addressText, location: data.location }} khmer={k} design={data.invoiceDesign} /><button className="pt-ghost" onClick={() => window.print()}><Download size={15} /> រក្សាទុក / បោះពុម្ព</button></details>
             <div className="pt-bottom-bar">
               <div><b>{$(pay.status !== 'paid' && pay.paid > 0 ? pay.balance : pay.total)}</b><small>{pay.dueDate2 ? `ពាក់កណ្តាល ${dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '').replace(/ ឆ្នាំ.*/, '')} · នៅសល់ ${dateKm(pay.dueDate2, k).replace('ថ្ងៃទី', '').replace(/ ឆ្នាំ.*/, '')}` : `ផុត ${dateKm(pay.dueDate, k).replace('ថ្ងៃទី', '')}`}</small></div>
-              {pay.status === 'unpaid' && <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>}
+              {pay.status === 'unpaid' && (
+                <span className="pt-claim">
+                  <label className="pt-slip" title="ភ្ជាប់រូបបង្កាន់ដៃធនាគារ">📎<input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && claim(pay, e.target.files[0])} /></label>
+                  <button className="pt-pink" onClick={() => claim(pay)}>ខ្ញុំបានបង់ប្រាក់</button>
+                </span>
+              )}
               {pay.status === 'claimed' && <span className="pt-wait">⏳ រង់ចាំបញ្ជាក់</span>}
               {pay.status === 'paid' && <span className="pt-done"><Check size={16} /> បានបង់</span>}
             </div>

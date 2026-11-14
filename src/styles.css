@@ -1233,3 +1233,9 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .cur-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px; border-radius: 14px; background: var(--card-2, var(--surface)); margin-bottom: 10px; }
 .cur-switch > span { display: grid; } .cur-switch small { color: var(--muted); font-size: 12px; }
 .cur-switch .seg { min-width: 220px; }
+.slip-check { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 16px; background: var(--card); margin-bottom: 12px; }
+.slip-thumb img { width: 64px; height: 96px; object-fit: cover; border-radius: 10px; display: block; background: var(--surface); }
+.slip-body { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.slip-ok { color: var(--ok); display: flex; gap: 6px; align-items: center; }
+.slip-warn { color: var(--danger); display: flex; gap: 6px; align-items: center; }
+.slip-dup { color: var(--danger); font-weight: 600; }
