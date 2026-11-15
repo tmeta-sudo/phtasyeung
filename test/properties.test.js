@@ -35,14 +35,14 @@ test('one login, several properties: create, switch, data stays separate', async
   // Staff of the first property do not get the second one.
   const inv = await c.post('/api/team/invites', { role: 'staff' });
   const staff = client(env.url);
-  await staff.post(`/api/join/${inv.token}`, { email: `ps${Date.now()}@example.com`, password: 'password123' });
+  await staff.post(`/api/join/${inv.token}`, { email: `ps${Date.now()}@example.com`, password: 'lotus-river-2026' });
   await assert.rejects(staff.post('/api/properties/switch', { id: made.id }), /404/);
   await assert.rejects(staff.post('/api/properties', { name: 'x' }), /403/);
 
   // The account cannot be deleted while an extra property exists; deleting the extra one returns home.
-  await assert.rejects(c.post('/api/account/delete', { password: 'password123' }), /400/);
+  await assert.rejects(c.post('/api/account/delete', { password: 'lotus-river-2026' }), /400/);
   await c.post('/api/properties/switch', { id: made.id });
-  const del = await c.post('/api/account/delete', { password: 'password123' });
+  const del = await c.post('/api/account/delete', { password: 'lotus-river-2026' });
   assert.equal(del.switched, true);
   st = await c.get('/api/state');
   assert.deepEqual(st.rooms.map((r) => r.id), ['A1']);

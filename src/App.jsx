@@ -27,6 +27,7 @@ const Help = lazy(() => LATER['./help/Help.jsx']());
 import SimpleHome, { simpleMode } from './pages/SimpleHome.jsx';
 import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
+import TwoFactorPrompt from './TwoFactor.jsx';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
 import { usePwa } from './pwa.js';
@@ -143,6 +144,7 @@ function Login({ onDone, bot }) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ticket, setTicket] = useState(''); // password was right; waiting for the 2FA code
   const m = mode;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const go = (next) => { setMode(next); setError(''); setInfo(''); setViaTelegram(null); };
@@ -152,7 +154,7 @@ function Login({ onDone, bot }) {
     if ((m === 'signup' || m === 'reset') && f.password !== f.password2) return setError('ពាក្យសម្ងាត់ទាំងពីរមិនដូចគ្នា');
     setBusy(true);
     try {
-      if (m === 'login') await api('POST', '/api/auth/login', { email: f.email, password: f.password });
+      if (m === 'login') { const r = await api('POST', '/api/auth/login', { email: f.email, password: f.password }); if (r.twoFactor) { setTicket(r.ticket); return; } }
       if (m === 'signup') await api('POST', '/api/auth/signup', { email: f.email, password: f.password, propertyName: f.propertyName, phone: f.phone });
       if (m === 'forgot') { const r = await api('POST', '/api/auth/forgot', { email: f.email }); setInfo(r.message); setMode('reset'); return; }
       if (m === 'reset') await api('POST', '/api/auth/reset', { email: f.email, code: f.code, password: f.password });
@@ -186,8 +188,10 @@ function Login({ onDone, bot }) {
         )}
         <h1>{titles[m]}</h1>
         <p>{subs[m]}</p>
-        {viaTelegram ? (
-          <TelegramLogin mode={viaTelegram} extra={viaTelegram === 'signup' ? { propertyName: f.propertyName, phone: f.phone } : {}} onDone={onDone} onCancel={() => setViaTelegram(null)} />
+        {ticket ? (
+          <TwoFactorPrompt ticket={ticket} onDone={onDone} onCancel={() => { setTicket(''); setViaTelegram(null); }} />
+        ) : viaTelegram ? (
+          <TelegramLogin onTwoFactor={setTicket} mode={viaTelegram} extra={viaTelegram === 'signup' ? { propertyName: f.propertyName, phone: f.phone } : {}} onDone={onDone} onCancel={() => setViaTelegram(null)} />
         ) : (
           <form className="login-form" onSubmit={submit}>
             {m === 'login' && tgButton('ចូលតាម Telegram', () => setViaTelegram('login'))}

@@ -308,6 +308,14 @@ export function CustomerForm({ tenant, preset, onClose }) {
   const warnings = [];
   if (f.nameKm && !isKhmerName(f.nameKm)) warnings.push('ឈ្មោះខ្មែរគួរសរសេរជាអក្សរខ្មែរ');
   if (f.phone && !normalizePhone(f.phone)) warnings.push('លេខទូរស័ព្ទមិនត្រឹមត្រូវ');
+  // Same phone or ID card as someone already on file (e.g. a former tenant coming back): show their history.
+  const { $ } = useFmt();
+  const idKey = (v) => String(v || '').replace(/[\s-]/g, '').toUpperCase();
+  const phoneKey = (v) => normalizePhone(v) || '';
+  const twins = state.tenants.filter((x) => x.id !== tenant?.id && (
+    (phoneKey(f.phone) && [phoneKey(x.phone), phoneKey(x.phone2)].includes(phoneKey(f.phone)))
+    || (idKey(f.idNumber).length >= 6 && idKey(x.idNumber) === idKey(f.idNumber))));
+  const owedBy = (x) => state.invoices.filter((i) => i.status !== 'paid' && (i.tenantId === x.id || i.tenantIds?.includes(x.id))).reduce((a, i) => a + (i.balance ?? i.total), 0);
 
   async function submit(e) {
     e.preventDefault();
@@ -422,6 +430,16 @@ export function CustomerForm({ tenant, preset, onClose }) {
           </Suspense>
         )}
         {warnings.map((w) => <p key={w} className="form-warn">⚠️ {w}</p>)}
+        {twins.map((x) => {
+          const owed = Math.max(owedBy(x), x.moveOut?.owes || 0);
+          return (
+            <p key={x.id} className={'form-twin' + (owed > 0 ? ' owes' : '')}>
+              👤 មានក្នុងបញ្ជីរួចហើយ៖ <b>{x.nameKm || x.nameEn}</b>{x.roomId ? ` · ${x.roomId}` : ''} · {x.status === 'active' ? 'កំពុងជួល' : x.status === 'former' ? `ធ្លាប់ជួល${x.moveOut?.date ? ` (ចេញ ${dateKm(x.moveOut.date)})` : ''}` : 'អ្នកចាប់អារម្មណ៍'}
+              {owed > 0 && <> · <b>នៅជំពាក់ {$(owed)}</b></>}
+              {' '}<a href={`/customers/${x.id}`} onClick={(e) => { e.preventDefault(); onClose(); navigate('/customers/' + x.id); }}>មើល →</a>
+            </p>
+          );
+        })}
         {error && <p className="form-error">{error}</p>}
         <div className="form-actions">
           <button type="button" className="btn ghost" onClick={onClose}>បោះបង់</button>

@@ -10,7 +10,7 @@ async function superClient() {
   const c = client(env.url);
   const { q } = await import('../server/store.js');
   await q("DELETE FROM rate_limits WHERE key LIKE 'signup:%'");
-  await c.post('/api/auth/signup', { email: 'boss@example.com', password: 'password123', propertyName: 'Platform' }).catch(async () => c.post('/api/auth/login', { email: 'boss@example.com', password: 'password123' }));
+  await c.post('/api/auth/signup', { email: 'boss@example.com', password: 'lotus-river-2026', propertyName: 'Platform' }).catch(async () => c.post('/api/auth/login', { email: 'boss@example.com', password: 'lotus-river-2026' }));
   return c;
 }
 

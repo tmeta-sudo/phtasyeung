@@ -29,6 +29,10 @@ async function requireSuper(req, res, next) {
     try {
       const { rows } = await q('SELECT telegram_id FROM users WHERE id = $1', [req.session.userId]);
       if (!isSuper(req.session.email, rows[0]?.telegram_id)) return res.status(403).json({ error: 'សម្រាប់អ្នកគ្រប់គ្រងប្រព័ន្ធប៉ុណ្ណោះ' });
+      // The platform console controls every landlord account: it needs a session that passed two-factor sign-in.
+      if (process.env.SUPER_REQUIRE_2FA !== '0' && !req.session.mfa) {
+        return res.status(403).json({ error: 'ផ្ទាំងអ្នកគ្រប់គ្រងប្រព័ន្ធ ត្រូវការការចូល ២ ជំហាន៖ ការកំណត់ → សុវត្ថិភាពគណនី → បើក 2FA (ឬចេញ ហើយចូលម្តងទៀតដោយលេខកូដ)។', code: 'need-2fa' });
+      }
       next();
     } catch (e) { next(e); }
   });
@@ -138,7 +142,15 @@ export function superRoutes(app) {
     let dbBytes = 0;
     try { dbBytes = num((await q('SELECT pg_database_size(current_database()) AS b')).rows[0].b); } catch { /* not available */ }
     const o = orgs.rows[0];
+    const twofa = (await q('SELECT count(*) FILTER (WHERE totp_secret IS NOT NULL)::int AS on, count(*)::int AS all FROM users')).rows[0];
+    const secret = (v) => String(process.env[v] || '').length >= 24;
     res.json({
+      // Platform security checklist (values never leave the server; only whether each is in place).
+      security: {
+        appSecret: secret('APP_SECRET'), cronSecret: secret('CRON_SECRET'), https: req.secure || req.headers['x-forwarded-proto'] === 'https',
+        superTwoFactor: !!req.session.mfa, requireSuper2fa: process.env.SUPER_REQUIRE_2FA !== '0',
+        usersWith2fa: num(twofa.on), users: num(twofa.all),
+      },
       month: ym,
       landlords: { total: num(o.orgs), suspended: num(o.suspended), new7: num(o.new7), new30: num(o.new30), active7: num(o.active7), active30: num(o.active30) },
       usage: { rooms: num(o.rooms), tenants: num(o.tenants), invoices: num(o.invoices), tenantsOnTelegram: num(linked.rows[0].n) },
@@ -279,6 +291,31 @@ export function superRoutes(app) {
   app.post('/api/super/errors/resolve', requireSuper, async (req, res) => {
     if (req.body?.all) await resolveAllErrors(); else await resolveError(req.body?.fingerprint);
     res.json({ items: await listErrors() });
+  });
+
+  // Reports about public listings / the map.
+  app.get('/api/super/reports', requireSuper, async (req, res) => {
+    const { rows } = await q(`SELECT o.id, o.doc->'settings'->>'propertyName' AS name, o.doc->'settings'->'listing'->>'slug' AS slug,
+        o.listing_hidden AS hidden, count(*)::int AS count, max(r.created_at) AS last_at,
+        json_agg(json_build_object('reason', r.reason, 'note', r.note, 'at', r.created_at) ORDER BY r.created_at DESC) AS items
+      FROM listing_reports r JOIN orgs o ON o.id = r.org_id
+      WHERE ${req.query.resolved === '1' ? 'r.resolved' : 'NOT r.resolved'}
+      GROUP BY o.id ORDER BY max(r.created_at) DESC LIMIT 200`);
+    res.json({ items: rows.map((r) => ({ ...r, items: (typeof r.items === 'string' ? JSON.parse(r.items) : r.items).slice(0, 20) })) });
+  });
+  app.post('/api/super/reports/:orgId/hide', requireSuper, async (req, res) => {
+    const hidden = !!req.body?.hidden;
+    const { rows } = await q('UPDATE orgs SET listing_hidden = $2 WHERE id = $1 RETURNING id', [req.params.orgId, hidden]);
+    if (!rows.length) fail('រកមិនឃើញ', 404);
+    await q('UPDATE listing_reports SET resolved = true WHERE org_id = $1', [req.params.orgId]);
+    await audit(req, hidden ? 'hide-listing' : 'show-listing', req.params.orgId, str(req.body?.reason, 300));
+    if (hidden) await notifyOrgOwners(req.params.orgId, '⚠️ <b>ទំព័របន្ទប់ទំនេររបស់អ្នកត្រូវបានលាក់ពីសាធារណៈ</b>\nមានអ្នករាយការណ៍ថាព័ត៌មានមិនត្រឹមត្រូវ។ សូមពិនិត្យតម្លៃ រូបភាព និងបន្ទប់ទំនេរ ហើយទាក់ទងក្រុមការងារផ្ទះយើង (មតិ និងសំណើ)។').catch(() => {});
+    res.json({ ok: true });
+  });
+  app.post('/api/super/reports/:orgId/dismiss', requireSuper, async (req, res) => {
+    await q('UPDATE listing_reports SET resolved = true WHERE org_id = $1', [req.params.orgId]);
+    await audit(req, 'dismiss-reports', req.params.orgId);
+    res.json({ ok: true });
   });
 
   app.get('/api/super/audit', requireSuper, async (req, res) => {

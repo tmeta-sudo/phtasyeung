@@ -25,6 +25,10 @@ ALTER TABLE files ADD COLUMN IF NOT EXISTS ref text NOT NULL DEFAULT '';
 ALTER TABLE files ALTER COLUMN data DROP NOT NULL;
 CREATE TABLE IF NOT EXISTS rate_limits (key text PRIMARY KEY, window_start timestamptz NOT NULL, count int NOT NULL);
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS suspended boolean NOT NULL DEFAULT false;
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS listing_hidden boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS listing_reports (id text PRIMARY KEY, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, reason text NOT NULL,
+  note text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), resolved boolean NOT NULL DEFAULT false);
+CREATE INDEX IF NOT EXISTS listing_reports_org ON listing_reports(org_id);
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS last_active timestamptz;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS seen_news_at timestamptz;
 CREATE TABLE IF NOT EXISTS announcements (id text PRIMARY KEY, kind text NOT NULL DEFAULT 'feature', title text NOT NULL, body text NOT NULL DEFAULT '',
@@ -38,6 +42,15 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_name text;
 CREATE INDEX IF NOT EXISTS users_tg ON users(telegram_id);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS can_reset_until timestamptz;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen timestamptz;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device text NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip text NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS mfa boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step bigint NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_recovery jsonb NOT NULL DEFAULT '[]'::jsonb;
 CREATE TABLE IF NOT EXISTS tg_logins (id text PRIMARY KEY, mode text NOT NULL, payload jsonb NOT NULL DEFAULT '{}'::jsonb, status text NOT NULL DEFAULT 'pending',
   user_id text, telegram_id text, ip text NOT NULL DEFAULT '', ua text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(), expires timestamptz NOT NULL);
 CREATE TABLE IF NOT EXISTS platform_kv (key text PRIMARY KEY, value text NOT NULL);
@@ -208,13 +221,16 @@ export const setPassword = (userId, passHash) => q('UPDATE users SET pass_hash =
 export const setReset = (userId, hash, expires) => q('UPDATE users SET reset_hash = $2, reset_expires = $3 WHERE id = $1', [userId, hash, expires]);
 export const ownersOf = async (orgId) => (await q('SELECT id, email FROM users WHERE org_id = $1', [orgId])).rows;
 
-export async function createSession(userId, orgId, days, { canReset = false } = {}) {
-  const token = uid(24);
+export async function createSession(userId, orgId, days, { canReset = false, device = '', ip = '', mfa = false } = {}) {
+  const token = uid(32); // 256 random bits; only its SHA-256 is stored
   await q('DELETE FROM sessions WHERE expires < now()');
-  await q('INSERT INTO sessions (id, user_id, org_id, expires, can_reset_until) VALUES ($1, $2, $3, $4, $5)',
-    [sha256(token), userId, orgId, new Date(Date.now() + days * 86400000).toISOString(), canReset ? new Date(Date.now() + 30 * 60000).toISOString() : null]);
+  await q('INSERT INTO sessions (id, user_id, org_id, expires, can_reset_until, device, ip, mfa, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())',
+    [sha256(token), userId, orgId, new Date(Date.now() + days * 86400000).toISOString(), canReset ? new Date(Date.now() + 30 * 60000).toISOString() : null,
+      String(device).slice(0, 80), String(ip).slice(0, 60), !!mfa]);
   return token;
 }
+/** Remember when a session was last used (at most every few minutes, to keep writes low). */
+export const touchSession = (id) => q("UPDATE sessions SET last_seen = now() WHERE id = $1 AND (last_seen IS NULL OR last_seen < now() - interval '5 minutes')", [id]);
 export async function getSession(token) {
   if (!token) return null;
   // The role is for the property the session is looking at: the user's own account, or an extra property they added.

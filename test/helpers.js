@@ -60,6 +60,7 @@ export async function boot(extraEnv = {}) {
   const bakong = await fakeBakong();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'py-test-'));
   Object.assign(process.env, {
+    SUPER_REQUIRE_2FA: '0', // tests of the console itself; test/security.test.js turns it on
     DATA_DIR: dir, APP_SECRET: 'test-secret', TELEGRAM_API_BASE: tg.url, TELEGRAM_BOT_TOKEN: '1:test',
     BAKONG_API_BASE: bakong.url, BAKONG_TOKEN: 'platform-token', LOCAL_URL: 'http://localhost', NODE_ENV: 'test',
     ...extraEnv,
@@ -102,7 +103,7 @@ export async function landlord(base, { rooms = 1 } = {}) {
   n += 1;
   const { q } = await import('../server/store.js');
   await q("DELETE FROM rate_limits WHERE key LIKE 'signup:%'");
-  await c.post('/api/auth/signup', { email: `owner${n}-${Date.now()}@example.com`, password: 'password123', propertyName: `Test House ${n}` });
+  await c.post('/api/auth/signup', { email: `owner${n}-${Date.now()}@example.com`, password: 'lotus-river-2026', propertyName: `Test House ${n}` });
   await c.put('/api/settings', { khqr: { accountId: 'owner@aclb', merchantName: 'Owner', city: 'Phnom Penh' } });
   for (let i = 1; i <= rooms; i += 1) await c.post('/api/rooms', { id: `A${i}`, rent: 100 + i });
   let st;

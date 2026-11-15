@@ -11,6 +11,7 @@ export default function Listing({ slug }) {
   const [error, setError] = useState('');
   const [ask, setAsk] = useState(null); // room or {} for general
   const [sent, setSent] = useState(false);
+  const [reporting, setReporting] = useState(false);
   useEffect(() => { api('GET', `/api/listing/${slug}`).then((x) => { setD(x); document.title = `${x.property.name} · បន្ទប់ជួល`; }).catch((e) => setError(e.message)); }, [slug]);
   if (error) return <div className="ls-shell"><div className="ls-empty"><Home size={40} /><b>{error}</b></div></div>;
   if (!d) return <div className="ls-shell"><div className="ls-empty"><span className="spinner" /></div></div>;
@@ -66,8 +67,10 @@ export default function Listing({ slug }) {
         <a href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer"><Send size={14} /> Telegram</a>
         <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Facebook</a>
         <a href="/map"><MapPin size={14} /> បន្ទប់ផ្សេងទៀតលើផែនទី</a>
+        <button type="button" className="ls-report" onClick={() => setReporting(true)}>⚑ រាយការណ៍</button>
         <span>ដំណើរការដោយ <b>ផ្ទះយើង</b></span>
       </footer>
+      {reporting && <Report slug={slug} onClose={() => setReporting(false)} />}
       {ask && <Inquiry slug={slug} room={ask} sent={sent} onSent={() => setSent(true)} onClose={() => setAsk(null)} />}
     </div>
   );
@@ -97,6 +100,38 @@ function Inquiry({ slug, room, sent, onSent, onClose }) {
             <input className="ls-hp" tabIndex={-1} autoComplete="off" value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} aria-hidden="true" />
             {err && <p className="ls-err">{err}</p>}
             <button className="ls-btn primary" disabled={busy}>{busy ? '…' : 'ផ្ញើទៅម្ចាស់ផ្ទះ'}</button>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
+const REASONS = [['fake', 'ទំព័រក្លែងក្លាយ / មិនមានផ្ទះនេះ'], ['scam', 'សុំលុយមុន ឬបោកប្រាស់'], ['price', 'តម្លៃ ឬរូបភាពមិនពិត'], ['taken', 'បន្ទប់មានអ្នកជួលហើយ'], ['other', 'ផ្សេងៗ']];
+
+/** Tell the platform owner something is wrong with this page. No name or phone needed. */
+function Report({ slug, onClose }) {
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [state, setState] = useState('');
+  async function submit(e) {
+    e.preventDefault(); setState('busy');
+    try { await api('POST', `/api/listing/${slug}/report`, { reason, note }); setState('done'); } catch (x) { setState(x.message); }
+  }
+  return (
+    <div className="ls-sheet-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form className="ls-sheet" onSubmit={submit}>
+        <button type="button" className="ls-close" onClick={onClose} aria-label="បិទ"><X size={18} /></button>
+        {state === 'done' ? (
+          <div className="ls-done"><Check size={40} /><b>សូមអរគុណ!</b><p>ក្រុមការងារផ្ទះយើងនឹងពិនិត្យ។</p><button type="button" className="ls-btn primary" onClick={onClose}>យល់ព្រម</button></div>
+        ) : (
+          <>
+            <h2>រាយការណ៍ទំព័រនេះ</h2>
+            <div className="ls-reasons">{REASONS.map(([k, l]) => <label key={k} className={reason === k ? 'on' : ''}><input type="radio" name="reason" value={k} checked={reason === k} onChange={() => setReason(k)} required /> {l}</label>)}</div>
+            <textarea rows={2} placeholder="ព័ត៌មានបន្ថែម (មិនចាំបាច់)" value={note} onChange={(e) => setNote(e.target.value)} />
+            <p className="ls-safe">🔒 កុំបង់ប្រាក់កក់ មុនពេលបានមើលបន្ទប់ផ្ទាល់។</p>
+            {state && state !== 'busy' && <p className="ls-err">{state}</p>}
+            <button className="ls-btn primary" disabled={state === 'busy' || !reason}>{state === 'busy' ? '…' : 'ផ្ញើរបាយការណ៍'}</button>
           </>
         )}
       </form>

@@ -17,7 +17,7 @@ test('expenses: add, edit, delete, validation, hidden from staff', async () => {
   await assert.rejects(c.post('/api/expenses', { amount: 0 }), /400/);
   const inv = await c.post('/api/team/invites', { role: 'staff' });
   const s = client(env.url);
-  await s.post(`/api/join/${inv.token}`, { email: `ex${Date.now()}@example.com`, password: 'password123' });
+  await s.post(`/api/join/${inv.token}`, { email: `ex${Date.now()}@example.com`, password: 'lotus-river-2026' });
   assert.equal((await s.get('/api/state')).expenses.length, 0);
   await assert.rejects(s.post('/api/expenses', { amount: 5 }), /403/);
   st = await c.del(`/api/expenses/${id}`);

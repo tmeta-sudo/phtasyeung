@@ -33,7 +33,7 @@ test('switching to riel converts rents, prices, invoices and payments once', asy
   // Managers cannot change the currency.
   const invite = await c.post('/api/team/invites', { role: 'manager' });
   const m = client(env.url);
-  await m.post(`/api/join/${invite.token}`, { email: `m${Date.now()}@example.com`, password: 'password123' });
+  await m.post(`/api/join/${invite.token}`, { email: `m${Date.now()}@example.com`, password: 'lotus-river-2026' });
   await assert.rejects(m.put('/api/settings', { currency: 'USD' }), /403/);
   // And back again.
   const back = await c.put('/api/settings', { currency: 'USD' });
