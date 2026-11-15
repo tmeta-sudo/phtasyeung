@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ShieldCheck, ShieldOff, MonitorSmartphone, LogOut, Copy, Download } from 'lucide-react';
+import { ShieldCheck, ShieldOff, MonitorSmartphone, LogOut, Copy, Download, KeyRound, Trash2 } from 'lucide-react';
+import { passkeysSupported, addPasskey, passkeyError } from '../passkey.js';
 import { useApp, QR, Modal } from '../ui.jsx';
 import { api } from '../api.js';
 
@@ -23,6 +24,13 @@ export default function SecurityCard() {
   };
   const signOut = async (id) => { try { await api('DELETE', `/api/account/sessions/${id}`); load(); } catch (e) { notify(e.message, true); } };
   const others = data.sessions.filter((s) => !s.current).length;
+  const add = async () => {
+    try { await addPasskey(); notify('បានបន្ថែម Passkey ✅ — លើកក្រោយចូលដោយស្នាមម្រាមដៃ ឬ Face ID'); load(); } catch (e) { const m = passkeyError(e); if (m) notify(m, true); }
+  };
+  const remove = async (pk) => {
+    if (!window.confirm(`លុប Passkey «${pk.name}»?`)) return;
+    try { await api('DELETE', `/api/account/passkeys/${encodeURIComponent(pk.id)}`); load(); } catch (e) { notify(e.message, true); }
+  };
 
   return (
     <section className="card security-card" id="security">
@@ -43,6 +51,20 @@ export default function SecurityCard() {
           </>
         ) : <button className="btn primary" onClick={start}><ShieldCheck size={16} /> បើក 2FA</button>}
       </div>
+
+      <h4 className="sec-sub"><KeyRound size={15} /> Passkey ({data.passkeys?.length || 0})</h4>
+      <p className="muted small">ចូលគណនីដោយស្នាមម្រាមដៃ Face ID ឬលេខកូដដោះសោទូរស័ព្ទ — មិនបាច់វាយពាក្យសម្ងាត់ ហើយមិនអាចត្រូវគេបោកយកបាន។</p>
+      <div className="rows devices">
+        {(data.passkeys || []).map((pk) => (
+          <div key={pk.id} className="row device-row">
+            <span><b>🔑 {pk.name}{pk.synced && <em className="chip sm"> សមកាលកម្ម</em>}</b><small className="muted">បង្កើត {when(pk.createdAt)} · ប្រើចុងក្រោយ {when(pk.lastUsed)}</small></span>
+            <button className="icon-btn" onClick={() => remove(pk)} aria-label="លុប"><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+      {passkeysSupported()
+        ? <button className="btn ghost sm" onClick={add}><KeyRound size={14} /> បន្ថែម Passkey លើឧបករណ៍នេះ</button>
+        : <small className="muted">កម្មវិធីរុករកនេះមិនគាំទ្រ Passkey ទេ</small>}
 
       <h4 className="sec-sub"><MonitorSmartphone size={15} /> ឧបករណ៍ដែលកំពុងចូល ({data.sessions.length})</h4>
       <div className="rows devices">

@@ -30,6 +30,7 @@ const RULES = [
   ['*', '/api/account/security', 'staff'],
   ['*', '/api/account/2fa/*', 'staff'],
   ['*', '/api/account/sessions/*', 'staff'],
+  ['*', '/api/account/passkeys*', 'staff'],
   ['POST', '/api/auth/telegram/unlink', 'staff'],
   ['GET', '/api/team/me', 'staff'],
   ['GET', '/api/properties', 'staff'],
