@@ -1336,3 +1336,8 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .tf-steps li { overflow-wrap: anywhere; }
 
 .passkey-btn { gap: 8px; }
+
+.backup-btn.drive.on { cursor: default; display: grid; gap: 4px; text-align: left; }
+.backup-btn.drive.on .row-btns { margin-top: 6px; }
+.backup-btn.drive b { overflow-wrap: anywhere; }
+.icloud-ready { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--blue, #1f5bff) 8%, transparent); margin: 8px 0; font-size: 14px; }

@@ -4,7 +4,8 @@
 import { db, save, logEvent } from './db.js';
 import { withOrg, listOrgIds } from './store.js';
 import { googleUpload } from './blob.js';
-import { sendBackupToTelegram } from './backup.js';
+import { sendBackupToTelegram, buildZip } from './backup.js';
+import { now } from './db.js';
 import { checkAllUnpaid } from './bakong.js';
 import { orgId } from './db.js';
 import { generateInvoices, isOverdue, applyLateFees, repeatMonthlyExpenses, paidSoFar } from './invoices.js';
@@ -66,14 +67,20 @@ export async function backupToDrive() {
   const s = db();
   const g = s.settings.storage?.gdrive;
   if (!g?.refreshToken || !g.folderId) return null;
-  const { settings, ...rest } = s;
-  const { token, ...telegram } = settings.telegram;
-  const { storage, ...safeSettings } = settings;
-  const data = Buffer.from(JSON.stringify({ backupAt: new Date().toISOString(), ...rest, settings: { ...safeSettings, telegram } }, null, 1));
-  const id = await googleUpload(orgId(), s.settings.storage.gdrive, { name: 'phteah-yeung-backup.json', mime: 'application/json', data, fileId: g.backupFileId || '' });
-  s.settings.storage.gdrive = { ...g, backupFileId: id, lastBackupAt: new Date().toISOString() };
+  // The same ZIP as "download backup" (data + ID cards), restorable from Settings. Very large accounts: data only.
+  let { zip } = await buildZip({ includeFiles: true });
+  if (zip.length > 60 * 1048576) ({ zip } = await buildZip({ includeFiles: false }));
+  const mime = 'application/zip';
+  const id = await googleUpload(orgId(), g, { name: 'phteah-yeung-backup.zip', mime, data: zip, fileId: g.backupFileId || '' });
+  // Plus one dated copy per month, so an old state can be recovered too.
+  const ym = nowInCambodia().ym;
+  let snapshotMonth = g.snapshotMonth || '';
+  if (snapshotMonth !== ym) { await googleUpload(orgId(), g, { name: `phteah-yeung-${ym}.zip`, mime, data: zip }); snapshotMonth = ym; }
+  const at = now();
+  s.settings.storage.gdrive = { ...g, backupFileId: id, lastBackupAt: at, snapshotMonth, lastBytes: zip.length };
+  s.settings.backup = { ...(s.settings.backup || {}), lastAt: at, lastDriveAt: at };
   save();
-  return { ok: true, bytes: data.length, at: s.settings.storage.gdrive.lastBackupAt };
+  return { ok: true, bytes: zip.length, at };
 }
 
 /** One landlord's daily duties. `respectHour` is used by the local hourly timer. */

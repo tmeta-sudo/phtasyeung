@@ -396,6 +396,7 @@ function SecurityChecklist({ s }) {
     [s.cronSecret, 'CRON_SECRET (≥ 24 តួ)', 'ការពារការងារប្រចាំថ្ងៃពីការហៅដោយអ្នកផ្សេង'],
     [s.https, 'HTTPS', 'Vercel ផ្តល់ដោយស្វ័យប្រវត្តិ'],
     [s.superTwoFactor, '2FA សម្រាប់អ្នក', 'ផ្ទាំងនេះត្រូវការការចូល ២ ជំហាន'],
+    [s.googleDrive, 'Google Drive (GOOGLE_CLIENT_ID / SECRET)', 'បើកប៊ូតុង «ភ្ជាប់ Google Drive» ចុចម្តង សម្រាប់ម្ចាស់ផ្ទះ — មើល README'],
   ];
   return (
     <section className="card sec-check">
