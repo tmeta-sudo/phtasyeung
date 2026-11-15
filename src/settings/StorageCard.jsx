@@ -56,7 +56,7 @@ export default function StorageCard() {
           </div>
         </>
       ) : s.googleAvailable ? (
-        <button className="btn ghost" disabled={!!busy} onClick={async () => { try { const r = await api('GET', '/api/storage/google/start'); location.href = r.url; } catch (e) { notify(e.message, true); } }}>
+        <button className="btn ghost" disabled={!!busy} onClick={async () => { try { const r = await api('GET', '/api/storage/google/start?purpose=storage'); location.href = r.url; } catch (e) { notify(e.message, true); } }}>
           <Cloud size={16} /> ភ្ជាប់ Google Drive របស់ខ្ញុំ
         </button>
       ) : (

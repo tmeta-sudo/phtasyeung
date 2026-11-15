@@ -76,7 +76,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - Free signup; each landlord's data is separate. **Several properties** under one login.
 - **Team roles**: owner, manager, staff (staff never see money or ID cards).
 - Web Push and Telegram notifications, installable PWA, dark mode.
-- One-click **backup and restore**, optional storage in the landlord's own Google Drive or Cloudflare R2.
+- One-click **backup and restore**: download, the owner's Telegram (weekly), **Google Drive with one tap (daily, plus monthly copies)**, or **iCloud Drive on iPhone** (Save to Files). Optional storage of ID photos in the landlord's own Google Drive or Cloudflare R2.
 - Super admin: statistics, announcements, feature requests, and an error log with personal data removed.
 
 <p align="center">
@@ -99,7 +99,7 @@ npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm test           # 77 tests: embedded database, fake Telegram, Bakong and push services
+npm test           # 79 tests: embedded database, fake Telegram, Bakong and push services
 npm run build && npm start
 ```
 
@@ -121,6 +121,15 @@ npm run build && npm start
 | `VAPID_*` | optional | Push keys; generated automatically when empty |
 
 See [`.env.example`](.env.example) for the full list. Never commit secrets.
+
+### Turn on one-tap Google Drive backups (optional, free)
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → create a project → **APIs & Services → Enable APIs** → enable **Google Drive API**.
+2. **OAuth consent screen**: External, app name "ផ្ទះយើង", your support e-mail. Add the scope `.../auth/drive.file` (non-sensitive: the app can only see files it creates) and publish the app.
+3. **Credentials → Create OAuth client ID → Web application**. Authorised redirect URI: `https://<your-domain>/api/storage/google/callback`.
+4. Put the client ID and secret in Vercel as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then redeploy.
+
+Landlords then see **«ភ្ជាប់ Google Drive»** in Settings → Backup: one tap, choose their Google account, done. A ZIP (data + ID cards) is saved to a "ផ្ទះយើង" folder every day, with one dated copy kept per month. The super-admin checklist shows whether this is configured.
 
 ## How it is built
 

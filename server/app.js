@@ -26,7 +26,7 @@ import { superRoutes, isSuper } from './super.js';
 import { exportData, sendBackupToTelegram, restoreData, cleanupOrphanFiles } from './backup.js';
 import { checkInvoice, checkAllUnpaid, bakongEnabled } from './bakong.js';
 import {
-  r2Enabled, googleEnabled, googleExchange, googleEmail, googleCreateFolder, googleUpload, migrateBlobs, storageSummary, seal, unseal, deleteBlob,
+  r2Enabled, googleEnabled, googleRevoke, googleExchange, googleEmail, googleCreateFolder, googleUpload, migrateBlobs, storageSummary, seal, unseal, deleteBlob,
 } from './blob.js';
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
@@ -143,7 +143,7 @@ async function fullState(req) {
     bot: await botStatus(),
     today: nowInCambodia(),
     account: await accountInfo(req),
-    runtime: { serverless: !!process.env.VERCEL, appUrl: appUrl() },
+    runtime: { serverless: !!process.env.VERCEL, appUrl: appUrl(), googleDrive: googleEnabled() },
   };
 }
 
@@ -1065,7 +1065,10 @@ app.get('/api/storage', ...owner(async (req) => ({
 
 app.get('/api/storage/google/start', ...owner((req) => {
   if (!googleEnabled()) fail('Google Drive មិនទាន់បើកលើប្រព័ន្ធនេះ (GOOGLE_CLIENT_ID)', 503);
-  const state = seal(JSON.stringify({ org: req.session.orgId, user: req.session.userId, exp: Date.now() + 10 * 60000 }));
+  // purpose 'backup' (default): daily backups into the landlord's Drive, files stay where they are.
+  // purpose 'storage': also keep ID cards and photos in Drive.
+  const purpose = req.query.purpose === 'storage' ? 'storage' : 'backup';
+  const state = seal(JSON.stringify({ org: req.session.orgId, user: req.session.userId, purpose, exp: Date.now() + 10 * 60000 }));
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: googleRedirect(), response_type: 'code', access_type: 'offline', prompt: 'consent',
     scope: 'openid email https://www.googleapis.com/auth/drive.file', state, include_granted_scopes: 'true',
@@ -1076,7 +1079,9 @@ app.get('/api/storage/google/start', ...owner((req) => {
 app.get('/api/storage/google/callback', requireOwner, async (req, res) => {
   let st;
   try { st = JSON.parse(unseal(req.query.state)); } catch { st = null; }
-  if (!st || st.org !== req.session.orgId || st.exp < Date.now() || !req.query.code) return res.redirect('/settings?storage=error');
+  const back = st?.purpose === 'storage' ? '/settings?storage=' : '/settings?drive=';
+  const hash = st?.purpose === 'storage' ? '' : '#backup';
+  if (!st || st.org !== req.session.orgId || st.exp < Date.now() || !req.query.code) return res.redirect(`${back}error${hash}`);
   try {
     const tok = await googleExchange(String(req.query.code), googleRedirect());
     if (!tok.refresh_token) throw new Error('no refresh token');
@@ -1084,14 +1089,17 @@ app.get('/api/storage/google/callback', requireOwner, async (req, res) => {
     await withOrg(req.session.orgId, async () => {
       const s = db().settings;
       const folderId = await googleCreateFolder(tok.access_token, `ផ្ទះយើង — ${s.propertyName}`);
-      s.storage = { mode: 'gdrive', gdrive: { refreshToken: seal(tok.refresh_token), email, folderId, connectedAt: now() } };
+      const mode = st.purpose === 'storage' ? 'gdrive' : (s.storage?.mode === 'gdrive' ? 'gdrive' : 'database');
+      s.storage = { mode, gdrive: { refreshToken: seal(tok.refresh_token), email, folderId, connectedAt: now() } };
       save();
       logEvent('admin', `បានភ្ជាប់ Google Drive (${email})`);
+      // First backup right away, so the landlord sees it in Drive at once.
+      await backupToDrive().catch((e) => console.error('[gdrive backup]', e.message));
     });
-    res.redirect('/settings?storage=connected');
+    res.redirect(`${back}connected${hash}`);
   } catch (e) {
     console.error('[gdrive]', e.message);
-    res.redirect('/settings?storage=error');
+    res.redirect(`${back}error${hash}`);
   }
 });
 
@@ -1103,7 +1111,12 @@ app.post('/api/storage/disconnect', ...owner(async (req) => {
   const s = db().settings;
   if (s.storage?.mode === 'gdrive') { s.storage = { ...s.storage, mode: 'database' }; save(); }
   const r = await migrateBlobs(req.session.orgId, s, 15);
-  if (!r.remaining) { s.storage = { mode: 'database' }; save(); logEvent('admin', 'បានផ្តាច់ Google Drive'); }
+  if (!r.remaining) {
+    // Also withdraw our access at Google, so the stored token is useless even if leaked.
+    const token = (() => { try { return unseal(s.storage?.gdrive?.refreshToken); } catch { return ''; } })();
+    if (token) await googleRevoke(token);
+    s.storage = { mode: 'database' }; save(); logEvent('admin', 'បានផ្តាច់ Google Drive');
+  }
   return r;
 }));
 

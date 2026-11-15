@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { DatabaseBackup, Download, Send, Upload, Lock, ShieldCheck, Loader2, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { DatabaseBackup, Download, Send, Upload, Lock, ShieldCheck, Loader2, AlertTriangle, Cloud, Smartphone, Unplug } from 'lucide-react';
 import { useApp, useFmt } from '../ui.jsx';
 import { api, uploadFile } from '../api.js';
 import { downloadBlob } from '../exportImage.js';
@@ -26,6 +26,10 @@ async function decrypt(bytes, password) {
   } catch { throw new Error('ពាក្យសម្ងាត់មិនត្រឹមត្រូវ'); }
 }
 
+// iPhone / iPad: the share sheet's "Save to Files" puts the backup in iCloud Drive.
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const sizeOf = (b) => (b < 1048576 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`);
+
 const ago = (iso) => {
   if (!iso) return null;
   const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
@@ -47,12 +51,45 @@ export default function BackupCard() {
   const [usePw, setUsePw] = useState(false);
   const [pw, setPw] = useState('');
   const fileRef = useRef();
+  const [ready, setReady] = useState(null); // a built backup waiting for the iCloud "save" tap
+  const drive = state.settings.storage?.gdrive;
+  const driveAvailable = !!state.runtime?.googleDrive;
+  // Back from Google's consent screen.
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('drive');
+    if (!q) return;
+    if (q === 'connected') notify('បានភ្ជាប់ Google Drive ✅ — បានបម្រុងទុកលើកទីមួយរួចហើយ ហើយនឹងបម្រុងទុករៀងរាល់ថ្ងៃ');
+    if (q === 'error') notify('មិនអាចភ្ជាប់ Google Drive បានទេ។ សូមព្យាយាមម្តងទៀត។', true);
+    history.replaceState(null, '', '/settings#backup');
+  }, [notify]);
+  async function connectDrive() {
+    setBusy('drive');
+    try { const r = await api('GET', '/api/storage/google/start?purpose=backup'); location.href = r.url; } catch (e) { notify(e.message, true); setBusy(''); }
+  }
+  async function driveNow() {
+    setBusy('drive');
+    try { const r = await api('POST', '/api/storage/backup'); setState(await api('GET', '/api/state')); notify(`បានបម្រុងទុកទៅ Google Drive ✅ (${sizeOf(r.bytes)})`); } catch (e) { notify(e.message, true); } finally { setBusy(''); }
+  }
+  async function disconnectDrive() {
+    if (!window.confirm('ផ្តាច់ Google Drive? ការបម្រុងទុកដែលមានស្រាប់នៅតែមានក្នុង Drive របស់អ្នក។')) return;
+    setBusy('drive');
+    try { for (let i = 0; i < 200; i++) { const r = await api('POST', '/api/storage/disconnect'); if (!r.remaining) break; } setState(await api('GET', '/api/state')); notify('បានផ្តាច់ Google Drive'); } catch (e) { notify(e.message, true); } finally { setBusy(''); }
+  }
+  async function saveToICloud() {
+    const file = new File([ready.blob], ready.name, { type: 'application/zip' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: ready.name });
+      else downloadBlob(ready.blob, ready.name);
+      await call('POST', '/api/backup/downloaded', {});
+      setReady(null);
+    } catch (e) { if (e.name !== 'AbortError') notify(e.message, true); }
+  }
   const lastDays = bk.lastAt ? (Date.now() - new Date(bk.lastAt)) / 86400000 : Infinity;
   const hasTelegram = state.settings.telegram.adminChats?.length > 0;
 
-  async function download() {
+  async function download(target = 'device') {
     if (usePw && pw.length < 6) return notify('ពាក្យសម្ងាត់យ៉ាងហោចណាស់ ៦ តួ', true);
-    setBusy('dl');
+    setBusy(target === 'icloud' ? 'icloud' : 'dl');
     try {
       setProgress('កំពុងរៀបចំទិន្នន័យ…');
       const [data, { zipSync, strToU8 }] = await Promise.all([api('GET', '/api/account/export'), import('fflate')]);
@@ -68,9 +105,13 @@ export default function BackupCard() {
       let out = zipSync(entries, { level: 6 });
       if (usePw) { setProgress('កំពុងអ៊ិនគ្រីប…'); out = await encrypt(out, pw); }
       const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Phnom_Penh' });
-      downloadBlob(new Blob([out], { type: 'application/octet-stream' }), `phteah-yeung-${date}.${usePw ? 'pybackup' : 'zip'}`);
+      const name = `phteah-yeung-${date}.${usePw ? 'pybackup' : 'zip'}`;
+      const blob = new Blob([out], { type: 'application/octet-stream' });
+      // iCloud: the share sheet needs a fresh tap, so the file waits for one more button press.
+      if (target === 'icloud') { setReady({ blob, name, size: out.length }); return; }
+      downloadBlob(blob, name);
       await call('POST', '/api/backup/downloaded', {});
-      notify(`បានបម្រុងទុក ✅ (${out.length < 1048576 ? Math.max(1, Math.round(out.length / 1024)) + " KB" : (out.length / 1048576).toFixed(1) + " MB"})`);
+      notify(`បានបម្រុងទុក ✅ (${sizeOf(out.length)})`);
     } catch (e) { notify(e.message, true); } finally { setBusy(''); setProgress(''); }
   }
 
@@ -125,6 +166,36 @@ export default function BackupCard() {
           <b>ផ្ញើទៅ Telegram ខ្ញុំ</b><small>{hasTelegram ? 'រក្សាទុកក្នុង chat ផ្ទាល់ខ្លួនជាមួយ bot' : 'ត្រូវភ្ជាប់ Telegram ម្ចាស់ផ្ទះ'}</small>
         </button>
       </div>
+      <div className="backup-actions">
+        {drive ? (
+          <div className="backup-btn drive on">
+            <Cloud size={22} />
+            <b>Google Drive · {drive.email}</b>
+            <small>បម្រុងទុកដោយស្វ័យប្រវត្តិរៀងរាល់ថ្ងៃ{drive.lastBackupAt ? ` · ចុងក្រោយ ${ago(drive.lastBackupAt)}` : ''} · មានច្បាប់ចម្លងប្រចាំខែ</small>
+            <span className="row-btns">
+              <button className="btn ghost sm" onClick={driveNow} disabled={!!busy}>{busy === 'drive' ? <Loader2 size={14} className="spin" /> : <Cloud size={14} />} បម្រុងទុកឥឡូវ</button>
+              {state.settings.storage?.mode !== 'gdrive' && <button className="btn ghost sm" onClick={disconnectDrive} disabled={!!busy}><Unplug size={14} /> ផ្តាច់</button>}
+            </span>
+          </div>
+        ) : driveAvailable ? (
+          <button className="backup-btn drive" onClick={connectDrive} disabled={!!busy}>
+            {busy === 'drive' ? <Loader2 size={22} className="spin" /> : <Cloud size={22} />}
+            <b>ភ្ជាប់ Google Drive</b><small>ចុចម្តង → បម្រុងទុកដោយស្វ័យប្រវត្តិរៀងរាល់ថ្ងៃ (ទិន្នន័យ + រូបអត្តសញ្ញាណប័ណ្ណ)</small>
+          </button>
+        ) : null}
+        {isIOS() && (
+          <button className="backup-btn icloud" onClick={() => download('icloud')} disabled={!!busy}>
+            {busy === 'icloud' ? <Loader2 size={22} className="spin" /> : <Smartphone size={22} />}
+            <b>រក្សាទុកក្នុង iCloud Drive</b><small>រៀបចំឯកសារ → «Save to Files» → iCloud Drive</small>
+          </button>
+        )}
+      </div>
+      {ready && (
+        <div className="icloud-ready">
+          <span>✅ ឯកសាររួចរាល់ ({sizeOf(ready.size)}) — ចុចខាងក្រោម ហើយជ្រើស <b>«Save to Files» → iCloud Drive</b></span>
+          <button className="btn primary block" onClick={saveToICloud}><Smartphone size={16} /> រក្សាទុកក្នុង iCloud</button>
+        </div>
+      )}
       <label className="switch-row small"><input type="checkbox" checked={usePw} onChange={(e) => setUsePw(e.target.checked)} />
         <span><b><Lock size={13} /> ការពារដោយពាក្យសម្ងាត់</b><small>អ៊ិនគ្រីបឯកសារទាញយក (AES-256) — កុំភ្លេចពាក្យសម្ងាត់!</small></span></label>
       {usePw && <input className="pw-input" type="password" autoComplete="new-password" placeholder="ពាក្យសម្ងាត់សម្រាប់ការបម្រុងទុក" value={pw} onChange={(e) => setPw(e.target.value)} />}

@@ -91,6 +91,11 @@ export async function googleApi(orgId, gdrive, path, init = {}) {
   return res;
 }
 
+/** Withdraw this app's access to the landlord's Drive (best effort). */
+export async function googleRevoke(refreshToken) {
+  await fetch(`${G_OAUTH}/revoke`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: refreshToken }) }).catch(() => {});
+}
+
 export async function googleEmail(accessToken) {
   const res = await fetch(`${G_API}/oauth2/v3/userinfo`, { headers: { authorization: `Bearer ${accessToken}` } });
   return res.ok ? (await res.json()).email || '' : '';

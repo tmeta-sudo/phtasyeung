@@ -150,6 +150,7 @@ export function superRoutes(app) {
         appSecret: secret('APP_SECRET'), cronSecret: secret('CRON_SECRET'), https: req.secure || req.headers['x-forwarded-proto'] === 'https',
         superTwoFactor: !!req.session.mfa, requireSuper2fa: process.env.SUPER_REQUIRE_2FA !== '0',
         usersWith2fa: num(twofa.on), users: num(twofa.all),
+        googleDrive: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
       },
       month: ym,
       landlords: { total: num(o.orgs), suspended: num(o.suspended), new7: num(o.new7), new30: num(o.new30), active7: num(o.active7), active30: num(o.active30) },
