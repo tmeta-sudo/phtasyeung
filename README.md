@@ -99,7 +99,7 @@ npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm test           # 76 tests: embedded database, fake Telegram, Bakong and push services
+npm test           # 77 tests: embedded database, fake Telegram, Bakong and push services
 npm run build && npm start
 ```
 
@@ -137,6 +137,7 @@ See [`.env.example`](.env.example) for the full list. Never commit secrets.
 - ID cards, bank slips, meter photos and signatures are private files: only that landlord (and the tenant concerned) can open them.
 - OCR runs on the user's device. Photos are not sent to any OCR service.
 - Passwords are hashed with scrypt and common passwords are refused; sessions are 256-bit tokens kept only as hashes in httpOnly cookies; sign-in, sign-up, 2FA codes and public forms are rate limited.
+- **Passkeys**: sign in with fingerprint, Face ID or the phone's screen lock, no password; phishing-resistant and counted as two factors.
 - **Two-factor sign-in** (any authenticator app) with one-time recovery codes; it also applies after Telegram sign-in. The platform-owner console requires it.
 - Every user sees their signed-in devices and can sign them out; a Telegram/phone alert is sent when an account is opened from a new device.
 - Strict Content-Security-Policy, HSTS and cross-site request checks on every change. `npm audit` is clean.

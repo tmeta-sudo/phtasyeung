@@ -48,6 +48,10 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device text NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip text NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS mfa boolean NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret text;
+CREATE TABLE IF NOT EXISTS passkeys (id text PRIMARY KEY, user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, public_key text NOT NULL,
+  counter bigint NOT NULL DEFAULT 0, transports jsonb, name text NOT NULL DEFAULT '', device_type text NOT NULL DEFAULT '',
+  backed_up boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now(), last_used timestamptz);
+CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys(user_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_step bigint NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_recovery jsonb NOT NULL DEFAULT '[]'::jsonb;

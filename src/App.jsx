@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useStat
 import {
   Home as HomeIcon, UsersRound, DoorOpen, ReceiptText, Gauge, QrCode, Send, Settings, Wrench, Search, Bell, ScanLine,
   LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download, MessageSquare,
-  BarChart3,
+  BarChart3, KeyRound,
 } from 'lucide-react';
 import { api, takeEarly } from './api.js';
 import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
@@ -28,6 +28,7 @@ import SimpleHome, { simpleMode } from './pages/SimpleHome.jsx';
 import { PAGE_GUIDE } from './help/guides.js';
 import TelegramLogin from './TelegramLogin.jsx';
 import TwoFactorPrompt from './TwoFactor.jsx';
+import { passkeysSupported, autofillSupported, signInWithPasskey, passkeyError } from './passkey.js';
 import PwaBar from './PwaBar.jsx';
 import { ThemeToggle } from './theme.jsx';
 import { usePwa } from './pwa.js';
@@ -145,6 +146,18 @@ function Login({ onDone, bot }) {
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
   const [ticket, setTicket] = useState(''); // password was right; waiting for the 2FA code
+  const canPasskey = passkeysSupported();
+  // Offer saved passkeys right in the e-mail field's suggestions (Chrome, Safari, Android, iPhone).
+  useEffect(() => {
+    if (!canPasskey || mode !== 'login') return;
+    let live = true;
+    autofillSupported().then((ok) => ok && live && signInWithPasskey({ autofill: true }).then(() => live && onDone()).catch((e) => { const m = passkeyError(e); if (m && live) setError(m); }));
+    return () => { live = false; };
+  }, [canPasskey, mode, onDone]);
+  async function passkeyLogin() {
+    setError(''); setBusy(true);
+    try { await signInWithPasskey(); onDone(); } catch (e) { setError(passkeyError(e)); } finally { setBusy(false); }
+  }
   const m = mode;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const go = (next) => { setMode(next); setError(''); setInfo(''); setViaTelegram(null); };
@@ -194,6 +207,7 @@ function Login({ onDone, bot }) {
           <TelegramLogin onTwoFactor={setTicket} mode={viaTelegram} extra={viaTelegram === 'signup' ? { propertyName: f.propertyName, phone: f.phone } : {}} onDone={onDone} onCancel={() => setViaTelegram(null)} />
         ) : (
           <form className="login-form" onSubmit={submit}>
+            {m === 'login' && canPasskey && <button type="button" className="btn primary block passkey-btn" onClick={passkeyLogin} disabled={busy}><KeyRound size={17} /> ចូលដោយ Passkey (ស្នាមម្រាមដៃ / Face ID)</button>}
             {m === 'login' && tgButton('ចូលតាម Telegram', () => setViaTelegram('login'))}
             {m === 'signup' && <input autoComplete="organization" placeholder="ឈ្មោះផ្ទះជួល / អគារ (ឧ. ផ្ទះជួលសុខា)" value={f.propertyName} onChange={set('propertyName')} required />}
             {m === 'signup' && tgButton('បង្កើតគណនីតាម Telegram', () => (f.propertyName.trim() ? setViaTelegram('signup') : setError('សូមបញ្ចូលឈ្មោះផ្ទះជួលជាមុនសិន')))}
@@ -204,7 +218,7 @@ function Login({ onDone, bot }) {
               </>
             )}
             {bot && m !== 'reset' && <div className="or"><span>ឬប្រើអ៊ីមែល</span></div>}
-            <input type={m === 'login' ? 'text' : 'email'} autoComplete="username" placeholder="អ៊ីមែល" value={f.email} onChange={set('email')} required={m !== 'signup' || !viaTelegram} />
+            <input type={m === 'login' ? 'text' : 'email'} autoComplete={m === 'login' && canPasskey ? 'username webauthn' : 'username'} placeholder="អ៊ីមែល" value={f.email} onChange={set('email')} required={m !== 'signup' || !viaTelegram} />
             {m === 'signup' && <input type="tel" autoComplete="tel" placeholder="ទូរស័ព្ទ (មិនចាំបាច់)" value={f.phone} onChange={set('phone')} />}
             {m === 'reset' && <input inputMode="numeric" autoComplete="one-time-code" placeholder="លេខកូដ ៦ ខ្ទង់" value={f.code} onChange={set('code')} required />}
             {m !== 'forgot' && <input type="password" autoComplete={m === 'login' ? 'current-password' : 'new-password'} placeholder={m === 'login' ? 'ពាក្យសម្ងាត់' : 'ពាក្យសម្ងាត់ (≥ ៨ តួ)'} value={f.password} onChange={set('password')} required minLength={m === 'login' ? 1 : 8} />}

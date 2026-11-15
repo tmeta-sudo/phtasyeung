@@ -8,8 +8,9 @@ Please report security issues privately through GitHub: **Security → Report a 
 
 **Accounts and sign-in**
 - Passwords are hashed with scrypt (random salt per user); common and easily guessed passwords are refused.
+- **Passkeys** (WebAuthn/FIDO2, via @simplewebauthn): sign-in with fingerprint, Face ID or screen lock. Only the public key is stored; user verification is required; the credential is bound to the site, so it cannot be phished. Counter, challenge (sealed, 5 minutes) and account handle are all checked.
 - Optional **two-factor sign-in** (TOTP, RFC 6238) with any authenticator app, plus 10 one-time recovery codes (only their hashes are stored). A code can never be used twice. Two-factor also applies after Telegram sign-in and recovery links.
-- The platform-owner console requires a session that passed two-factor sign-in (`SUPER_REQUIRE_2FA`, on by default).
+- The platform-owner console requires a session that passed two-factor sign-in or used a passkey (`SUPER_REQUIRE_2FA`, on by default).
 - Sessions: 256-bit random tokens, stored only as SHA-256 hashes, sent as `HttpOnly; SameSite=Lax; Secure` cookies. Every user can see their signed-in devices and sign them out; changing the password or turning on 2FA signs out other devices.
 - A Telegram/phone alert is sent when an account is opened from a new device or network, and when 2FA is turned on or off.
 - Rate limits on sign-in (per account and per IP), sign-up, password reset, 2FA codes, public forms and reports.

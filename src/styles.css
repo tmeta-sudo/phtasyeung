@@ -1334,3 +1334,5 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .tf-setup { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .tf-setup > * { min-width: 0; max-width: 100%; }
 .tf-steps li { overflow-wrap: anywhere; }
+
+.passkey-btn { gap: 8px; }

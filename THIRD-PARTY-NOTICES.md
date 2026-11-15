@@ -47,6 +47,8 @@ Self-hosted through [Fontsource](https://fontsource.org).
 | [fflate](https://github.com/101arrowz/fflate) | MIT | Backup zip files |
 | [aws4fetch](https://github.com/mhart/aws4fetch) | MIT | Cloudflare R2 storage |
 | [web-push](https://github.com/web-push-libs/web-push) | MPL-2.0 | Push notifications (used unmodified) |
+| [@simplewebauthn/server, @simplewebauthn/browser](https://github.com/MasterKale/SimpleWebAuthn) 14.0 | MIT | Passkeys (WebAuthn) |
+| [axios](https://github.com/axios/axios) (via bakong-khqr, version forced in `overrides`) | MIT | HTTP client inside the KHQR library |
 
 ## Services and data
 

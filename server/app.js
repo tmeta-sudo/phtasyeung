@@ -32,6 +32,7 @@ import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
 import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
 import { securityHeaders, sameOriginWrites } from './security.js';
+import { passkeyRoutes } from './passkeys.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -49,6 +50,7 @@ if (process.env.VERCEL) app.use('/api', (req, res, next) => { ensurePlatformWebh
 
 authRoutes(app, { sendResetCode, sendSecurityAlert, botName: () => platformBotName() });
 securityRoutes(app);
+passkeyRoutes(app);
 teamRoutes(app);
 configureTgLogin({ api: tgApi, botName: platformBotName, appUrl, ensureWebhook: () => ensurePlatformWebhook() });
 tgLoginRoutes(app);

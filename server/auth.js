@@ -211,6 +211,7 @@ export function securityRoutes(app) {
       twoFactor: !!user.totp_secret,
       recoveryLeft: user.totp_secret ? recoveryCount(user) : 0,
       hasPassword: !!user.pass_hash,
+      passkeys: await (await import('./passkeys.js')).passkeysOf(user.id),
       sessions: rows.map((r) => ({ id: r.id.slice(0, 16), device: r.device || 'ឧបករណ៍', ip: r.ip, createdAt: r.created_at, lastSeen: r.last_seen, mfa: r.mfa, current: r.id === req.session.id })),
     });
   });
