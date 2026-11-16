@@ -337,6 +337,10 @@ export async function handleUpdate(botKey, token, u) {
     const login = text.match(/^(?:\/start\s+)?login-([\w-]{16,})$/);
     if (login) return botLoginStart(m, login[1]);
     if (['/recover', '/login', '🔑 ចូលគណនី'].includes(text)) return botRecover(m);
+    if (m.reply_to_message) {
+      const { handleSuperTelegramReply } = await import('./super.js');
+      if (await handleSuperTelegramReply(chatId, m)) return;
+    }
   }
   const reply = (html, extra) => api(token, 'sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', ...extra }).catch(() => {});
 

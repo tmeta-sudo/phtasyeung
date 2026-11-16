@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { api } from '../api.js';
-import { StatusTag, FB_STATUS, NEWS_KIND } from './Feedback.jsx';
+import { StatusTag, FB_STATUS, NEWS_KIND, Thread } from './Feedback.jsx';
 import { usd } from '../../shared/khmer.js';
 
 const TABS = [['overview', 'ទិដ្ឋភាពទូទៅ', Shield], ['landlords', 'ម្ចាស់ផ្ទះ', Users], ['news', 'ដំណឹង / មុខងារថ្មី', Megaphone], ['feedback', 'សំណើ & បញ្ហា', Lightbulb], ['reports', 'របាយការណ៍ទំព័រ', Flag], ['errors', 'កំហុសប្រព័ន្ធ', AlertOctagon], ['audit', 'កំណត់ហេតុ', History]];
@@ -275,9 +275,9 @@ function FeedbackAdmin() {
       <section className="card">
         <div className="rows">
           {data?.items.map((f) => (
-            <button key={f.id} className="row fb-row" onClick={() => setEdit({ ...f, notify: true })}>
+            <button key={f.id} className={'row fb-row' + (f.team_unread ? ' unread' : '')} onClick={() => setEdit({ ...f, notify: true })}>
               <span className={'fb-kind ' + f.kind}>{f.kind === 'issue' ? <Bug size={16} /> : <Lightbulb size={16} />}</span>
-              <span><b>{f.title}</b><small className="muted">{f.org_name || '—'} · {who(f.user_email)} · {fmtDate(f.created_at)}{f.kind === 'feature' ? ` · ▲ ${n(f.votes)}` : ''}</small>{f.body && <small className="clamp">{f.body}</small>}</span>
+              <span><b>{f.team_unread ? '🔵 ' : ''}{f.title}</b><small className="muted">{f.org_name || '—'} · {who(f.user_email)} · {fmtDate(f.updated_at || f.created_at)}{f.kind === 'feature' ? ` · ▲ ${n(f.votes)}` : ''}{(f.messages || []).length ? ` · 💬 ${n(f.messages.length)}` : ''}</small>{f.body && <small className="clamp">{f.body}</small>}</span>
               <StatusTag status={f.status} />
             </button>
           ))}
@@ -286,15 +286,14 @@ function FeedbackAdmin() {
       </section>
       {edit && (
         <Modal title={edit.title} sub={`${edit.kind === 'issue' ? '🐞 បញ្ហា' : '💡 សំណើមុខងារ'} · ${edit.org_name || ''} · ${who(edit.user_email)}`} onClose={() => setEdit(null)}>
+          <Thread f={edit} side="team" onSent={async () => { const r = await api('GET', `/api/super/feedback?kind=${kind}&status=${status}`); load(); const fresh = r.items.find((x) => x.id === edit.id); if (fresh) setEdit({ ...fresh, notify: false }); }} />
+          {edit.kind === 'issue' && edit.context && <details className="ctx-wrap"><summary className="muted small">ព័ត៌មានបច្ចេកទេស</summary><pre className="ctx">{JSON.stringify(edit.context, null, 1)}</pre></details>}
           <form className="stack-form" onSubmit={save}>
-            {edit.body && <p className="notes card">{edit.body}</p>}
-            {edit.kind === 'issue' && edit.context && <pre className="ctx">{JSON.stringify(edit.context, null, 1)}</pre>}
             <Field label="ស្ថានភាព"><select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>{Object.entries(FB_STATUS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-            <Field label="ឆ្លើយតប (ម្ចាស់ផ្ទះនឹងឃើញ)"><textarea rows={4} value={edit.reply} onChange={(e) => setEdit({ ...edit, reply: e.target.value })} maxLength={3000} /></Field>
-            <label className="switch-row"><input type="checkbox" checked={!!edit.notify} onChange={(e) => setEdit({ ...edit, notify: e.target.checked })} /><span><b>ជូនដំណឹងតាម Telegram</b><small>ផ្ញើស្ថានភាព និងចម្លើយទៅម្ចាស់ផ្ទះ</small></span></label>
+            <label className="switch-row"><input type="checkbox" checked={!!edit.notify} onChange={(e) => setEdit({ ...edit, notify: e.target.checked })} /><span><b>ជូនដំណឹងពីស្ថានភាពថ្មី</b><small>Telegram ទៅម្ចាស់ផ្ទះ (ចម្លើយត្រូវបានផ្ញើភ្លាមៗជានិច្ច)</small></span></label>
             <div className="form-actions">
               <button type="button" className="btn ghost danger" onClick={async () => { if (window.confirm('លុប?')) { await api('DELETE', `/api/super/feedback/${edit.id}`); setEdit(null); load(); } }}><Trash2 size={15} /></button>
-              <button className="btn primary">រក្សាទុក</button>
+              <button className="btn primary">រក្សាទុកស្ថានភាព</button>
             </div>
           </form>
         </Modal>
