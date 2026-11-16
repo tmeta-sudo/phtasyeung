@@ -160,7 +160,7 @@ Landlords then see **«ភ្ជាប់ Google Drive»** in Settings → Backu
 - Push notifications on iPhone need the app added to the Home Screen (iOS 16.4+).
 - Telegram backups are limited to 45 MB; larger accounts should use the download button or Drive storage.
 - The resident list and income summary are general records. Local authorities and the tax office may require their own forms; this app does not give legal or tax advice.
-- The map's optional "Google" and satellite layers load Google tiles directly. Check Google's terms before relying on them; OpenStreetMap is the default.
+- Maps use Google tiles by default (Khmer labels), with satellite and OpenStreetMap as alternatives; if Google tiles fail to load, the map switches to OpenStreetMap by itself. The Google tiles are loaded directly rather than through the paid Google Maps Platform API, so check Google's terms before relying on them at scale.
 
 ## Acknowledgements
 

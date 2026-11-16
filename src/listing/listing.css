@@ -102,3 +102,7 @@
 .ls-reasons label { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ls-line); cursor: pointer; }
 .ls-reasons label.on { border-color: var(--ls-blue); background: color-mix(in srgb, var(--ls-blue) 8%, transparent); }
 .ls-safe { font-size: 13px; color: var(--ls-muted); margin: 0; }
+
+.mpg-layers { position: fixed; z-index: 600; right: 12px; top: 128px; display: flex; flex-direction: column; gap: 4px; background: var(--ls-card); padding: 4px; border-radius: 14px; box-shadow: 0 4px 14px rgba(13,20,36,.2); }
+.mpg-layers button { border: 0; background: none; color: var(--ls-ink); font: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 10px; cursor: pointer; }
+.mpg-layers button.on { background: var(--ls-ink); color: var(--ls-card); }

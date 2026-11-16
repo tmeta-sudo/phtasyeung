@@ -32,7 +32,8 @@ export const PAGE_HEADERS = {
   'Content-Security-Policy': CSP,
   'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'same-origin',
+  // Other sites get only our domain, never the path (portal links carry tokens). Map tile servers require this.
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()',
   'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
 };

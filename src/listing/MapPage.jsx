@@ -5,6 +5,7 @@ import { LocateFixed, SlidersHorizontal, List, Map as MapIcon, X, Home, Search, 
 import { api } from '../api.js';
 import { ROOM_FEATURES } from '../../shared/features.js';
 import { fmtMoney } from '../../shared/khmer.js';
+import { LAYERS, addBaseLayer, savedLayer, saveLayer } from '../MapPicker.jsx';
 import './listing.css';
 
 const PHNOM_PENH = [11.5564, 104.9282];
@@ -64,13 +65,14 @@ export default function MapPage() {
   const [view, setView] = useState(0); // bumps when the map moves
   const [listOpen, setListOpen] = useState(false);
   const [locating, setLocating] = useState(false);
+  const [base, setBase] = useState(savedLayer);
+  const tiles = useRef();
 
   useEffect(() => {
     document.title = 'ផែនទីបន្ទប់ជួលទំនេរ · ផ្ទះយើង';
     api('GET', '/api/map').then(setData).catch((e) => setError(e.message));
     const m = L.map(box.current, { zoomControl: false, attributionControl: true }).setView(START.center ? START.center.slice(0, 2) : PHNOM_PENH, START.center ? START.center[2] : 12);
     L.control.zoom({ position: 'bottomright' }).addTo(m);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
     layer.current = L.layerGroup().addTo(m);
     m.on('moveend zoomend', () => setView((v) => v + 1));
     m.on('click', () => setSel(null));
@@ -78,6 +80,13 @@ export default function MapPage() {
     setTimeout(() => m.invalidateSize(), 60);
     return () => m.remove();
   }, []);
+
+  useEffect(() => {
+    if (!map.current) return;
+    tiles.current?.remove();
+    tiles.current = addBaseLayer(map.current, base, setBase);
+    saveLayer(base);
+  }, [base]);
 
   // Places that still have a room matching the filters (only those rooms are kept).
   const places = useMemo(() => (data?.places || []).map((p) => ({
@@ -177,6 +186,9 @@ export default function MapPage() {
         </div>
       </header>
       <div ref={box} className="mpg-map" />
+      <div className="mpg-layers" role="group" aria-label="ប្រភេទផែនទី">
+        {Object.entries(LAYERS).map(([k, l]) => <button key={k} className={base === k ? 'on' : ''} onClick={() => setBase(k)}>{k === 'osm' ? 'OSM' : l.label}</button>)}
+      </div>
       <button className="mpg-fab locate" onClick={nearMe} aria-label="នៅជិតខ្ញុំ"><LocateFixed size={20} className={locating ? 'spin' : ''} /> នៅជិតខ្ញុំ</button>
       <button className="mpg-fab list" onClick={() => setListOpen((v) => !v)}>{listOpen ? <><MapIcon size={18} /> ផែនទី</> : <><List size={18} /> បញ្ជី ({visible.length})</>}</button>
       {error && <div className="mpg-msg">{error}</div>}
