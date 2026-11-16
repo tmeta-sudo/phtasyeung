@@ -226,3 +226,23 @@ export const ID_TYPES = [
   ['other', 'ផ្សេងៗ'],
 ];
 export const labelOf = (pairs, key) => (pairs.find(([k]) => k === key) || [, ''])[1];
+
+/**
+ * A price set in one currency, in another (rounded the way that currency is paid: 100 ៛ or 1 cent).
+ * `from` empty = already in `to`. Rate is riel per dollar.
+ */
+export function convertAmount(amount, from, to, rate) {
+  const a = Number(amount) || 0;
+  if (!from || from === to) return a;
+  const r = Number(rate) || 4100;
+  return roundMoney(from === 'KHR' ? a / r : a * r, to);
+}
+/** The currency a price is in: its own if set, otherwise the billing currency. */
+export const priceCur = (own, billing) => (own === 'USD' || own === 'KHR' ? own : billing === 'KHR' ? 'KHR' : 'USD');
+
+/** A per-unit price shown exactly (720 ៛/kWh, $0.1825/kWh): not rounded to 100 ៛ or to cents like amounts. */
+export function fmtUnit(v, currency) {
+  const n = Number(v) || 0;
+  if (currency === 'KHR') return `${Math.round(n).toLocaleString('en-US')} ៛`;
+  return `$${n.toFixed(4).replace(/0{1,2}$/, '')}`;
+}

@@ -585,6 +585,9 @@ app.put('/api/settings', ...owner(async (req) => {
     coverUrl: /^https:\/\//.test(b.coverUrl || '') ? str(b.coverUrl, 500) : (b.coverUrl === '' ? '' : s.coverUrl),
     waterRate: money(b.waterRate ?? s.waterRate),
     electricRate: money(b.electricRate ?? s.electricRate),
+    // Each utility can be priced in ៛ or $; '' = the billing currency.
+    waterCur: ['USD', 'KHR', ''].includes(b.waterCur) ? b.waterCur : (s.waterCur || ''),
+    electricCur: ['USD', 'KHR', ''].includes(b.electricCur) ? b.electricCur : (s.electricCur || ''),
     exchangeRate: Math.max(1, Math.round(+(b.exchangeRate ?? s.exchangeRate)) || 4100),
     dueDays: Math.min(60, Math.max(0, Math.round(+(b.dueDays ?? s.dueDays)) || 0)),
     khmerNumerals: typeof b.khmerNumerals === 'boolean' ? b.khmerNumerals : s.khmerNumerals,
@@ -683,6 +686,7 @@ app.put('/api/settings', ...owner(async (req) => {
     s.addons = b.addons.slice(0, 20).map((a) => ({
       id: /^[\w-]{1,20}$/.test(a.id || '') ? a.id : 'x' + uid(4),
       icon: str(a.icon, 8) || '➕', label: str(a.label, 40), price: money(a.price), max: Math.min(20, Math.max(1, Math.round(+a.max || 1))),
+      cur: ['USD', 'KHR'].includes(a.cur) ? a.cur : '',
     })).filter((a) => a.label && !seen.has(a.id) && seen.add(a.id));
   }
   if (b.tiers) {
@@ -797,7 +801,7 @@ app.get('/api/listing/:slug', async (req, res) => {
       intro: st.listing.intro,
       currency: st.currency === 'KHR' ? 'KHR' : 'USD',
       rooms: vacantRooms().map((r) => ({ id: r.id, building: r.building, floor: r.floor, rent: r.rent, features: r.features || [], note: r.note, photos: (r.photos || []).map((p) => p.id) })),
-      addons: (st.addons || []).map(({ icon, label, price }) => ({ icon, label, price })),
+      addons: (st.addons || []).map(({ icon, label, price, cur: c }) => ({ icon, label, price, cur: c || '' })),
       deposit: { months: st.contract?.depositMonths, prepaid: st.contract?.prepaidMonths },
     };
   });

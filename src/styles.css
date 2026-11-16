@@ -1341,3 +1341,21 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .backup-btn.drive.on .row-btns { margin-top: 6px; }
 .backup-btn.drive b { overflow-wrap: anywhere; }
 .icloud-ready { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--blue, #1f5bff) 8%, transparent); margin: 8px 0; font-size: 14px; }
+
+/* add-ons editor: one card per add-on */
+.addon-card { display: grid; gap: 10px; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.ac-top { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.ac-icon { font-size: 22px; text-align: center; padding: 6px 2px; border-radius: 12px; border: 1px solid var(--line); background: var(--card, #fff); }
+.ac-name { min-width: 0; font-weight: 600; }
+.ac-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.ac-field { display: grid; gap: 4px; min-width: 0; }
+.ac-field > span:first-child { font-size: 12.5px; color: var(--muted); }
+.ac-price, .price-cur { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.ac-price input, .price-cur input { flex: 1; min-width: 0; }
+.ac-preview { color: var(--muted); font-size: 12.5px; }
+.cur-toggle { display: inline-flex; flex-shrink: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card, #fff); }
+.cur-toggle button { border: 0; background: none; color: var(--ink); font: inherit; font-weight: 700; padding: 8px 12px; cursor: pointer; }
+.cur-toggle button.on { background: var(--blue, #1f5bff); color: #fff; }
+.addon-sum small { display: block; font-weight: 500; color: var(--muted); font-size: 11.5px; }
+@media (max-width: 380px) { .ac-fields { grid-template-columns: 1fr; } }
+.cur-toggle button { font-size: 17px; min-width: 40px; line-height: 1; font-family: "Inter Tight", "Kantumruy Pro", sans-serif; }

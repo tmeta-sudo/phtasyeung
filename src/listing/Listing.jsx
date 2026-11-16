@@ -16,7 +16,7 @@ export default function Listing({ slug }) {
   if (error) return <div className="ls-shell"><div className="ls-empty"><Home size={40} /><b>{error}</b></div></div>;
   if (!d) return <div className="ls-shell"><div className="ls-empty"><span className="spinner" /></div></div>;
   const k = d.property.khmerNumerals;
-  const money = (v) => (d.currency === 'KHR' ? `${num(Math.round(v).toLocaleString('en-US'), k)}៛` : `$${num(Number(v).toFixed(0), k)}`);
+  const money = (v, c = d.currency) => (c === 'KHR' ? `${num(Math.round(v).toLocaleString('en-US'), k)}៛` : `$${num(Number(v).toFixed(0), k)}`);
   const url = location.href.split('#')[0];
   const shareText = `${d.property.name} — បន្ទប់ទំនេរ ${d.rooms.length} · ចាប់ពី ${d.rooms.length ? money(Math.min(...d.rooms.map((r) => r.rent))) : ''}/ខែ`;
   async function share() {
@@ -60,7 +60,7 @@ export default function Listing({ slug }) {
       {(d.addons.length > 0 || d.deposit.months) && (
         <section className="ls-info">
           {d.deposit.months > 0 && <p>💵 ប្រាក់កក់ {num(d.deposit.months, k)} ខែ{d.deposit.prepaid ? ` + បង់មុន ${num(d.deposit.prepaid, k)} ខែ` : ''}</p>}
-          {d.addons.length > 0 && <div className="ls-feats">{d.addons.map((a) => <span key={a.label}>{a.icon} {a.label} {money(a.price)}</span>)}</div>}
+          {d.addons.length > 0 && <div className="ls-feats">{d.addons.map((a) => <span key={a.label}>{a.icon} {a.label} {money(a.price, a.cur || d.currency)}</span>)}</div>}
         </section>
       )}
       <footer className="ls-foot">

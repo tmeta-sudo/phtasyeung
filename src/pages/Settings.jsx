@@ -10,6 +10,7 @@ import BackupCard from '../settings/BackupCard.jsx';
 import NotifyCard from '../settings/NotifyCard.jsx';
 import { CoverButton } from '../settings/CoverButton.jsx';
 import SecurityCard from '../settings/SecurityCard.jsx';
+import CurToggle from '../CurToggle.jsx';
 import UtilityCard from '../settings/UtilityCard.jsx';
 import AddonsCard from '../settings/AddonsCard.jsx';
 import ListingCard from '../settings/ListingCard.jsx';
@@ -21,6 +22,7 @@ import { moneyInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer
 export default function SettingsPage() {
   const { state, call, notify, reload } = useApp();
   const { $, c, cs } = useFmt();
+  const uc = (kind) => { const v = f[kind + 'Cur']; return v === 'KHR' ? '៛' : v === 'USD' ? '$' : cs; };
   const [f, setF] = useState(() => ({ ...state.settings, khqr: { ...state.settings.khqr }, contract: { ...state.settings.contract }, lateFee: { enabled: false, amount: 5, afterDays: 5, ...(state.settings.lateFee || {}) } }));
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const [pw, setPw] = useState({ current: '', next: '' });
@@ -57,7 +59,7 @@ export default function SettingsPage() {
         </>)}
 
         {role !== 'staff' && (<>
-        <form className="card" onSubmit={(e) => save(e, { waterRate: f.waterRate, electricRate: f.electricRate, exchangeRate: f.exchangeRate, dueDays: f.dueDays })}>
+        <form className="card" onSubmit={(e) => save(e, { waterRate: f.waterRate, electricRate: f.electricRate, waterCur: f.waterCur || '', electricCur: f.electricCur || '', exchangeRate: f.exchangeRate, dueDays: f.dueDays })}>
           <h3 className="sec-title"><Droplets size={17} /> តម្លៃ និងអត្រាប្តូរប្រាក់</h3>
           {isOwner && (
             <div className="cur-switch">
@@ -70,15 +72,15 @@ export default function SettingsPage() {
                     if (!window.confirm(code === 'KHR'
                       ? `ប្តូរទៅរៀល?\n\nថ្លៃជួល តម្លៃ ប្រាក់កក់ វិក្កយបត្រ និងចំណាយទាំងអស់ នឹងគុណនឹង ${rate} ៛/$ ហើយបង្គត់ ១០០ ៛។`
                       : `ប្តូរទៅដុល្លារ?\n\nចំនួនទាំងអស់នឹងចែកនឹង ${rate} ៛/$។`)) return;
-                    call('PUT', '/api/settings', { exchangeRate: rate, currency: code }, code === 'KHR' ? 'បានប្តូរទៅរៀល ៛' : 'បានប្តូរទៅដុល្លារ $').then((r) => r && setF((x) => ({ ...x, waterRate: r.settings.waterRate, electricRate: r.settings.electricRate, lateFee: { ...x.lateFee, ...r.settings.lateFee } })));
+                    call('PUT', '/api/settings', { exchangeRate: rate, currency: code }, code === 'KHR' ? 'បានប្តូរទៅរៀល ៛' : 'បានប្តូរទៅដុល្លារ $').then((r) => r && setF((x) => ({ ...x, waterRate: r.settings.waterRate, electricRate: r.settings.electricRate, waterCur: r.settings.waterCur, electricCur: r.settings.electricCur, lateFee: { ...x.lateFee, ...r.settings.lateFee } })));
                   }}>{label}</button>
                 ))}
               </div>
             </div>
           )}
           <div className="form-grid">
-            <Field label={`ថ្លៃទឹក (${cs} / m³)`}><input type="number" min="0" step="any" value={f.waterRate} onChange={(e) => set('waterRate', e.target.value)} /></Field>
-            <Field label={`ថ្លៃភ្លើង (${cs} / kWh)`}><input type="number" min="0" step="any" value={f.electricRate} onChange={(e) => set('electricRate', e.target.value)} /></Field>
+            <Field label={`ថ្លៃទឹក (${uc('water')} / m³)`}><span className="price-cur"><input type="number" min="0" step="any" value={f.waterRate} onChange={(e) => set('waterRate', e.target.value)} /><CurToggle value={f.waterCur} billing={c} onChange={(v) => set('waterCur', v)} /></span></Field>
+            <Field label={`ថ្លៃភ្លើង (${uc('electric')} / kWh)`} hint={uc('electric') !== cs ? 'ឧ. EDC ៖ 720 ៛/kWh — បម្លែងទៅរូបិយប័ណ្ណគិតលុយក្នុងវិក្កយបត្រ' : ''}><span className="price-cur"><input type="number" min="0" step="any" value={f.electricRate} onChange={(e) => set('electricRate', e.target.value)} /><CurToggle value={f.electricCur} billing={c} onChange={(v) => set('electricCur', v)} /></span></Field>
             <Field label="អត្រាប្តូរប្រាក់ (៛ / $)" hint={`$100 = ${khr(toRiel(100, f.exchangeRate))}`}><input type="number" min="1" value={f.exchangeRate} onChange={(e) => set('exchangeRate', e.target.value)} /></Field>
             <Field label="ថ្ងៃផុតកំណត់បង់ (ថ្ងៃក្រោយចេញវិក្កយបត្រ)"><input type="number" min="0" max="60" value={f.dueDays} onChange={(e) => set('dueDays', e.target.value)} /></Field>
           </div>

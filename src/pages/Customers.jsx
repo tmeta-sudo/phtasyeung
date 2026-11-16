@@ -411,7 +411,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
             const r = state.rooms.find((x) => x.id === f.roomId);
             const rent = +r?.rent || 0;
             const extras = (r?.extras || []).reduce((a, x) => a + (+x.amount || 0), 0);
-            const add = addonsTotal(state.settings.addons, f.addons || []);
+            const add = addonsTotal(state.settings.addons, f.addons || [], state.settings.currency === 'KHR' ? 'KHR' : 'USD', state.settings.exchangeRate);
             return r ? <div className="month-est"><span>ប្រហែលប្រចាំខែ (មិនរាប់ទឹកភ្លើង)</span><b>{money(rent + extras + add)}</b><small>ថ្លៃជួល {money(rent)}{extras ? ` + ផ្សេងៗ ${money(extras)}` : ''}{add ? ` + សេវា ${money(add)}` : ''}</small></div> : null;
           })()}
         </fieldset>
