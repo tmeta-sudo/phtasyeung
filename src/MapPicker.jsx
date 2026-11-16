@@ -11,6 +11,30 @@ export const LAYERS = {
   satellite: { label: 'ផ្កាយរណប', url: 'https://mt{s}.google.com/vt/lyrs=y&hl=km&x={x}&y={y}&z={z}', sub: '0123', attr: '© Google' },
 };
 
+/**
+ * Put a base map on `map`. Google is the default; if its tiles fail to load (blocked network,
+ * quota), the map switches itself to OpenStreetMap so it is never left blank.
+ */
+export function addBaseLayer(map, key = 'google', onFallback) {
+  const def = LAYERS[key] || LAYERS.google;
+  const layer = L.tileLayer(def.url, { subdomains: def.sub, maxZoom: 20, attribution: def.attr }).addTo(map);
+  if (key !== 'osm') {
+    let ok = 0; let bad = 0;
+    layer.on('tileload', () => { ok += 1; });
+    layer.on('tileerror', () => {
+      bad += 1;
+      if (bad === 4 && ok === 0) {
+        layer.remove();
+        if (onFallback) onFallback('osm'); // the caller re-adds the base layer and remembers the choice
+        else addBaseLayer(map, 'osm');
+      }
+    });
+  }
+  return layer;
+}
+export const savedLayer = () => { try { const v = localStorage.getItem('py-map-base'); return LAYERS[v] ? v : 'google'; } catch { return 'google'; } };
+export const saveLayer = (v) => { try { localStorage.setItem('py-map-base', v); } catch { /* ignore */ } };
+
 const PIN = L.divIcon({ className: 'map-pin', html: '<span></span>', iconSize: [34, 44], iconAnchor: [17, 42] });
 const PHNOM_PENH = [11.5564, 104.9282];
 
@@ -20,7 +44,7 @@ export default function MapPicker({ value, onPick, height = 340, readOnly = fals
   const map = useRef();
   const marker = useRef();
   const tiles = useRef();
-  const [layer, setLayer] = useState(() => { try { return localStorage.getItem('py-map-layer') || 'osm'; } catch { return 'osm'; } });
+  const [layer, setLayer] = useState(savedLayer);
   const [locating, setLocating] = useState(false);
   const has = Number.isFinite(value?.lat) && Number.isFinite(value?.lng);
 
@@ -33,10 +57,9 @@ export default function MapPicker({ value, onPick, height = 340, readOnly = fals
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const def = LAYERS[layer] || LAYERS.osm;
     tiles.current?.remove();
-    tiles.current = L.tileLayer(def.url, { subdomains: def.sub, maxZoom: 20, attribution: def.attr }).addTo(map.current);
-    try { localStorage.setItem('py-map-layer', layer); } catch { /* ignore */ }
+    tiles.current = addBaseLayer(map.current, layer, setLayer);
+    saveLayer(layer);
   }, [layer]);
 
   useEffect(() => {

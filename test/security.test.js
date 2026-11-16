@@ -118,6 +118,7 @@ test('security headers, cross-site writes and the platform console', async () =>
   assert.match(csp, /script-src 'self' 'wasm-unsafe-eval'/);
   assert.match(csp, /object-src 'none'/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('referrer-policy'), 'strict-origin-when-cross-origin', 'map tile servers need our origin; paths never leave');
   assert.equal(res.headers.get('x-frame-options'), 'SAMEORIGIN');
 
   const { c } = await landlord(env.url);
