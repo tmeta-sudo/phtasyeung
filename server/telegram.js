@@ -346,6 +346,10 @@ export async function handleUpdate(botKey, token, u) {
 
   if (text.startsWith('/start')) {
     const payload = text.split(/\s+/)[1] || '';
+    if (payload.startsWith('q-')) {
+      const [org] = await findOrgs('inquiry', payload.slice(2));
+      if (org) return withOrg(org, () => linkProspect(m, payload.slice(2)));
+    }
     if (payload.startsWith('admin-')) {
       const [org] = await findOrgs('admin-link', payload.slice(6));
       if (org) return withOrg(org, () => linkAdmin(botKey, m));
@@ -371,6 +375,7 @@ export async function handleUpdate(botKey, token, u) {
       const admin = isAdminChat(chatId);
       const tenant = tenantByChat(chatId);
       if (admin && m.reply_to_message && await handleOwnerReply(chatId, m)) return;
+      if (!admin && !tenant && await handleProspectMessage(chatId, m, text)) return;
       if (admin && await handleAdminText(chatId, text)) return;
       if (!tenant) {
         if (admin) await send(chatId, '📊 /summary · ⏳ /unpaid · 🧾 /generate', { reply_markup: ADMIN_MENU });
@@ -522,7 +527,7 @@ function ownerButtons(t) {
 }
 
 /** Forward a tenant's text/photo to every owner chat and remember the message ids for replies. */
-async function forwardToOwners(t, msg) {
+export async function forwardToOwners(t, msg) {
   const html = ticketHtml(t, msg);
   const [pt, ...pb] = htmlToText(html).split('\n');
   await pushToOrg(orgId(), { title: pt, body: pb.join('\n'), url: '/inbox', tag: 'ticket-' + t.id, roles: ['owner', 'manager', 'staff'] }).catch(() => {});
@@ -591,6 +596,18 @@ async function handleOwnerReply(chatId, m) {
 
 /** Send an owner's reply to the tenant (from Telegram or the web inbox). */
 export async function replyToTicket(t, text, via) {
+  if (t.kind === 'inquiry') {
+    if (t.status === 'done') return { ok: false, error: 'ការសន្ទនានេះបានបញ្ចប់ហើយ' };
+    if (t.prospect?.chatId) {
+      const sent = await send(t.prospect.chatId, `💬 <b>${esc(db().settings.propertyName)}</b>\n\n${esc(text)}`).catch(() => null);
+      if (sent) t.tenantMsgIds = [...(t.tenantMsgIds || []), sent.message_id].slice(-30);
+    }
+    t.messages.push({ from: 'owner', text: text.slice(0, 3000), at: now(), via });
+    t.unread = 0; t.updatedAt = now();
+    if (t.status === 'open') t.status = 'progress';
+    save();
+    return { ok: true };
+  }
   const tenant = db().tenants.find((x) => x.id === t.tenantId);
   if (!tenant?.telegram?.chatId) return { ok: false, error: 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram' };
   try {
@@ -614,7 +631,11 @@ export async function setTicketStatus(t, status) {
     const act = db().activities.find((a) => a.ticketId === t.id);
     if (act) act.done = true;
   }
+  if (t.kind === 'inquiry' && status === 'done') t.closedAt = now();
   save();
+  if (t.kind === 'inquiry' && status === 'done' && t.prospect?.chatId) {
+    await send(t.prospect.chatId, `✅ ការសន្ទនាជាមួយ <b>${esc(db().settings.propertyName)}</b> បានបញ្ចប់។ អរគុណ! 🙏`).catch(() => {});
+  }
   const tenant = db().tenants.find((x) => x.id === t.tenantId);
   if (tenant?.telegram?.chatId) await send(tenant.telegram.chatId, `${TICKET_KIND[t.kind]} #${kmDigits(t.no)}: ${TICKET_STATUS[status]}`).catch(() => {});
 }
@@ -925,3 +946,30 @@ export async function approveAndNotify(sub, by, fix) {
 
 /** Remove the "my room" button for a chat (tenant unlinked or left). */
 export const clearTenantMenuButton = (chatId) => (chatId ? call('setChatMenuButton', { chat_id: chatId, menu_button: { type: 'default' } }).catch(() => {}) : null);
+
+// ---------- people asking about a vacant room (from the public page) ----------
+
+/** The asker tapped "Chat on Telegram": connect this chat to their question. */
+async function linkProspect(m, token) {
+  const t = db().tickets.find((x) => x.kind === 'inquiry' && x.chatToken === token && x.status !== 'done');
+  if (!t) return send(m.chat.id, 'ការសន្ទនានេះបានបញ្ចប់ ឬផុតកំណត់ហើយ។');
+  t.prospect = { chatId: m.chat.id, name: [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ').slice(0, 60), username: m.from?.username || '' };
+  t.updatedAt = now();
+  save();
+  logEvent('tenant', `🏠 ${t.name} បានភ្ជាប់ Telegram សម្រាប់សំណួរ #${kmDigits(t.no)}`, { ticketId: t.id });
+  return send(m.chat.id, `👋 សួស្តី ${esc(t.name)}!\nអ្នកកំពុងជជែកជាមួយ <b>${esc(db().settings.propertyName)}</b>${t.roomId ? ` អំពីបន្ទប់ ${esc(t.roomId)}` : ''}។\n\nសរសេរសំណួររបស់អ្នកនៅទីនេះ — ម្ចាស់ផ្ទះនឹងឆ្លើយតាម Telegram នេះ។`);
+}
+
+async function handleProspectMessage(chatId, m, text) {
+  const t = db().tickets.find((x) => x.kind === 'inquiry' && x.prospect?.chatId === chatId && x.status !== 'done');
+  if (!t) return false;
+  const photo = m.photo?.length ? m.photo[m.photo.length - 1].file_id : '';
+  const body = (m.caption || text || '').trim();
+  if ((!body && !photo) || body.startsWith('/start')) return true;
+  const msg = { from: 'tenant', text: body.slice(0, 3000), photo, at: now(), via: 'telegram' };
+  t.messages.push(msg); t.unread = (t.unread || 0) + 1; t.updatedAt = now();
+  save();
+  await forwardToOwners(t, msg);
+  save();
+  return true;
+}

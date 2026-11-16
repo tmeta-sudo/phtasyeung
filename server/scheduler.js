@@ -100,6 +100,7 @@ async function dailyForOrg({ respectHour }) {
   applyLateFees();
   repeatMonthlyExpenses();
   await holidayGreeting().catch((e) => console.error('[greeting]', e.message));
+  cleanupInquiries();
   if (db().settings.auto.ownerNews !== false) {
     await contractAlerts().catch((e) => console.error('[contracts]', e.message));
     await monthlyDigest().catch((e) => console.error('[digest]', e.message));
@@ -225,4 +226,19 @@ export async function monthlyDigest(t = nowInCambodia()) {
   ].filter(Boolean).join('\n');
   await notifyAdmins(msg, {}, { url: '/reports', tag: 'digest' });
   return { billed, collected, owing: owing.length, costs, empty: empty.length };
+}
+
+/** Room inquiries hold strangers' names and phone numbers: delete finished ones after 7 days, idle ones after 30. */
+export function cleanupInquiries(nowMs = Date.now()) {
+  const s = db();
+  const day = 86400000;
+  const before = s.tickets.length;
+  s.tickets = s.tickets.filter((t) => {
+    if (t.kind !== 'inquiry') return true;
+    const last = new Date(t.closedAt || t.updatedAt || t.createdAt).getTime();
+    if (t.status === 'done') return nowMs - last < 7 * day;
+    return nowMs - last < 30 * day;
+  });
+  if (s.tickets.length !== before) { save(); logEvent('auto', `បានលុបសំណួរពីអ្នកចង់ជួលចាស់ៗ ${kmDigits(before - s.tickets.length)}`); }
+  return before - s.tickets.length;
 }

@@ -1430,3 +1430,6 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .row.fb-row.unread { box-shadow: inset 3px 0 0 var(--blue); }
 .dot-new { background: var(--blue) !important; color: #fff !important; }
 .ctx-wrap { margin: 8px 0; }
+
+.pin-needed { display: grid; gap: 8px; margin: 6px 0 10px; }
+.pin-needed .map-wrap { border-radius: 14px; overflow: hidden; }

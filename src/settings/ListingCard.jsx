@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
+const MapPicker = lazy(() => import('../MapPicker.jsx'));
 import { Store, Copy, Send, ExternalLink } from 'lucide-react';
 import { useApp, QR } from '../ui.jsx';
 
@@ -21,7 +22,16 @@ export default function ListingCard() {
           <label className="field"><span>សេចក្តីណែនាំ (មិនចាំបាច់)</span><textarea rows={2} value={f.intro} onChange={(e) => setF({ ...f, intro: e.target.value })} placeholder="ឧ. ជិតផ្សារ ជិតសាលា មានសន្តិសុខ ២៤ម៉ោង" /></label>
           <label className="switch-row small"><input type="checkbox" checked={f.showPhone} onChange={(e) => setF({ ...f, showPhone: e.target.checked })} /><span><b>បង្ហាញលេខទូរស័ព្ទ</b></span></label>
           <label className="switch-row small"><input type="checkbox" checked={f.onMap} onChange={(e) => setF({ ...f, onMap: e.target.checked })} /><span><b>បង្ហាញលើផែនទីបន្ទប់ជួលសាធារណៈ</b><small className="muted"> · <a href="/map" target="_blank" rel="noreferrer">មើលផែនទី</a></small></span></label>
-          {f.onMap && !Number.isFinite(state.settings.location?.lat) && <p className="muted small">📍 ដាក់ទីតាំងផ្ទះនៅ «ព័ត៌មានផ្ទះ» ជាមុនសិន ដើម្បីបង្ហាញលើផែនទី។</p>}
+          {f.onMap && !Number.isFinite(state.settings.location?.lat) && (
+            // Without a pin the house cannot appear on the public map: set it right here, in one tap.
+            <div className="pin-needed">
+              <p className="form-warn">📍 ផ្ទះរបស់អ្នកមិនទាន់មានទីតាំងលើផែនទីទេ — អ្នករកបន្ទប់មិនទាន់ឃើញនៅលើ <a href="/map" target="_blank" rel="noreferrer">ផែនទី</a>។ ចុចលើផែនទីខាងក្រោម (ឬ 📍 ទីតាំងរបស់ខ្ញុំ) ដើម្បីដាក់ម្ជុល។</p>
+              <Suspense fallback={<div className="spinner" />}>
+                <MapPicker value={{}} height={260} onPick={(p) => call('PUT', '/api/settings', { location: { ...(state.settings.location || {}), lat: p.lat, lng: p.lng } }, '📍 បានដាក់ទីតាំង — ផ្ទះរបស់អ្នកនឹងបង្ហាញលើផែនទីសាធារណៈ')} />
+              </Suspense>
+            </div>
+          )}
+          {f.onMap && Number.isFinite(state.settings.location?.lat) && L.enabled && <p className="muted small">✅ បង្ហាញលើ <a href="/map" target="_blank" rel="noreferrer">ផែនទីសាធារណៈ</a> (បន្ទប់ទំនេរ {vacant})។ ប្តូរទីតាំងនៅ «ទីតាំងផ្ទះ»។</p>}
         </>
       )}
       <button className="btn primary" onClick={() => call('PUT', '/api/settings', { listing: f }, 'បានរក្សាទុក')}>រក្សាទុក</button>

@@ -77,19 +77,26 @@ export default function Listing({ slug }) {
 }
 
 function Inquiry({ slug, room, sent, onSent, onClose }) {
+  const [chat, setChat] = useState(null); // { chat, telegram } returned after sending
   const [f, setF] = useState({ name: '', phone: '', moveIn: '', message: '', website: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   async function submit(e) {
     e.preventDefault(); setBusy(true); setErr('');
-    try { await api('POST', `/api/listing/${slug}/inquiry`, { ...f, roomId: room.id || '' }); onSent(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try { const r = await api('POST', `/api/listing/${slug}/inquiry`, { ...f, roomId: room.id || '' }); setChat(r.chat ? r : null); onSent(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   }
   return (
     <div className="ls-sheet-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form className="ls-sheet" onSubmit={submit}>
         <button type="button" className="ls-close" onClick={onClose} aria-label="បិទ"><X size={18} /></button>
         {sent ? (
-          <div className="ls-done"><Check size={40} /><b>បានផ្ញើរួចរាល់!</b><p>ម្ចាស់ផ្ទះនឹងទាក់ទងអ្នកឆាប់ៗ។</p><button type="button" className="ls-btn primary" onClick={onClose}>យល់ព្រម</button></div>
+          <div className="ls-done">
+            <Check size={40} /><b>បានផ្ញើរួចរាល់!</b>
+            <p>{chat ? 'ជ្រើសរបៀបទទួលចម្លើយពីម្ចាស់ផ្ទះ៖' : 'ម្ចាស់ផ្ទះនឹងទាក់ទងអ្នកឆាប់ៗ។'}</p>
+            {chat?.telegram && <a className="ls-btn primary tg" href={chat.telegram} target="_blank" rel="noreferrer">💬 ជជែកតាម Telegram</a>}
+            {chat && <a className={'ls-btn ' + (chat.telegram ? 'light' : 'primary')} href={`/q/${chat.chat}`}>🌐 ជជែកនៅទីនេះ (មិនបាច់ចុះឈ្មោះ)</a>}
+            <button type="button" className="ls-btn light" onClick={onClose}>{chat ? 'ពេលក្រោយ — រង់ចាំការហៅ' : 'យល់ព្រម'}</button>
+          </div>
         ) : (
           <>
             <h2>{room.id ? `បន្ទប់ ${room.id}` : 'ទុកលេខទូរស័ព្ទ'}</h2>

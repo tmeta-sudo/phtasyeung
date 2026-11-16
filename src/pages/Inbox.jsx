@@ -95,8 +95,8 @@ function Thread({ t, onBack }) {
         <div ref={end} />
       </div>
       <form className="thread-reply" onSubmit={send}>
-        <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={tenant?.telegram?.chatId ? 'សរសេរចម្លើយ… (ផ្ញើតាម Telegram)' : t.kind === 'inquiry' ? 'ហៅទូរស័ព្ទ ឬផ្ញើសារទៅលេខខាងលើ' : 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram'}
-          disabled={!tenant?.telegram?.chatId} onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(e); }} />
+        <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={tenant?.telegram?.chatId ? 'សរសេរចម្លើយ… (ផ្ញើតាម Telegram)' : t.kind === 'inquiry' ? (t.status === 'done' ? 'ការសន្ទនាបានបញ្ចប់' : t.prospect?.chatId ? 'សរសេរចម្លើយ… (ផ្ញើទៅ Telegram របស់គេ)' : 'សរសេរចម្លើយ… (គេឃើញនៅទំព័រជជែក) ឬហៅទូរស័ព្ទ') : 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram'}
+          disabled={t.kind === 'inquiry' ? t.status === 'done' : !tenant?.telegram?.chatId} onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(e); }} />
         <button className="btn primary" disabled={busy || !text.trim()} aria-label="ផ្ញើ"><Send size={16} /></button>
       </form>
     </section>
