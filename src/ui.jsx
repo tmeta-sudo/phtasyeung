@@ -21,7 +21,7 @@ export const useApp = () => useContext(AppCtx);
 /** Formatting helpers bound to the "Khmer numerals" preference. */
 export function useFmt() {
   const app = useApp();
-  const k = app?.state?.settings?.khmerNumerals ?? true;
+  const k = app?.state?.settings?.khmerNumerals === true;
   const c = app?.state?.settings?.currency === 'KHR' ? 'KHR' : 'USD';
   // cs = currency sign for labels ("ថ្លៃជួល ($/ខែ)"), c = 'USD' | 'KHR'
   return useMemo(() => ({ k, c, cs: curSymbol(c), n: (v) => num(v, k), $: (v) => fmtMoney(v, c, k) }), [k, c]);

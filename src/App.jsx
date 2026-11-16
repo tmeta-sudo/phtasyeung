@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { api, takeEarly } from './api.js';
 import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
-import { setClientCurrency } from '../shared/khmer.js';
+import { setClientCurrency, setNumeralsSource } from '../shared/khmer.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
 import { matchesQuery, greetingKm, num } from '../shared/khmer.js';
 import Home from './pages/Home.jsx';
@@ -333,6 +333,7 @@ function Admin({ onLogout }) {
 
   if (!state) return <div className="boot"><span className="spinner" /></div>;
   setClientCurrency(state.settings.currency);
+  setNumeralsSource(state.settings.khmerNumerals === true);
 
   const claimed = state.invoices.filter((i) => i.status === 'claimed').length;
   const missingId = state.tenants.filter((t) => t.status === 'active' && !t.files?.idFront).length;

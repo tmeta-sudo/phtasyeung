@@ -21,12 +21,18 @@ export const DAYS_KM = DAYS_OF_WEEK_KM;
 
 /** Convert ASCII digits in any string/number to Khmer digits (០-៩).
  *  Only digits are mapped — punctuation such as "." and "," is kept as-is. */
-export const kmDigits = (value) => String(value ?? '').replace(/[0-9]+/g, (d) => toKhmer(d));
+let khmerNumeralsOn = () => false;
+/** Where the "Khmer numerals" preference comes from (the server reads the landlord's settings, the app its state). */
+export const setNumeralsSource = (fn) => { khmerNumeralsOn = typeof fn === 'function' ? fn : () => !!fn; };
+/** Digits for display: Khmer (១២៣) when the landlord ticked "Khmer numerals", otherwise Latin (123). */
+export const kmDigits = (value) => (khmerNumeralsOn() ? String(value ?? '').replace(/[0-9]+/g, (d) => toKhmer(d)) : String(value ?? ''));
+/** Always Khmer digits (for the few places that must be Khmer whatever the setting). */
+export const khmerDigitsAlways = (value) => String(value ?? '').replace(/[0-9]+/g, (d) => toKhmer(d));
 /** Convert Khmer digits back to ASCII digits. */
 export const asciiDigits = (value) => toASCII(String(value ?? ''));
 
 /** Display a number/string, honouring the "Khmer numerals" preference. */
-export const num = (value, khmer = true) => (khmer ? kmDigits(value) : String(value ?? ''));
+export const num = (value, khmer = false) => (khmer ? khmerDigitsAlways(value) : String(value ?? ''));
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
