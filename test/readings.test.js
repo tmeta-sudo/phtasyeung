@@ -133,23 +133,23 @@ test('linking Telegram adds a "my room" button that opens the tenant page inside
 });
 
 test('owner corrects a tenant reading from Telegram (✏️), both numbers are kept', async () => {
-  const { c } = await setup(71003, 72003);
-  await say(71003, '📟 ផ្ញើលេខកុងទ័រ');
-  await say(71003, '112');
-  await say(71003, '2150');
-  await press(71003, lastTextTo(71003).reply_markup.inline_keyboard[0][0].callback_data);
-  const toOwner = env.tg.calls.filter((x) => String(x.payload.chat_id) === '72003').at(-1).payload;
+  const { c } = await setup(71005, 72005);
+  await say(71005, '📟 ផ្ញើលេខកុងទ័រ');
+  await say(71005, '112');
+  await say(71005, '2150');
+  await press(71005, lastTextTo(71005).reply_markup.inline_keyboard[0][0].callback_data);
+  const toOwner = env.tg.calls.filter((x) => String(x.payload.chat_id) === '72005').at(-1).payload;
   const editBtn = toOwner.reply_markup.inline_keyboard[0].find((b) => /កែ/.test(b.text)).callback_data;
-  await press(72003, editBtn);
-  const promptIdx = env.tg.calls.findLastIndex((x) => x.method === 'sendMessage' && String(x.payload.chat_id) === '72003');
+  await press(72005, editBtn);
+  const promptIdx = env.tg.calls.findLastIndex((x) => x.method === 'sendMessage' && String(x.payload.chat_id) === '72005');
   assert.match(env.tg.calls[promptIdx].payload.text, /កែលេខកុងទ័រ/);
   const promptId = promptIdx + 1; // the fake Telegram numbers messages by call count
-  await say(72003, '113 2160', { reply_to_message: { message_id: promptId } });
+  await say(72005, '113 2160', { reply_to_message: { message_id: promptId } });
   const st = await c.get('/api/state');
   const m = st.meters.find((x) => x.roomId === 'A1');
   assert.deepEqual([m.water, m.electric], [113, 2160]);
   assert.deepEqual(m.corrected.from, { water: 112, electric: 2150 });
-  assert.match(lastTextTo(71003).text, /កែលេខ/);
+  assert.match(lastTextTo(71005).text, /កែលេខ/);
 });
 
 test('fix a saved reading and the previous number; photo reading vs saved value is kept', async () => {
