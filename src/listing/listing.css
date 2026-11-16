@@ -106,3 +106,20 @@
 .mpg-layers { position: fixed; z-index: 600; right: 12px; top: 128px; display: flex; flex-direction: column; gap: 4px; background: var(--ls-card); padding: 4px; border-radius: 14px; box-shadow: 0 4px 14px rgba(13,20,36,.2); }
 .mpg-layers button { border: 0; background: none; color: var(--ls-ink); font: inherit; font-size: 12.5px; padding: 6px 9px; border-radius: 10px; cursor: pointer; }
 .mpg-layers button.on { background: var(--ls-ink); color: var(--ls-card); }
+
+/* ---------- privacy / terms ---------- */
+.legal { --ls-bg: #f3f5f9; --ls-card: #fff; --ls-ink: #0d1424; --ls-muted: #6b7385; --ls-blue: #1f5bff; --ls-line: #e5e8ef;
+  min-height: 100vh; background: var(--ls-bg); color: var(--ls-ink); font-family: 'Kantumruy Pro', 'Inter Tight', system-ui, sans-serif; }
+@media (prefers-color-scheme: dark) { .legal { --ls-bg: #0c1018; --ls-card: #161c27; --ls-ink: #e9edf4; --ls-muted: #9aa3b5; --ls-line: #263040; } }
+.legal-top { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--ls-card); border-bottom: 1px solid var(--ls-line); }
+.legal-brand { display: flex; gap: 10px; align-items: center; color: inherit; text-decoration: none; font-size: 18px; }
+.legal-brand img { border-radius: 10px; }
+.legal-top nav { display: flex; gap: 6px; }
+.legal-top nav a { color: var(--ls-ink); text-decoration: none; padding: 7px 12px; border-radius: 999px; font-size: 14px; }
+.legal-top nav a.on { background: var(--ls-ink); color: var(--ls-card); }
+.legal-body { max-width: 760px; margin: 0 auto; padding: 20px 16px 40px; line-height: 1.8; }
+.legal-body h1 { font-size: 26px; margin: 10px 0 4px; } .legal-body h2 { font-size: 18px; margin: 22px 0 6px; }
+.legal-body a { color: var(--ls-blue); } .legal-body code { background: var(--ls-card); padding: 1px 6px; border-radius: 6px; }
+.legal-body ul { padding-left: 20px; } .legal-body hr { border: 0; border-top: 1px solid var(--ls-line); margin: 32px 0; }
+.legal-date { color: var(--ls-muted); font-size: 13px; margin-top: 0; }
+.legal-foot { text-align: center; color: var(--ls-muted); font-size: 13px; padding: 20px 16px 40px; } .legal-foot a { color: inherit; }

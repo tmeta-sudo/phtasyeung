@@ -228,7 +228,7 @@ function Login({ onDone, bot }) {
             <button className={'btn block ' + (bot ? 'ghost' : 'primary')} disabled={busy}>{busy ? '…' : { login: 'ចូលដោយអ៊ីមែល', signup: 'បង្កើតដោយអ៊ីមែល', forgot: 'ផ្ញើលេខកូដទៅ Telegram ម្ចាស់ផ្ទះ', reset: 'ប្តូរពាក្យសម្ងាត់' }[m]}</button>
             {m === 'login' && <button type="button" className="link-btn center" onClick={() => go('forgot')}>ភ្លេចពាក្យសម្ងាត់ ឬចូលមិនបាន?</button>}
             {(m === 'forgot' || m === 'reset') && <button type="button" className="link-btn center" onClick={() => go('login')}>← ត្រឡប់ទៅចូលគណនី</button>}
-            {m === 'signup' && <small className="muted center">ដោយបង្កើតគណនី អ្នកយល់ព្រមរក្សាព័ត៌មានអតិថិជនដោយទំនួលខុសត្រូវ។ អ្នកអាចនាំចេញ ឬលុបទិន្នន័យទាំងអស់បានគ្រប់ពេល។</small>}
+            {m === 'signup' && <small className="muted center">ដោយបង្កើតគណនី អ្នកយល់ព្រមនឹង <a href="/terms" target="_blank" rel="noreferrer">លក្ខខណ្ឌ</a> និង <a href="/privacy" target="_blank" rel="noreferrer">គោលការណ៍ឯកជនភាព</a>។ អ្នកអាចនាំចេញ ឬលុបទិន្នន័យទាំងអស់បានគ្រប់ពេល។</small>}
           </form>
         )}
       </div>
