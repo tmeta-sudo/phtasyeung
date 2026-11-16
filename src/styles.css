@@ -1359,3 +1359,42 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .addon-sum small { display: block; font-weight: 500; color: var(--muted); font-size: 11.5px; }
 @media (max-width: 380px) { .ac-fields { grid-template-columns: 1fr; } }
 .cur-toggle button { font-size: 17px; min-width: 40px; line-height: 1; font-family: "Inter Tight", "Kantumruy Pro", sans-serif; }
+
+/* form fields inside the add-on cards look like every other field (light and dark) */
+.addon-card { background: transparent; }
+.addon-card input, .addon-card select {
+  height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 0 12px; font: inherit; outline: none; width: 100%; transition: border-color .15s, box-shadow .15s;
+}
+.addon-card input:focus, .addon-card select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.addon-card .ac-icon { padding: 0 4px; font-size: 22px; text-align: center; }
+.addon-card .stepper { height: 44px; }
+.cur-toggle { height: 44px; background: var(--surface); }
+.cur-toggle button { color: var(--ink); }
+.cur-toggle .riel { font-family: 'Kantumruy Pro', sans-serif; font-size: 1.45em; line-height: .8; display: inline-block; transform: translateY(1px); }
+
+/* contract editor with a live A4 page */
+.ce-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.ce-tabs { display: none; }
+.ce-edit { display: grid; gap: 10px; min-width: 0; }
+.ce-edit .contract-text { min-height: 420px; font-size: 14px; line-height: 1.8; }
+.ce-preview { position: sticky; top: 80px; display: grid; gap: 8px; min-width: 0; }
+.ce-preview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.a4-wrap { position: relative; width: 100%; overflow: hidden; border-radius: 6px; background: #5b6474; padding: 4px; box-sizing: border-box; }
+.a4-page { position: absolute; top: 4px; left: 50%; margin-left: calc(-397px); transform-origin: top center; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.a4-page .contract-doc { padding: 76px 72px; min-height: 0; }
+.a4-break { position: absolute; left: 0; right: 0; border-top: 2px dashed #c0c6d2; }
+.a4-break span { position: absolute; right: 10px; top: 4px; font-size: 13px; color: #8a93a3; background: #fff; padding: 0 6px; }
+.ph-list button b { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.ph-list button small { font-family: 'Inter Tight', monospace; font-size: 11px; color: var(--blue); }
+@media (max-width: 900px) {
+  .ce-split { grid-template-columns: minmax(0, 1fr); }
+  .ce-tabs { display: inline-flex; width: fit-content; }
+  .ce-split.show-edit .ce-preview, .ce-split.show-preview .ce-edit { display: none; }
+  .ce-preview { position: static; }
+}
+
+@media (max-width: 900px) {
+  .contract-editor .ce-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .contract-editor .ce-tabs button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; }
+}

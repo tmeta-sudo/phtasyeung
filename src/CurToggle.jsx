@@ -5,7 +5,7 @@ export default function CurToggle({ value, billing, onChange, label = 'រូប
   const v = value === 'USD' || value === 'KHR' ? value : (billing === 'KHR' ? 'KHR' : 'USD');
   return (
     <span className="cur-toggle" role="group" aria-label={label}>
-      {[['KHR', '៛'], ['USD', '$']].map(([code, sign]) => (
+      {[['KHR', <span className="riel">៛</span>], ['USD', '$']].map(([code, sign]) => (
         <button type="button" key={code} className={v === code ? 'on' : ''} aria-pressed={v === code}
           onClick={() => onChange(code === billing ? '' : code)}>{sign}</button>
       ))}

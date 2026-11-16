@@ -4,13 +4,13 @@ import TelegramLogin from '../TelegramLogin.jsx';
 import { ThemePicker } from '../theme.jsx';
 import KhqrCard from '../settings/KhqrCard.jsx';
 import LocationCard from '../settings/LocationCard.jsx';
-import { PLACEHOLDERS } from '../contract.js';
 import StorageCard from '../settings/StorageCard.jsx';
 import BackupCard from '../settings/BackupCard.jsx';
 import NotifyCard from '../settings/NotifyCard.jsx';
 import { CoverButton } from '../settings/CoverButton.jsx';
 import SecurityCard from '../settings/SecurityCard.jsx';
 import CurToggle from '../CurToggle.jsx';
+import ContractEditor from '../settings/ContractEditor.jsx';
 import UtilityCard from '../settings/UtilityCard.jsx';
 import AddonsCard from '../settings/AddonsCard.jsx';
 import ListingCard from '../settings/ListingCard.jsx';
@@ -118,17 +118,7 @@ export default function SettingsPage() {
 
         <KhqrCard />
 
-        <form className="card wide-card" onSubmit={(e) => save(e, { ownerName: f.ownerName, contract: f.contract })}>
-          <h3 className="sec-title"><FileText size={17} /> គំរូកិច្ចសន្យា</h3>
-          <div className="form-grid three">
-            <Field label="ឈ្មោះម្ចាស់ផ្ទះ (ក្នុងកិច្ចសន្យា)"><input value={f.ownerName || ''} onChange={(e) => set('ownerName', e.target.value)} /></Field>
-            <Field label="ប្រាក់កក់ (ខែ)"><input type="number" min="0" max="12" value={f.contract?.depositMonths ?? 1} onChange={(e) => set('contract', { ...f.contract, depositMonths: e.target.value })} /></Field>
-            <Field label="បង់មុន (ខែ)"><input type="number" min="0" max="12" value={f.contract?.prepaidMonths ?? 1} onChange={(e) => set('contract', { ...f.contract, prepaidMonths: e.target.value })} /></Field>
-          </div>
-          <Field label="អត្ថបទគំរូ"><textarea rows={10} className="contract-text" value={f.contract?.template || ''} onChange={(e) => set('contract', { ...f.contract, template: e.target.value })} /></Field>
-          <div className="ph-list">{PLACEHOLDERS.map(([k, l]) => <button type="button" key={k} onClick={() => set('contract', { ...f.contract, template: (f.contract?.template || '') + `{{${k}}}` })} title="បញ្ចូល">{`{{${k}}}`}<small>{l}</small></button>)}</div>
-          <button className="btn primary">រក្សាទុក</button>
-        </form>
+        <ContractEditor f={f} set={set} save={save} />
 
         <form className="card" onSubmit={(e) => save(e, { publicUrl: f.publicUrl, khmerNumerals: f.khmerNumerals })}>
           <h3 className="sec-title"><Languages size={17} /> ភាសា និងអាសយដ្ឋានគេហទំព័រ</h3>
