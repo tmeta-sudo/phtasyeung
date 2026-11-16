@@ -7,6 +7,7 @@ import { q, uid, rateLimit } from './store.js';
 import { requireOwner } from './auth.js';
 import { api as tgApi, appUrl, platformBotDiagnostics, ensurePlatformWebhook } from './telegram.js';
 import { nowInCambodia } from '../shared/khmer.js';
+import { pushToOrg } from './push.js';
 
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const superEmails = () => String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
@@ -55,6 +56,71 @@ async function notifyOrgOwners(orgId, html) {
   return n;
 }
 
+// ---------- live alerts between landlords and the platform team ----------
+
+const KIND_KM = { feature: '💡 សំណើមុខងារ', issue: '🐞 របាយការណ៍បញ្ហា' };
+
+/** Super admins: their accounts (for web push) and Telegram chats (env ids + linked Telegram). */
+async function superTargets() {
+  const { rows } = await q('SELECT id, org_id, email, telegram_id FROM users');
+  const users = rows.filter((u) => isSuper(u.email, u.telegram_id));
+  const chats = new Set([...superTelegramIds(), ...users.map((u) => u.telegram_id).filter(Boolean).map(String)]);
+  return { orgs: [...new Set(users.map((u) => u.org_id))], chats: [...chats] };
+}
+
+/** Tell every super admin (Telegram + phone/web push). Returns the Telegram messages, so a reply can be matched. */
+async function notifySupers(html, { url = '/super', tag } = {}) {
+  const { orgs, chats } = await superTargets();
+  const sent = [];
+  if (PLATFORM_TOKEN) {
+    for (const chat of chats) {
+      const r = await tgApi(PLATFORM_TOKEN, 'sendMessage', { chat_id: chat, text: html, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { force_reply: true, input_field_placeholder: 'ឆ្លើយទៅម្ចាស់ផ្ទះ…' } }).catch(() => null);
+      if (r?.message_id) sent.push([String(chat), r.message_id]);
+    }
+  }
+  const text = html.replace(/<[^>]+>/g, '');
+  const [title, ...rest] = text.split('\n');
+  for (const org of orgs) await pushToOrg(org, { title, body: rest.join('\n').slice(0, 180), url, tag, roles: ['owner'] }).catch(() => {});
+  return sent;
+}
+
+async function alertSupersAbout(f, line) {
+  const { rows } = await q("SELECT doc->'settings'->>'propertyName' AS name FROM orgs WHERE id = $1", [f.org_id]);
+  const html = `${KIND_KM[f.kind] || '💬'} <b>${esc(f.title)}</b>\n🏠 ${esc(rows[0]?.name || '—')} · ${esc(f.user_email || '')}\n\n${esc(String(line || '').slice(0, 1500))}\n\n↩️ ឆ្លើយតប (reply) សារនេះ ដើម្បីឆ្លើយទៅម្ចាស់ផ្ទះ`;
+  const sent = await notifySupers(html, { url: '/super?tab=feedback', tag: 'fb-' + f.id });
+  if (sent.length) await q("UPDATE feedback SET tg_msgs = (tg_msgs || $2::jsonb) WHERE id = $1", [f.id, JSON.stringify(sent)]);
+}
+
+/** The platform team answered: save it in the thread and tell the landlord on Telegram and their phone. */
+export async function teamReply(id, text, { by = 'team', status } = {}) {
+  const msg = { from: 'team', text: str(text, 3000), at: new Date().toISOString(), by };
+  if (!msg.text) fail('សូមសរសេរចម្លើយ');
+  const st = STATUSES.includes(status) ? status : null;
+  const { rows } = await q(`UPDATE feedback SET messages = messages || $2::jsonb, reply = $3, status = COALESCE($4, status), owner_unread = owner_unread + 1, team_unread = 0, updated_at = now()
+    WHERE id = $1 RETURNING org_id, kind, title, status`, [id, JSON.stringify([msg]), msg.text, st]);
+  const f = rows[0] || fail('រកមិនឃើញ', 404);
+  if (f.org_id) {
+    const html = `${KIND_KM[f.kind]}: <b>${esc(f.title)}</b>\nស្ថានភាព: <b>${STATUS_KM[f.status]}</b>\n\n💬 ${esc(msg.text)}\n\n— ក្រុមការងារផ្ទះយើង`;
+    await notifyOrgOwners(f.org_id, html);
+    await pushToOrg(f.org_id, { title: `💬 ក្រុមការងារផ្ទះយើង: ${f.title}`, body: msg.text.slice(0, 180), url: '/feedback?tab=mine', tag: 'fb-' + id, roles: ['owner'] }).catch(() => {});
+  }
+  return f;
+}
+
+/** A super admin replied (swipe-reply) to an alert on the platform bot. Returns true when handled. */
+export async function handleSuperTelegramReply(chatId, m) {
+  const rid = m.reply_to_message?.message_id;
+  const text = String(m.text || m.caption || '').trim();
+  if (!rid || !text) return false;
+  const { chats } = await superTargets();
+  if (!chats.includes(String(chatId))) return false;
+  const { rows } = await q('SELECT id, title FROM feedback WHERE tg_msgs @> $1::jsonb LIMIT 1', [JSON.stringify([[String(chatId), rid]])]);
+  if (!rows[0]) return false;
+  await teamReply(rows[0].id, text, { by: 'telegram' });
+  await tgApi(PLATFORM_TOKEN, 'sendMessage', { chat_id: chatId, text: `✅ បានផ្ញើចម្លើយទៅម្ចាស់ផ្ទះ («${esc(rows[0].title)}»)`, parse_mode: 'HTML' }).catch(() => {});
+  return true;
+}
+
 export function superRoutes(app) {
   // ---------- landlord side: what's new ----------
 
@@ -77,7 +143,7 @@ export function superRoutes(app) {
       `SELECT f.id, f.title, f.body, f.status, f.reply, f.votes, f.created_at, f.org_id = $1 AS mine,
               EXISTS (SELECT 1 FROM feedback_votes v WHERE v.feedback_id = f.id AND v.org_id = $1) AS voted
          FROM feedback f WHERE f.kind = 'feature' AND f.status <> 'declined' ORDER BY f.votes DESC, f.created_at DESC LIMIT 200`, [org]);
-    const mine = await q(`SELECT id, kind, title, body, status, reply, votes, created_at, updated_at FROM feedback WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`, [org]);
+    const mine = await q(`SELECT id, kind, title, body, status, reply, votes, messages, owner_unread, created_at, updated_at FROM feedback WHERE org_id = $1 ORDER BY updated_at DESC LIMIT 100`, [org]);
     res.json({ board: board.rows, mine: mine.rows });
   });
 
@@ -94,7 +160,25 @@ export function superRoutes(app) {
     await q('INSERT INTO feedback (id, org_id, user_email, kind, title, body, context, votes) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)',
       [id, req.session.orgId, req.session.email, kind, title, str(b.body, 4000), JSON.stringify(context), kind === 'feature' ? 1 : 0]);
     if (kind === 'feature') await q('INSERT INTO feedback_votes (feedback_id, org_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, req.session.orgId]);
+    await q('UPDATE feedback SET team_unread = 1 WHERE id = $1', [id]);
+    await alertSupersAbout({ id, org_id: req.session.orgId, kind, title, user_email: req.session.email }, str(b.body, 4000) || '(គ្មានព័ត៌មានបន្ថែម)').catch((e) => console.error('[feedback alert]', e.message));
     res.json({ ok: true, id });
+  });
+
+  // The landlord adds to their own request (answer a question, add details).
+  app.post('/api/feedback/:id/messages', requireOwner, async (req, res) => {
+    if (!(await rateLimit(`feedback-msg:${req.session.orgId}`, 30, 3600))) fail('ផ្ញើច្រើនពេក', 429);
+    const text = str(req.body?.text, 3000) || fail('សូមសរសេរសារ');
+    const msg = { from: 'owner', text, at: new Date().toISOString() };
+    const { rows } = await q(`UPDATE feedback SET messages = messages || $3::jsonb, team_unread = team_unread + 1, owner_unread = 0, updated_at = now()
+      WHERE id = $1 AND org_id = $2 RETURNING id, org_id, kind, title, user_email`, [req.params.id, req.session.orgId, JSON.stringify([msg])]);
+    const f = rows[0] || fail('រកមិនឃើញ', 404);
+    await alertSupersAbout(f, text).catch(() => {});
+    res.json({ ok: true });
+  });
+  app.post('/api/feedback/:id/read', requireOwner, async (req, res) => {
+    await q('UPDATE feedback SET owner_unread = 0 WHERE id = $1 AND org_id = $2', [req.params.id, req.session.orgId]);
+    res.json({ ok: true });
   });
 
   app.post('/api/feedback/:id/vote', requireOwner, async (req, res) => {
@@ -259,6 +343,16 @@ export function superRoutes(app) {
         ORDER BY CASE f.status WHEN 'new' THEN 0 WHEN 'progress' THEN 1 WHEN 'planned' THEN 2 ELSE 3 END, f.votes DESC, f.created_at DESC LIMIT 300`,
       [kind, status]);
     res.json({ items: rows });
+  });
+
+  app.post('/api/super/feedback/:id/reply', requireSuper, async (req, res) => {
+    await teamReply(req.params.id, req.body?.text, { by: req.session.email, status: req.body?.status });
+    await audit(req, 'feedback.reply', req.params.id, str(req.body?.status, 20));
+    res.json({ ok: true });
+  });
+  app.post('/api/super/feedback/:id/read', requireSuper, async (req, res) => {
+    await q('UPDATE feedback SET team_unread = 0 WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
   });
 
   app.put('/api/super/feedback/:id', requireSuper, async (req, res) => {

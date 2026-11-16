@@ -17,10 +17,7 @@ import { securityRoutes, authRoutes, requireOwner, verifyPassword, cookies } fro
 import { upload, storeFile, storeImage, sendStored, removeFile, SLOTS } from './files.js';
 import { generateInvoices, khqrOf, recalc, isOverdue, tenantOfRoom, tenantsOfRoom, invoiceIsFor, payersOf, addPayment, balanceOf, paidSoFar, reopenCarried, moveOut } from './invoices.js';
 import { isBakongId, parseKhqrUpload } from './khqr.js';
-import {
-  botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, setTenantMenuButton, clearTenantMenuButton, configureOwnBot,
-  webhookRoute, registerAllWebhooks, sendResetCode, sendSecurityAlert, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile,
-} from './telegram.js';
+import { botStatus, botUsername, sendInvoice, sendInvoices, claimPayment, confirmPayment, notifyAdmins, notifyTenant, notifyReadingToOwners, approveAndNotify, setTenantMenuButton, clearTenantMenuButton, configureOwnBot, webhookRoute, registerAllWebhooks, sendResetCode, sendSecurityAlert, appUrl, ensurePlatformWebhook, replyToTicket, setTicketStatus, fetchTelegramFile, forwardToOwners } from './telegram.js';
 import { runAutoInvoices, runReminders, runDailyAll, backupToDrive } from './scheduler.js';
 import { superRoutes, isSuper } from './super.js';
 import { exportData, sendBackupToTelegram, restoreData, cleanupOrphanFiles } from './backup.js';
@@ -884,20 +881,74 @@ app.post('/api/listing/:slug/inquiry', async (req, res) => {
   const name = str(b.name, 60); const phone = normalizePhone(b.phone) || str(b.phone, 30);
   if (!name || !/\d{8,}/.test(String(phone).replace(/\D/g, ''))) fail('សូមបញ្ចូលឈ្មោះ និងលេខទូរស័ព្ទ');
   const org = await listingOrg(req.params.slug);
+  let out = { ok: true };
   await withOrg(org, async () => {
     const s = db();
     if (!s.settings.listing?.enabled) fail('រកមិនឃើញទំព័រនេះ', 404);
     const roomId = vacantRooms().some((r) => r.id === b.roomId) ? b.roomId : '';
     s.counters.ticket = (s.counters.ticket || 0) + 1;
     const text = [`📞 ${phone}`, b.moveIn ? `📅 ចង់ចូលនៅ ${str(b.moveIn, 20)}` : '', str(b.message, 1000)].filter(Boolean).join('\n');
-    const t = { id: uid(), no: s.counters.ticket, kind: 'inquiry', tenantId: null, phone, roomId, name, status: 'open', createdAt: now(), updatedAt: now(), unread: 1, messages: [{ from: 'tenant', text, at: now(), via: 'listing' }], adminMsgIds: [], tenantMsgIds: [] };
+    const t = { id: uid(), no: s.counters.ticket, kind: 'inquiry', tenantId: null, phone, roomId, name, status: 'open', createdAt: now(), updatedAt: now(), unread: 1, messages: [{ from: 'tenant', text, at: now(), via: 'listing' }], adminMsgIds: [], tenantMsgIds: [], chatToken: uid(15) };
     s.tickets.push(t);
     if (s.tickets.length > 500) s.tickets.splice(0, s.tickets.length - 500);
     save();
     logEvent('tenant', `🏠 សំណួរពីអ្នកចង់ជួល ${name}${roomId ? ` (បន្ទប់ ${roomId})` : ''}`, { ticketId: t.id });
-    await notifyAdmins(`🏠 <b>អ្នកចង់ជួលបន្ទប់</b>${roomId ? ` · ${esc(roomId)}` : ''}\n👤 ${esc(name)}\n${esc(text)}`, {}, { url: `/inbox?t=${t.id}`, tag: 'inquiry-' + t.id }).catch(() => {});
+    // Sent like any message, so the owner can swipe-reply on Telegram as well as answer in the Inbox.
+    await forwardToOwners(t, t.messages[0]).catch(() => {});
+    save();
+    const bot = (await botStatus().catch(() => ({}))).username;
+    out = { ok: true, chat: t.chatToken, telegram: bot ? `https://t.me/${bot}?start=q-${t.chatToken}` : '' };
   });
-  res.json({ ok: true });
+  res.json(out);
+});
+
+// ---------- temporary chat page for people asking about a room (/q/<token>) ----------
+const inquiryOf = (token) => db().tickets.find((x) => x.kind === 'inquiry' && x.chatToken === token);
+async function inquiryOrg(token) {
+  const [org] = /^[\w-]{16,40}$/.test(String(token || '')) ? await findOrgs('inquiry', token) : [];
+  if (!org) fail('ការសន្ទនានេះបានបញ្ចប់ ឬផុតកំណត់ហើយ', 404);
+  return org;
+}
+const inquiryView = (t) => {
+  const st = db().settings;
+  return {
+    property: st.propertyName, roomId: t.roomId, name: t.name, status: t.status,
+    telegram: !!t.prospect?.chatId,
+    // The phone number stays in the owner's Inbox: anyone holding this link should not see it.
+    messages: t.messages.map((m) => ({ from: m.from === 'owner' ? 'owner' : 'me', text: String(m.text || '').split('\n').filter((l) => !l.startsWith('📞')).join('\n').trim(), at: m.at })).filter((m) => m.text),
+  };
+};
+app.get('/api/q/:token', async (req, res) => {
+  if (!(await rateLimit(`q:${req.ip}`, 240, 600))) fail('ព្យាយាមច្រើនដងពេក', 429);
+  const org = await inquiryOrg(req.params.token);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(await withOrg(org, async () => {
+    const t = inquiryOf(req.params.token) || fail('រកមិនឃើញ', 404);
+    const bot = (await botStatus().catch(() => ({}))).username;
+    return { ...inquiryView(t), telegramLink: bot && t.status !== 'done' ? `https://t.me/${bot}?start=q-${t.chatToken}` : '' };
+  }));
+});
+app.post('/api/q/:token', async (req, res) => {
+  if (!(await rateLimit(`q-send:${req.ip}`, 30, 600))) fail('ផ្ញើច្រើនដងពេក', 429);
+  const org = await inquiryOrg(req.params.token);
+  res.json(await withOrg(org, async () => {
+    const t = inquiryOf(req.params.token) || fail('រកមិនឃើញ', 404);
+    if (t.status === 'done') fail('ការសន្ទនានេះបានបញ្ចប់ហើយ');
+    if (req.body?.done) { // "I have what I need" → close the conversation
+      await setTicketStatus(t, 'done');
+      t.messages.push({ from: 'tenant', text: '✓ (អ្នកសួរបានបញ្ចប់ការសន្ទនា)', at: now(), via: 'web' });
+      save();
+      return inquiryView(t);
+    }
+    const text = str(req.body?.text, 2000) || fail('សូមសរសេរសារ');
+    const msg = { from: 'tenant', text, at: now(), via: 'web' };
+    t.messages.push(msg); t.unread = (t.unread || 0) + 1; t.updatedAt = now();
+    if (t.messages.length > 200) t.messages.splice(1, t.messages.length - 200);
+    save();
+    await forwardToOwners(t, msg).catch(() => {});
+    save();
+    return inquiryView(t);
+  }));
 });
 
 app.post('/api/rooms/bulk', ...owner((req) => {

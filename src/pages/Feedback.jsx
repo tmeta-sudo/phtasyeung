@@ -98,7 +98,7 @@ export default function Feedback() {
       <div className="chips-row">
         <button className={'tab-chip ' + (tab === 'board' ? 'active' : '')} onClick={() => setTab('board')}><Lightbulb size={14} /> សំណើមុខងារ</button>
         <button className={'tab-chip ' + (tab === 'new' ? 'active' : '')} onClick={() => setTab('new')}><Send size={14} /> ផ្ញើថ្មី</button>
-        <button className={'tab-chip ' + (tab === 'mine' ? 'active' : '')} onClick={() => setTab('mine')}><Bug size={14} /> របស់ខ្ញុំ {data?.mine.length ? <em>{n(data.mine.length)}</em> : null}</button>
+        <button className={'tab-chip ' + (tab === 'mine' ? 'active' : '')} onClick={() => setTab('mine')}><MessageSquareReply size={14} /> របស់ខ្ញុំ {data?.mine.some((f) => f.owner_unread) ? <em className="dot-new">{n(data.mine.reduce((a, f) => a + (f.owner_unread || 0), 0))}</em> : data?.mine.length ? <em>{n(data.mine.length)}</em> : null}</button>
       </div>
 
       {tab === 'board' && (
@@ -138,20 +138,68 @@ export default function Feedback() {
       )}
 
       {tab === 'mine' && (
-        <section className="card">
-          <div className="rows">
-            {data?.mine.map((f) => (
-              <div key={f.id} className="row static fb-row">
-                <span className={'fb-kind ' + f.kind}>{f.kind === 'issue' ? <Bug size={16} /> : <Lightbulb size={16} />}</span>
-                <span><b>{f.title}</b><small className="muted">{fmtDate(f.created_at)}{f.kind === 'feature' ? ` · ${n(f.votes)} សំឡេង` : ''}</small>
-                  {f.reply && <small className="fb-reply"><MessageSquareReply size={13} /> {f.reply}</small>}</span>
-                <StatusTag status={f.status} />
-              </div>
-            ))}
-          </div>
-          {data && !data.mine.length && <Empty icon={Send} title="អ្នកមិនទាន់បានផ្ញើអ្វីទេ" />}
-        </section>
+        <div className="fb-list">
+          {data?.mine.map((f) => <Thread key={f.id} f={f} side="owner" onSent={load} />)}
+          {data && !data.mine.length && <section className="card"><Empty icon={Send} title="អ្នកមិនទាន់បានផ្ញើអ្វីទេ"><button className="btn primary sm" onClick={() => setTab('new')}>ផ្ញើមតិដំបូង</button></Empty></section>}
+        </div>
       )}
     </>
+  );
+}
+
+/**
+ * One request as a conversation: the landlord's message, the team's replies, and a box to answer.
+ * side = 'owner' (landlord page) or 'team' (super admin console).
+ */
+export function Thread({ f, side, onSent, actions }) {
+  const { notify } = useApp();
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const msgs = [
+    { from: 'owner', text: f.body || '', at: f.created_at },
+    ...(Array.isArray(f.messages) ? f.messages : []),
+  ].filter((m) => m.text);
+  // Requests answered before threads existed: show the old single reply as a team message.
+  if (f.reply && !msgs.some((m) => m.from === 'team')) msgs.push({ from: 'team', text: f.reply, at: f.updated_at });
+  const unread = side === 'owner' ? f.owner_unread : f.team_unread;
+  useEffect(() => {
+    if (unread) api('POST', side === 'owner' ? `/api/feedback/${f.id}/read` : `/api/super/feedback/${f.id}/read`).catch(() => {});
+  }, [unread, f.id, side]);
+  async function send(e) {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      await api('POST', side === 'owner' ? `/api/feedback/${f.id}/messages` : `/api/super/feedback/${f.id}/reply`, { text });
+      setText('');
+      notify(side === 'owner' ? 'បានផ្ញើ — ក្រុមការងារនឹងឆ្លើយឆាប់ៗ' : 'បានផ្ញើទៅម្ចាស់ផ្ទះ (Telegram + ទូរស័ព្ទ)');
+      onSent?.();
+    } catch (err) { notify(err.message, true); } finally { setBusy(false); }
+  }
+  const closed = ['done', 'declined'].includes(f.status);
+  return (
+    <section className={'card fb-thread' + (unread ? ' unread' : '')}>
+      <header className="fb-head">
+        <span className={'fb-kind ' + f.kind}>{f.kind === 'issue' ? <Bug size={16} /> : <Lightbulb size={16} />}</span>
+        <span className="fb-title"><b>{f.title}</b><small className="muted">{f.kind === 'issue' ? 'បញ្ហា' : 'សំណើមុខងារ'} · {fmtDate(f.created_at)}{f.kind === 'feature' ? ` · ▲ ${f.votes}` : ''}{f.org_name ? ` · ${f.org_name}` : ''}</small></span>
+        <StatusTag status={f.status} />
+      </header>
+      <div className="fb-msgs">
+        {msgs.map((m, i) => (
+          <div key={i} className={'fb-msg ' + (m.from === side ? 'me' : 'them')}>
+            <small>{m.from === 'team' ? '🏠 ក្រុមការងារផ្ទះយើង' : side === 'team' ? 'ម្ចាស់ផ្ទះ' : 'ខ្ញុំ'} · {fmtDate(m.at)}</small>
+            <p>{m.text}</p>
+          </div>
+        ))}
+      </div>
+      {actions}
+      {!closed || side === 'team' ? (
+        <form className="fb-reply-box" onSubmit={send}>
+          <textarea rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder={side === 'owner' ? 'បន្ថែមព័ត៌មាន ឬឆ្លើយ…' : 'ឆ្លើយទៅម្ចាស់ផ្ទះ…'} maxLength={3000}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e); } }} />
+          <button className="btn primary icon-only" disabled={busy || !text.trim()} aria-label="ផ្ញើ"><Send size={16} /></button>
+        </form>
+      ) : <small className="muted">✓ បានបិទ</small>}
+    </section>
   );
 }

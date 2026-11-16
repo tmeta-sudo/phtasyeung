@@ -123,3 +123,29 @@
 .legal-body ul { padding-left: 20px; } .legal-body hr { border: 0; border-top: 1px solid var(--ls-line); margin: 32px 0; }
 .legal-date { color: var(--ls-muted); font-size: 13px; margin-top: 0; }
 .legal-foot { text-align: center; color: var(--ls-muted); font-size: 13px; padding: 20px 16px 40px; } .legal-foot a { color: inherit; }
+
+.ls-done .ls-btn { width: 100%; text-decoration: none; text-align: center; }
+.ls-btn.tg { background: #229ed9; }
+
+/* temporary chat page for people asking about a room */
+.qchat { --ls-bg: #f3f5f9; --ls-card: #fff; --ls-ink: #0d1424; --ls-muted: #6b7385; --ls-blue: #1f5bff; --ls-line: #e5e8ef;
+  position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; background: var(--ls-bg); color: var(--ls-ink); font-family: 'Kantumruy Pro', 'Inter Tight', system-ui, sans-serif; }
+@media (prefers-color-scheme: dark) { .qchat { --ls-bg: #0c1018; --ls-card: #161c27; --ls-ink: #e9edf4; --ls-muted: #9aa3b5; --ls-line: #263040; } }
+.qchat-top { display: flex; gap: 10px; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; background: var(--ls-card); border-bottom: 1px solid var(--ls-line); }
+.qchat-top > span:nth-child(2) { display: grid; flex: 1; min-width: 0; } .qchat-top small { color: var(--ls-muted); font-size: 12.5px; }
+.qchat-avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--ls-bg); font-size: 20px; }
+.qchat-tg { display: inline-flex; gap: 6px; align-items: center; padding: 8px 12px; border-radius: 999px; background: #229ed9; color: #fff; text-decoration: none; font-size: 13.5px; font-weight: 600; }
+.qchat-msgs { overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; max-width: 720px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.qchat-note, .qchat-wait { align-self: center; text-align: center; font-size: 12.5px; color: var(--ls-muted); background: var(--ls-card); padding: 8px 12px; border-radius: 12px; max-width: 520px; }
+.qmsg { max-width: 80%; padding: 9px 12px; border-radius: 18px; }
+.qmsg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.qmsg small { font-size: 11px; opacity: .7; }
+.qmsg.me { align-self: flex-end; background: var(--ls-blue); color: #fff; border-bottom-right-radius: 6px; }
+.qmsg.them { align-self: flex-start; background: var(--ls-card); border-bottom-left-radius: 6px; }
+.qchat-input { background: var(--ls-card); border-top: 1px solid var(--ls-line); padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); display: grid; gap: 6px; }
+.qchat-input form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 720px; width: 100%; margin: 0 auto; }
+.qchat-input textarea { min-height: 44px; max-height: 140px; resize: none; border-radius: 22px; border: 1px solid var(--ls-line); background: var(--ls-bg); color: var(--ls-ink); padding: 11px 14px; font: inherit; }
+.qchat-input .ls-btn { width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.qchat-done { border: 0; background: none; color: var(--ls-muted); font: inherit; font-size: 13px; cursor: pointer; justify-self: center; }
+.qchat-closed { display: grid; justify-items: center; gap: 10px; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); background: var(--ls-card); text-align: center; }
+.qchat-closed .ls-btn { width: auto; text-decoration: none; }

@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS feedback (id text PRIMARY KEY, org_id text REFERENCES
   title text NOT NULL, body text NOT NULL DEFAULT '', status text NOT NULL DEFAULT 'new', reply text NOT NULL DEFAULT '', context jsonb NOT NULL DEFAULT '{}'::jsonb,
   votes int NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS feedback_kind ON feedback(kind, status);
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS messages jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS tg_msgs jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS owner_unread int NOT NULL DEFAULT 0;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS team_unread int NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS feedback_votes (feedback_id text NOT NULL REFERENCES feedback(id) ON DELETE CASCADE, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE, PRIMARY KEY (feedback_id, org_id));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_name text;
@@ -187,6 +191,11 @@ function lookupKeys(doc) {
   for (const c of doc.settings?.telegram?.adminChats || []) keys.push([`chat:${botKey}`, String(c.chatId)]);
   if (doc.settings?.telegram?.adminLinkCode) keys.push(['admin-link', doc.settings.telegram.adminLinkCode]);
   if (doc.settings?.listing?.enabled && doc.settings.listing.slug) keys.push(['listing', doc.settings.listing.slug]);
+  for (const t of doc.tickets || []) {
+    if (t.kind !== 'inquiry' || t.status === 'done' || !t.chatToken) continue;
+    keys.push(['inquiry', t.chatToken]);
+    if (t.prospect?.chatId) keys.push([`chat:${botKey}`, String(t.prospect.chatId)]);
+  }
   return keys;
 }
 
