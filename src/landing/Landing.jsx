@@ -234,6 +234,8 @@ export default function Landing() {
           <a href="/login" onClick={(e) => { e.preventDefault(); navigate('/login'); }}>ចូលគណនី</a>
           <a href="#faq" onClick={jump('faq')}>សំណួរ</a>
           <a href="/map">🗺️ ផែនទីបន្ទប់ជួលទំនេរ</a>
+          <a href="/privacy">ឯកជនភាព</a>
+          <a href="/terms">លក្ខខណ្ឌ</a>
           <a href="https://github.com/tmeta-sudo/phtasyeung" target="_blank" rel="noreferrer"><Code size={14} /> GitHub</a>
         </nav>
         <small>© {nowInCambodia().year} ផ្ទះយើង · ឥតគិតថ្លៃ · {lunarKm(nowInCambodia().ymd)}</small>

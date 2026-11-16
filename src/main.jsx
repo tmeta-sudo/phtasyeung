@@ -23,6 +23,7 @@ const Portal = lazy(() => import('./portal/Portal.jsx'));
 const Landing = lazy(() => import('./landing/Landing.jsx'));
 const Listing = lazy(() => import('./listing/Listing.jsx'));
 const MapPage = lazy(() => import('./listing/MapPage.jsx'));
+const Legal = lazy(() => import('./legal/Legal.jsx'));
 const Magic = lazy(() => import('./TelegramLogin.jsx').then((m) => ({ default: m.MagicLogin })));
 
 const authHint = () => { try { return localStorage.getItem('py-authed') === '1'; } catch { return false; } };
@@ -40,6 +41,7 @@ function Root() {
   if (path === '/' && !authHint()) {
     return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><LandingGate /></Suspense>;
   }
+  if (/^\/(privacy|terms)\/?$/.test(path)) return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><Legal page={path.includes('privacy') ? 'privacy' : 'terms'} /></Suspense>;
   if (path === '/map' || path === '/map/') return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><MapPage /></Suspense>;
   const listing = path.match(/^\/v\/([a-z0-9-]{3,40})\/?$/);
   if (listing) return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><Listing slug={listing[1]} /></Suspense>;
