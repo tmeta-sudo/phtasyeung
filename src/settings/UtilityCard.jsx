@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { curSymbol, getClientCurrency } from '../../shared/khmer.js';
+import { curSymbol, getClientCurrency, priceCur, fmtMoney } from '../../shared/khmer.js';
 import { Zap, Droplets, Plus, Trash2, Layers, Share2 } from 'lucide-react';
 import { useApp, useFmt } from '../ui.jsx';
 
@@ -12,6 +12,7 @@ export default function UtilityCard() {
   const [groups, setGroups] = useState(() => (st.sharedMeters || []).map((g) => ({ ...g })));
   const [kind, setKind] = useState('electric');
   const list = tiers[kind];
+  const uc = priceCur(st[kind + 'Cur'], getClientCurrency());
   const setList = (next) => setTiers({ ...tiers, [kind]: next });
   const example = (() => {
     const q = kind === 'electric' ? 150 : 15;
@@ -20,7 +21,7 @@ export default function UtilityCard() {
     let left = q; let from = 0; let total = 0;
     for (const b of bands) { const cap = b.upTo === '' || b.upTo == null ? Infinity : +b.upTo; const take = Math.max(0, Math.min(left, cap - from)); total += take * +b.rate; left -= take; from = cap; }
     if (left > 0) total += left * +bands.at(-1).rate;
-    return `ឧ. ${q} ${kind === 'electric' ? 'kWh' : 'm³'} = ${$(Math.round(total * 100) / 100)}`;
+    return `ឧ. ${q} ${kind === 'electric' ? 'kWh' : 'm³'} = ${fmtMoney(total, uc, false)}`;
   })();
 
   return (
@@ -30,12 +31,12 @@ export default function UtilityCard() {
         <button type="button" className={kind === 'electric' ? 'on' : ''} onClick={() => setKind('electric')}><Zap size={14} /> ភ្លើង</button>
         <button type="button" className={kind === 'water' ? 'on' : ''} onClick={() => setKind('water')}><Droplets size={14} /> ទឹក</button>
       </div>
-      <p className="muted small">{list.length ? 'គិតតាមកម្រិត ដូច EDC — កម្រិតទាបតម្លៃមួយ កម្រិតខ្ពស់តម្លៃមួយទៀត។' : `ឥឡូវគិតតម្លៃតែមួយ (${$(kind === 'electric' ? st.electricRate : st.waterRate)}/${kind === 'electric' ? 'kWh' : 'm³'})។ បន្ថែមកម្រិត ប្រសិនបើចង់គិតដូច EDC។`}</p>
+      <p className="muted small">{list.length ? 'គិតតាមកម្រិត ដូច EDC — កម្រិតទាបតម្លៃមួយ កម្រិតខ្ពស់តម្លៃមួយទៀត។' : `ឥឡូវគិតតម្លៃតែមួយ (${fmtMoney(kind === 'electric' ? st.electricRate : st.waterRate, uc, false)}/${kind === 'electric' ? 'kWh' : 'm³'})។ បន្ថែមកម្រិត ប្រសិនបើចង់គិតដូច EDC។`}</p>
       {list.map((b, i) => (
         <div key={i} className="tier-row">
           <span>{i === 0 ? '០' : (list[i - 1].upTo || '…')} –</span>
           <input type="number" inputMode="decimal" placeholder="ដល់ (ទុកទំនេរ = ឡើងទៅ)" value={b.upTo ?? ''} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, upTo: e.target.value } : x)))} aria-label="ដល់" />
-          <input type="number" inputMode="decimal" step="0.001" placeholder={`${curSymbol(getClientCurrency())} / ឯកតា`} value={b.rate} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))} aria-label="តម្លៃ" />
+          <input type="number" inputMode="decimal" step="0.001" placeholder={`${curSymbol(uc)} / ឯកតា`} value={b.rate} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, rate: e.target.value } : x)))} aria-label="តម្លៃ" />
           <button type="button" className="icon-btn" aria-label="លុប" onClick={() => setList(list.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
         </div>
       ))}

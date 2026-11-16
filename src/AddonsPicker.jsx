@@ -1,7 +1,8 @@
 import React from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { ROOM_FEATURES } from '../shared/features.js';
-import { useFmt } from './ui.jsx';
+import { useFmt, useApp } from './ui.jsx';
+import { fmtMoney, priceCur, convertAmount, roundMoney } from '../shared/khmer.js';
 
 /** Tick room features (AC, fan, hot water…). */
 export function FeaturePicker({ value = [], onChange }) {
@@ -27,7 +28,9 @@ export function FeatureIcons({ ids = [], labels = false }) {
 
 /** Tick paid add-ons with a quantity (2 motorbikes…). value = [{ id, qty }] */
 export function AddonsPicker({ catalog = [], value = [], onChange }) {
-  const { $ } = useFmt();
+  const { $, c: billing, k } = useFmt();
+  const rate = useApp()?.state?.settings?.exchangeRate;
+  const own = (a, v) => fmtMoney(v, priceCur(a.cur, billing), k);
   const qty = (id) => value.find((x) => x.id === id)?.qty || 0;
   const setQty = (a, q) => {
     const next = value.filter((x) => x.id !== a.id);
@@ -44,7 +47,7 @@ export function AddonsPicker({ catalog = [], value = [], onChange }) {
             <label className="addon-tick">
               <input type="checkbox" checked={q > 0} onChange={(e) => setQty(a, e.target.checked ? 1 : 0)} />
               <span className="ft-icon">{a.icon}</span>
-              <span><b>{a.label}</b><small>{$(a.price)}/ខែ</small></span>
+              <span><b>{a.label}</b><small>{own(a, a.price)}/ខែ</small></span>
             </label>
             {q > 0 && (a.max || 1) > 1 && (
               <span className="stepper">
@@ -53,7 +56,7 @@ export function AddonsPicker({ catalog = [], value = [], onChange }) {
                 <button type="button" onClick={() => setQty(a, q + 1)} disabled={q >= (a.max || 9)} aria-label="បន្ថែម"><Plus size={14} /></button>
               </span>
             )}
-            {q > 0 && <b className="addon-sum">{$(a.price * q)}</b>}
+            {q > 0 && <b className="addon-sum">{priceCur(a.cur, billing) === billing ? $(a.price * q) : <>{own(a, a.price * q)}<small> ≈ {$(convertAmount(roundMoney(a.price * q, priceCur(a.cur, billing)), priceCur(a.cur, billing), billing, rate))}</small></>}</b>}
           </div>
         );
       })}
@@ -61,4 +64,10 @@ export function AddonsPicker({ catalog = [], value = [], onChange }) {
   );
 }
 
-export const addonsTotal = (catalog = [], value = []) => value.reduce((s, x) => s + (catalog.find((a) => a.id === x.id)?.price || 0) * x.qty, 0);
+/** Monthly add-ons total in the billing currency (add-ons priced in the other currency are converted). */
+export const addonsTotal = (catalog = [], value = [], billing = 'USD', rate = 4100) => value.reduce((s, x) => {
+  const a = catalog.find((y) => y.id === x.id);
+  if (!a) return s;
+  const ac = priceCur(a.cur, billing);
+  return s + convertAmount(roundMoney((+a.price || 0) * x.qty, ac), ac, billing, rate);
+}, 0);

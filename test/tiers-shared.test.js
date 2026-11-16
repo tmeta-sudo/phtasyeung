@@ -22,7 +22,7 @@ test('invoice uses tiered electricity prices', async () => {
   const inv = (await c.post('/api/invoices/generate', {})).invoices[0];
   const el = inv.items.find((it) => it.key === 'electric');
   assert.equal(el.amount, 50 * 0.15 + 30 * 0.25);
-  assert.match(el.note, /50x\$0.15 \+ 30x\$0.25/);
+  assert.match(el.note, /50 × \$0.15 \+ 30 × \$0.25/);
   assert.equal(inv.items.find((it) => it.key === 'water').amount, 5);
 });
 

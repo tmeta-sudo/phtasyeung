@@ -19,10 +19,21 @@ export function convertCurrency(to) {
     r.rent = m(r.rent);
     for (const e of r.extras || []) e.amount = m(e.amount);
   }
-  st.waterRate = unit(st.waterRate);
-  st.electricRate = unit(st.electricRate);
-  for (const kind of ['water', 'electric']) for (const b of st.tiers?.[kind] || []) b.rate = unit(b.rate);
-  for (const a of st.addons || []) a.price = m(a.price);
+  // Prices set in their own currency stay as they are; those that followed the billing currency are converted.
+  // Afterwards a price in the new billing currency is simply "the billing currency" ('').
+  const follows = (c) => !c || c === from;
+  const after = (c) => (follows(c) || c === to ? '' : c);
+  for (const kind of ['water', 'electric']) {
+    if (follows(st[kind + 'Cur'])) {
+      st[kind + 'Rate'] = unit(st[kind + 'Rate']);
+      for (const b of st.tiers?.[kind] || []) b.rate = unit(b.rate);
+    }
+    st[kind + 'Cur'] = after(st[kind + 'Cur']);
+  }
+  for (const a of st.addons || []) {
+    if (follows(a.cur)) a.price = m(a.price);
+    a.cur = after(a.cur);
+  }
   if (st.lateFee) st.lateFee.amount = m(st.lateFee.amount);
   for (const t of s.tenants) {
     if (t.deposit?.held) t.deposit.held = m(t.deposit.held);

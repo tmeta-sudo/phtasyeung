@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { db, save, uid, now, logEvent, cur, fm as usd, rm, words, fmAlt } from './db.js';
 import { khqrFor } from './khqr.js';
 import { dueDatesFor } from './due.js';
-import { nowInCambodia, monthKm, dateKm, kmDigits, altMoney } from '../shared/khmer.js';
+import { nowInCambodia, monthKm, dateKm, kmDigits, altMoney, convertAmount, priceCur, fmtMoney, fmtUnit, roundMoney } from '../shared/khmer.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -25,10 +25,10 @@ function addDays(ymd, days) {
  * Cost of `qty` units with EDC-style price bands: [{ upTo: 50, rate: 0.15 }, { upTo: null, rate: 0.2 }].
  * No bands -> flat `rate`. Returns { amount, parts } where parts explain the bill.
  */
-export function tieredCost(qty, tiers, rate) {
+export function tieredCost(qty, tiers, rate, round = rm) {
   const q = Math.max(0, +qty || 0);
   const bands = (tiers || []).filter((t) => +t.rate >= 0).sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
-  if (!bands.length) return { amount: rm(q * (+rate || 0)), parts: [] };
+  if (!bands.length) return { amount: round(q * (+rate || 0)), parts: [] };
   let left = q; let from = 0; let amount = 0; const parts = [];
   for (const b of bands) {
     if (left <= 0) break;
@@ -38,10 +38,10 @@ export function tieredCost(qty, tiers, rate) {
     from = cap;
   }
   if (left > 0) { const last = bands.at(-1); amount += left * +last.rate; parts.push({ qty: round2(left), rate: +last.rate }); }
-  return { amount: rm(amount), parts };
+  return { amount: round(amount), parts };
 }
 
-const tierNote = (parts) => (parts.length > 1 ? parts.map((p) => `${p.qty}x$${p.rate}`).join(' + ') : '');
+const tierNote = (parts, c = cur()) => (parts.length > 1 ? parts.map((p) => `${p.qty} × ${fmtUnit(p.rate, c)}`).join(' + ') : '');
 
 /** Money received so far on an invoice (all recorded payments). */
 export const paidSoFar = (inv) => {
@@ -91,7 +91,21 @@ export function generateInvoices(month, actor = 'admin') {
     const items = [{ key: 'rent', label: 'ថ្លៃជួលបន្ទប់', qty: 1, unit: 'ខែ', rate: +room.rent || 0, amount: +room.rent || 0 }];
     const tiers = settings.tiers || {};
     const sharedOf = (kind) => (settings.sharedMeters || []).find((g) => g.kind === kind && (g.rooms || []).includes(room.id));
+    const bill = cur();
+    const xr = settings.exchangeRate;
     for (const [kind, label, unit, rateKey, oldKey] of [['water', 'ថ្លៃទឹក', 'm³', 'waterRate', 'oldWater'], ['electric', 'ថ្លៃភ្លើង', 'kWh', 'electricRate', 'oldElectric']]) {
+      // Utilities may be priced in the other currency (e.g. rent in $, electricity in ៛ like EDC).
+      const uc = priceCur(settings[kind + 'Cur'], bill);
+      const cost = (used) => {
+        const c = tieredCost(used, tiers[kind], settings[rateKey], (v) => roundMoney(v, uc));
+        const foreign = uc !== bill;
+        const parts = tierNote(c.parts, uc);
+        return {
+          amount: convertAmount(c.amount, uc, bill, xr),
+          rate: parts || foreign ? undefined : +settings[rateKey],
+          note: foreign ? `${parts || `${round2(used)} × ${fmtUnit(+settings[rateKey], uc)}`} = ${fmtMoney(c.amount, uc, false)}` : parts,
+        };
+      };
       const g = sharedOf(kind);
       if (g) {
         // One meter for several rooms: price the whole usage, then split it equally between the rented rooms.
@@ -100,16 +114,14 @@ export function generateInvoices(month, actor = 'admin') {
         const rented = g.rooms.filter((id) => tenantOfRoom(id));
         const parts = Math.max(1, rented.length);
         const used = Math.max(0, read.value - read.old);
-        const c = tieredCost(used, tiers[kind], settings[rateKey]);
-        const note = tierNote(c.parts);
-        items.push({ key: kind, label: `${label} (កុងទ័ររួម ${g.name} ÷ ${kmDigits(parts)})`, qty: round2(used / parts), unit, rate: note ? undefined : +settings[rateKey], amount: rm(c.amount / parts), from: read.old, to: read.value, shared: g.id, note });
+        const c = cost(used);
+        items.push({ key: kind, label: `${label} (កុងទ័ររួម ${g.name} ÷ ${kmDigits(parts)})`, qty: round2(used / parts), unit, rate: c.rate, amount: rm(c.amount / parts), from: read.old, to: read.value, shared: g.id, note: c.note });
         continue;
       }
       if (!meter) continue;
       const used = Math.max(0, meter[kind] - meter[oldKey]);
-      const c = tieredCost(used, tiers[kind], settings[rateKey]);
-      const note = tierNote(c.parts);
-      items.push({ key: kind, label, qty: used, unit, rate: note ? undefined : +settings[rateKey], amount: c.amount, from: meter[oldKey], to: meter[kind], note });
+      const c = cost(used);
+      items.push({ key: kind, label, qty: used, unit, rate: c.rate, amount: c.amount, from: meter[oldKey], to: meter[kind], note: c.note });
     }
     for (const extra of room.extras || []) {
       if (extra.label && +extra.amount) items.push({ key: 'extra', label: extra.label, qty: 1, unit: 'ខែ', rate: +extra.amount, amount: +extra.amount });
@@ -119,7 +131,13 @@ export function generateInvoices(month, actor = 'admin') {
       const a = (settings.addons || []).find((y) => y.id === x.id);
       if (!a || !(x.qty > 0) || !(+a.price > 0)) continue;
       const who = mates.length > 1 ? ` (${mate.nameKm || mate.nameEn})` : '';
-      items.push({ key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}${who}`, qty: x.qty, unit: 'ខែ', rate: +a.price, amount: rm(a.price * x.qty) });
+      const ac = priceCur(a.cur, bill);
+      const own = roundMoney(a.price * x.qty, ac);
+      items.push({
+        key: 'addon', addon: a.id, label: `${a.icon} ${a.label}${x.qty > 1 ? ` × ${kmDigits(x.qty)}` : ''}${who}`, qty: x.qty, unit: 'ខែ',
+        rate: ac === bill ? +a.price : undefined, amount: ac === bill ? rm(own) : convertAmount(own, ac, bill, xr),
+        ...(ac !== bill ? { note: x.qty > 1 ? `${x.qty} × ${fmtMoney(+a.price, ac, false)} = ${fmtMoney(own, ac, false)}` : fmtMoney(own, ac, false) } : {}),
+      });
     }
     // Unpaid balance of earlier months moves onto this invoice (one bill, one QR).
     const carried = settings.carryOver ? s.invoices.filter((i) => mates.some((mt) => invoiceIsFor(i, mt)) && i.roomId === room.id && i.month < month && i.status !== 'paid' && balanceOf(i) > 0) : [];
