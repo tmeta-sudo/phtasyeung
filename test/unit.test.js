@@ -1,12 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseIdCard } from '../src/ocr/idcard.js';
-import { kmDigits, asciiDigits, usd, toRiel, monthKm } from '../shared/khmer.js';
+import { kmDigits, setNumeralsSource, khmerDigitsAlways, asciiDigits, usd, toRiel, monthKm } from '../shared/khmer.js';
 
 const ck = (s) => { const w = [7, 3, 1]; let t = 0; for (let i = 0; i < s.length; i++) { const ch = s[i]; t += (ch === '<' ? 0 : /\d/.test(ch) ? +ch : ch.charCodeAt(0) - 55) * w[i % 3]; } return String(t % 10); };
 
 test('Khmer digits round-trip and keep punctuation', () => {
+  assert.equal(kmDigits('15.02.1990'), '15.02.1990', 'Latin digits unless the landlord ticks Khmer numerals');
+  setNumeralsSource(true);
   assert.equal(kmDigits('15.02.1990'), '១៥.០២.១៩៩០');
+  setNumeralsSource(false);
+  assert.equal(khmerDigitsAlways('15'), '១៥');
   assert.equal(asciiDigits('១៥.០២.១៩៩០'), '15.02.1990');
   assert.equal(usd(1250.5), '$1,250.50');
   assert.equal(toRiel(10, 4100), 41000);

@@ -50,8 +50,23 @@ test('tenant sends readings through the bot; owner approves with one tap', async
   assert.match(lastTextTo(71001).text, /ធំជាង/, 'lower than last month is refused');
   await say(71001, '១១២'); // Khmer digits
   assert.match(lastTextTo(71001).text, /ភ្លើង/);
+  await say(71001, '2105');
+  // A check before sending: the tenant notices a typo and fixes it.
+  let check = lastTextTo(71001);
+  assert.match(check.text, /ពិនិត្យលេខកុងទ័រ/);
+  assert.match(check.text, /2105/);
+  const [send, fix] = check.reply_markup.inline_keyboard[0].map((b) => b.callback_data);
   await say(71001, '2150');
+  assert.match(lastTextTo(71001).text, /ចុច/, 'typing during the check asks for a button');
+  await press(71001, fix);
+  assert.match(lastTextTo(71001).text, /ទឹក/);
+  await say(71001, '112');
+  await say(71001, '2150');
+  check = lastTextTo(71001);
+  assert.match(check.text, /2150/);
+  await press(71001, check.reply_markup.inline_keyboard[0][0].callback_data);
   assert.match(lastTextTo(71001).text, /បានផ្ញើលេខកុងទ័រ/);
+  assert.ok(send);
   const toOwner = env.tg.calls.filter((x) => String(x.payload.chat_id) === '72001').at(-1).payload;
   assert.match(toOwner.text, /លេខកុងទ័រពីអតិថិជន/);
   const approve = JSON.parse(JSON.stringify(toOwner.reply_markup)).inline_keyboard[0][0].callback_data;
@@ -115,4 +130,44 @@ test('linking Telegram adds a "my room" button that opens the tenant page inside
     assert.equal(st.tenants[0].telegram, null);
     assert.equal(env.tg.calls.filter((x) => x.method === 'setChatMenuButton').at(-1).payload.menu_button.type, 'default');
   } finally { if (prev === undefined) delete process.env.APP_URL; else process.env.APP_URL = prev; }
+});
+
+test('owner corrects a tenant reading from Telegram (✏️), both numbers are kept', async () => {
+  const { c } = await setup(71003, 72003);
+  await say(71003, '📟 ផ្ញើលេខកុងទ័រ');
+  await say(71003, '112');
+  await say(71003, '2150');
+  await press(71003, lastTextTo(71003).reply_markup.inline_keyboard[0][0].callback_data);
+  const toOwner = env.tg.calls.filter((x) => String(x.payload.chat_id) === '72003').at(-1).payload;
+  const editBtn = toOwner.reply_markup.inline_keyboard[0].find((b) => /កែ/.test(b.text)).callback_data;
+  await press(72003, editBtn);
+  const promptIdx = env.tg.calls.findLastIndex((x) => x.method === 'sendMessage' && String(x.payload.chat_id) === '72003');
+  assert.match(env.tg.calls[promptIdx].payload.text, /កែលេខកុងទ័រ/);
+  const promptId = promptIdx + 1; // the fake Telegram numbers messages by call count
+  await say(72003, '113 2160', { reply_to_message: { message_id: promptId } });
+  const st = await c.get('/api/state');
+  const m = st.meters.find((x) => x.roomId === 'A1');
+  assert.deepEqual([m.water, m.electric], [113, 2160]);
+  assert.deepEqual(m.corrected.from, { water: 112, electric: 2150 });
+  assert.match(lastTextTo(71003).text, /កែលេខ/);
+});
+
+test('fix a saved reading and the previous number; photo reading vs saved value is kept', async () => {
+  const { c } = await setup(71004, 72004);
+  let st = await c.put('/api/rooms/A1/previous', { water: 95, electric: 1990 });
+  assert.deepEqual([st.rooms[0].water, st.rooms[0].electric], [95, 1990], 'starting number before any reading');
+  st = await c.post('/api/meters', { roomId: 'A1', month: st.today.ym, water: 110, electric: 2100, ocr: { water: 118, electric: 2100 } });
+  let m = st.meters.find((x) => x.roomId === 'A1');
+  assert.deepEqual(m.ocr.water, { read: 118, saved: 110, corrected: true });
+  assert.equal(m.ocr.electric.corrected, false);
+  st = await c.put(`/api/meters/${m.id}`, { water: 111, electric: 2101 });
+  m = st.meters.find((x) => x.id === m.id);
+  assert.deepEqual([m.water, m.electric, st.rooms[0].water], [111, 2101, 111]);
+  assert.equal(m.edits.length, 1);
+  await assert.rejects(c.put(`/api/meters/${m.id}`, { water: 90 }), /400/, 'not below the old number');
+  // "Previous" with a reading already saved edits that reading.
+  st = await c.put('/api/rooms/A1/previous', { electric: 2105 });
+  assert.equal(st.meters.find((x) => x.id === m.id).electric, 2105);
+  await c.post('/api/invoices/generate', {});
+  await assert.rejects(c.put(`/api/meters/${m.id}`, { water: 112 }), /វិក្កយបត្រ|400/, 'locked once invoiced');
 });

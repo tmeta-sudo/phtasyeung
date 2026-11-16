@@ -1,5 +1,5 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
-import { recordMeter, submitReading, approveSubmission, rejectSubmission } from './readings.js';
+import { recordMeter, editMeter, setPrevious, submitReading, approveSubmission, rejectSubmission } from './readings.js';
 import { FEATURE_IDS } from '../shared/features.js';
 import { recordError, installProcessHandlers } from './errors.js';
 installProcessHandlers();
@@ -371,7 +371,16 @@ app.delete('/api/meters/shared/:id', ...owner((req) => {
 }));
 
 app.post('/api/meters', ...owner((req) => {
-  recordMeter({ roomId: req.body?.roomId, month: month(req.body?.month), water: req.body?.water, electric: req.body?.electric, by: req.session.role });
+  recordMeter({ roomId: req.body?.roomId, month: month(req.body?.month), water: req.body?.water, electric: req.body?.electric, by: req.session.role, ocr: req.body?.ocr });
+  return adminState(req);
+}));
+// Correct a saved reading, or the "previous" number a room starts from.
+app.put('/api/meters/:id', ...owner((req) => {
+  editMeter(req.params.id, { water: req.body?.water, electric: req.body?.electric, ocr: req.body?.ocr, by: req.session.role });
+  return adminState(req);
+}));
+app.put('/api/rooms/:id/previous', ...owner((req) => {
+  setPrevious(req.params.id, { water: req.body?.water, electric: req.body?.electric, by: req.session.role });
   return adminState(req);
 }));
 
@@ -380,7 +389,7 @@ app.post('/api/meters', ...owner((req) => {
 app.post('/api/meter-submissions/:id/approve', ...owner(async (req) => {
   const sub = (db().meterSubmissions || []).find((x) => x.id === req.params.id);
   if (!sub) fail('រកមិនឃើញ', 404);
-  await approveAndNotify(sub, req.session.role);
+  await approveAndNotify(sub, req.session.role, req.body?.fix);
   return adminState(req);
 }));
 app.post('/api/meter-submissions/:id/reject', ...owner(async (req) => {
@@ -591,6 +600,7 @@ app.put('/api/settings', ...owner(async (req) => {
     exchangeRate: Math.max(1, Math.round(+(b.exchangeRate ?? s.exchangeRate)) || 4100),
     dueDays: Math.min(60, Math.max(0, Math.round(+(b.dueDays ?? s.dueDays)) || 0)),
     khmerNumerals: typeof b.khmerNumerals === 'boolean' ? b.khmerNumerals : s.khmerNumerals,
+    numeralsDefaultV2: true,
     publicUrl: /^https?:\/\/[^\s]+$/.test(b.publicUrl || '') ? str(b.publicUrl, 200).replace(/\/+$/, '') : (b.publicUrl === '' ? '' : s.publicUrl),
   });
   if (b.khqr) {

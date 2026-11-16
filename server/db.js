@@ -1,7 +1,7 @@
 // Per-request access to the current landlord's document (set up by store.withOrg).
 import { DEFAULT_ADDONS } from '../shared/features.js';
 import { als, uid, now } from './store.js';
-import { fmtMoney, roundMoney, moneyInWords, fmtAlt } from '../shared/khmer.js';
+import { setNumeralsSource, fmtMoney, roundMoney, moneyInWords, fmtAlt } from '../shared/khmer.js';
 
 export { uid, now };
 
@@ -13,6 +13,7 @@ export function db() {
 export const orgId = () => als.getStore()?.orgId;
 
 /** The landlord's billing currency ('USD' unless they chose riel). Safe outside a request. */
+setNumeralsSource(() => als.getStore()?.doc?.settings?.khmerNumerals === true);
 export const cur = () => (als.getStore()?.doc?.settings?.currency === 'KHR' ? 'KHR' : 'USD');
 /** Format / round an amount in the landlord's currency. */
 export const fm = (amount) => fmtMoney(amount, cur(), false);
@@ -47,7 +48,7 @@ export function defaultSettings(name = 'ផ្ទះរបស់ខ្ញុំ'
     electricRate: 0.25,
     exchangeRate: 4100,
     dueDays: 7,
-    khmerNumerals: true,
+    khmerNumerals: false, // Latin digits by default; the landlord can tick Khmer numerals
     publicUrl: '',
     khqr: { accountId: '', merchantName: '', city: 'Phnom Penh' },
     telegram: { token: '', username: '', error: '', adminChats: [], adminLinkCode: uid(6) },
@@ -138,6 +139,7 @@ export function migrateDoc(doc) {
   doc.settings = { ...base.settings, ...doc.settings };
   for (const k of ['khqr', 'telegram', 'auto', 'location', 'invoiceDesign', 'contract', 'storage', 'backup', 'lateFee', 'tiers', 'listing', 'holidays']) doc.settings[k] = { ...base.settings[k], ...(doc.settings[k] || {}) };
   doc.counters = { ...base.counters, ...doc.counters };
+  if (!doc.settings.numeralsDefaultV2) { doc.settings.khmerNumerals = false; doc.settings.numeralsDefaultV2 = true; }
   delete doc.auth;
   doc.version = 5;
   return doc;

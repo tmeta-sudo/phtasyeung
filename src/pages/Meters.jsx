@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gauge, Droplets, Zap, Trash2, Check } from 'lucide-react';
+import { Gauge, Droplets, Zap, Trash2, Check, Pencil, X } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { monthKm } from '../../shared/khmer.js';
 import MeterPhoto from '../MeterPhoto.jsx';
@@ -17,6 +17,18 @@ export default function Meters() {
   const sharedKind = (id, kind) => groups.find((g) => g.kind === kind && g.rooms.includes(id));
   const sharedDone = (g) => (state.sharedReadings || []).find((x) => x.groupId === g.id && x.month === month);
   const [gv, setGv] = useState({});
+  const [editing, setEditing] = useState(null); // { id, water, electric } — fixing a saved reading
+  const [fixSub, setFixSub] = useState(null); // { id, water, electric } — correcting a tenant's numbers
+  // ✏️ next to "ចាស់": the number this room starts from (or its last saved reading).
+  async function editPrevious(r, kind) {
+    const cur = kind === 'water' ? r.water : r.electric;
+    const v = window.prompt(`លេខ${kind === 'water' ? 'ទឹក' : 'ភ្លើង'}ចាស់ (ខែមុន) របស់បន្ទប់ ${r.id}`, String(cur));
+    if (v == null || v.trim() === '' || Number(v) === cur) return;
+    await call('PUT', `/api/rooms/${encodeURIComponent(r.id)}/previous`, { [kind]: v.trim() }, 'បានកែលេខចាស់');
+  }
+  async function saveEdit() {
+    if (await call('PUT', `/api/meters/${editing.id}`, { water: editing.water, electric: editing.electric }, 'បានកែលេខកុងទ័រ')) setEditing(null);
+  }
 
   const { setState, notify } = useApp();
   const waiting = queued().length;
@@ -48,7 +60,7 @@ export default function Meters() {
       focusNext(r.id);
       return;
     }
-    const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric }, `បានកត់ ${r.id}`);
+    const res = await call('POST', '/api/meters', { roomId: r.id, month, water: sharedKind(r.id, 'water') ? '' : v.water, electric: sharedKind(r.id, 'electric') ? '' : v.electric , ocr: { water: v.ocr_water ?? '', electric: v.ocr_electric ?? '' } }, `បានកត់ ${r.id}`);
     if (!res) return;
     setRows((x) => ({ ...x, [r.id]: undefined }));
     focusNext(r.id);
@@ -77,10 +89,20 @@ export default function Meters() {
               <span><b>{x.roomId} · {x.name}</b><small className="muted">💧 {n(x.oldWater)} → <b>{n(x.water)}</b> (+{n(x.water - x.oldWater)}) · ⚡ {n(x.oldElectric)} → <b>{n(x.electric)}</b> (+{n(x.electric - x.oldElectric)}) · {x.source === 'telegram' ? 'Telegram' : 'គេហទំព័រ'}</small>
                 {Object.keys(x.photos || {}).map((kind) => <a key={kind} className="mp-thumb" href={`/api/meter-submissions/${x.id}/photo/${kind}`} target="_blank" rel="noreferrer">📷 {kind === 'water' ? 'ទឹក' : 'ភ្លើង'}</a>)}
               </span>
-              <span className="row-btns">
-                <button className="btn ghost sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/reject`, {}, 'បានបដិសេធ')}>✖</button>
-                <button className="btn primary sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/approve`, {}, `បានកត់ ${x.roomId}`)}><Check size={14} /> ទទួលយក</button>
-              </span>
+              {fixSub?.id === x.id ? (
+                <span className="sub-fix">
+                  <label>💧<input type="number" inputMode="decimal" min={x.oldWater} value={fixSub.water} onChange={(e) => setFixSub({ ...fixSub, water: e.target.value })} aria-label="ទឹក" /></label>
+                  <label>⚡<input type="number" inputMode="decimal" min={x.oldElectric} value={fixSub.electric} onChange={(e) => setFixSub({ ...fixSub, electric: e.target.value })} aria-label="ភ្លើង" /></label>
+                  <button className="btn ghost sm" onClick={() => setFixSub(null)}>បោះបង់</button>
+                  <button className="btn primary sm" onClick={async () => { if (await call('POST', `/api/meter-submissions/${x.id}/approve`, { fix: { water: fixSub.water, electric: fixSub.electric } }, `បានកែ និងកត់ ${x.roomId}`)) setFixSub(null); }}><Check size={14} /> កែ និងទទួលយក</button>
+                </span>
+              ) : (
+                <span className="row-btns">
+                  <button className="btn ghost sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/reject`, {}, 'បានបដិសេធ')}>✖</button>
+                  <button className="btn ghost sm" onClick={() => setFixSub({ id: x.id, water: x.water, electric: x.electric })}><Pencil size={14} /> កែ</button>
+                  <button className="btn primary sm" onClick={() => call('POST', `/api/meter-submissions/${x.id}/approve`, {}, `បានកត់ ${x.roomId}`)}><Check size={14} /> ទទួលយក</button>
+                </span>
+              )}
             </div>
           ))}
         </section>
@@ -97,18 +119,27 @@ export default function Meters() {
             return (
               <form key={r.id} data-room={r.id} className={'mt-row ' + (m ? 'done' : '')} onSubmit={(e) => { e.preventDefault(); saveRow(r); }}>
                 <span><b>{r.id}</b><small className="muted">{tenantIn(r.id)?.nameKm || 'ទំនេរ'}</small></span>
-                {m ? (
+                {m && editing?.id === m.id ? (
+                  <>
+                    <span className="mt-input"><small>ចាស់ {n(m.oldWater)}</small><input type="number" inputMode="decimal" min={m.oldWater} step="any" value={editing.water} onChange={(e) => setEditing({ ...editing, water: e.target.value })} aria-label={`ទឹក ${r.id}`} autoFocus /></span>
+                    <span className="mt-input"><small>ចាស់ {n(m.oldElectric)}</small><input type="number" inputMode="decimal" min={m.oldElectric} step="any" value={editing.electric} onChange={(e) => setEditing({ ...editing, electric: e.target.value })} aria-label={`ភ្លើង ${r.id}`} /></span>
+                    <span className="row-btns tight"><button type="button" className="icon-btn" onClick={() => setEditing(null)} aria-label="បោះបង់"><X size={15} /></button><button type="button" className="icon-btn primary" onClick={saveEdit} aria-label="រក្សាទុក"><Check size={16} /></button></span>
+                  </>
+                ) : m ? (
                   <>
                     <span>{m.queued && '⏳ '}{n(m.oldWater)} → <b>{n(m.water)}</b> <small className="muted">(+{n(m.water - m.oldWater)})</small>{m.photos?.water && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/water`} target="_blank" rel="noreferrer">📷</a>}</span>
                     <span>{n(m.oldElectric)} → <b>{n(m.electric)}</b> <small className="muted">(+{n(m.electric - m.oldElectric)})</small>{m.photos?.electric && <a className="mp-thumb" href={`/api/meters/${m.id}/photo/electric`} target="_blank" rel="noreferrer">📷</a>}</span>
-                    <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/${m.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
+                    <span className="row-btns tight">
+                      {!m.queued && <button type="button" className="icon-btn" onClick={() => setEditing({ id: m.id, water: m.water, electric: m.electric })} aria-label="កែ" title="កែលេខ"><Pencil size={15} /></button>}
+                      <button type="button" className="icon-btn" onClick={() => window.confirm('លុបកំណត់ត្រានេះ?') && call('DELETE', `/api/meters/${m.id}`, undefined, 'បានលុប')} aria-label="លុប"><Trash2 size={15} /></button>
+                    </span>
                   </>
                 ) : (
                   <>
                     {sharedKind(r.id, 'water') ? <span className="mt-shared">💧 កុងទ័ររួម {sharedKind(r.id, 'water').name}</span>
-                      : <span className="mt-input"><small>ចាស់ {n(r.water)} <MeterPhoto previous={r.water} has={!!v.photo_water} onPick={(x) => set('water', x)} onPhoto={(f) => set('photo_water', f)} /></small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} onKeyDown={enterToNext} enterKeyHint="next" required aria-label={`ទឹក ${r.id}`} /></span>}
+                      : <span className="mt-input"><small><button type="button" className="prev-edit" onClick={() => editPrevious(r, 'water')} title="កែលេខចាស់">ចាស់ {n(r.water)} <Pencil size={11} /></button> <MeterPhoto previous={r.water} has={!!v.photo_water} onPick={(x) => setRows((all) => ({ ...all, [r.id]: { ...(all[r.id] || {}), water: x } }))} onRead={(x) => setRows((all) => ({ ...all, [r.id]: { ...(all[r.id] || {}), ocr_water: x } }))} onPhoto={(f) => set('photo_water', f)} /></small><input type="number" inputMode="decimal" min={r.water} step="any" value={v.water ?? ''} onChange={(e) => set('water', e.target.value)} onKeyDown={enterToNext} enterKeyHint="next" required aria-label={`ទឹក ${r.id}`} /></span>}
                     {sharedKind(r.id, 'electric') ? <span className="mt-shared">⚡ កុងទ័ររួម {sharedKind(r.id, 'electric').name}</span>
-                      : <span className="mt-input"><small>ចាស់ {n(r.electric)} <MeterPhoto previous={r.electric} has={!!v.photo_electric} onPick={(x) => set('electric', x)} onPhoto={(f) => set('photo_electric', f)} /></small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} enterKeyHint="done" required aria-label={`ភ្លើង ${r.id}`} /></span>}
+                      : <span className="mt-input"><small><button type="button" className="prev-edit" onClick={() => editPrevious(r, 'electric')} title="កែលេខចាស់">ចាស់ {n(r.electric)} <Pencil size={11} /></button> <MeterPhoto previous={r.electric} has={!!v.photo_electric} onPick={(x) => setRows((all) => ({ ...all, [r.id]: { ...(all[r.id] || {}), electric: x } }))} onRead={(x) => setRows((all) => ({ ...all, [r.id]: { ...(all[r.id] || {}), ocr_electric: x } }))} onPhoto={(f) => set('photo_electric', f)} /></small><input type="number" inputMode="decimal" min={r.electric} step="any" value={v.electric ?? ''} onChange={(e) => set('electric', e.target.value)} enterKeyHint="done" required aria-label={`ភ្លើង ${r.id}`} /></span>}
                     <button className="icon-btn primary" aria-label="រក្សាទុក"><Check size={16} /></button>
                   </>
                 )}

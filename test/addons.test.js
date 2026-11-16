@@ -24,7 +24,7 @@ test('ticked add-ons with quantity are billed every month', async () => {
   const inv = (await c.post('/api/invoices/generate', {})).invoices[0];
   const line = inv.items.find((it) => it.key === 'addon');
   assert.equal(line.amount, 30);
-  assert.match(line.label, /ចំណតម៉ូតូ × ៥/);
+  assert.match(line.label, /ចំណតម៉ូតូ × 5/, 'Latin digits by default');
   assert.equal(inv.total, 101 + 30);
 });
 

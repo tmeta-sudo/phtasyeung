@@ -11,6 +11,8 @@ const RULES = [
   // [method, path (Express route pattern, or prefix ending in *), minimum role]
   ['GET', '/api/state', 'staff'],
   ['POST', '/api/meters', 'staff'],
+  ['PUT', '/api/meters/:id', 'staff'], // fix a typo or a wrong photo reading
+  ['PUT', '/api/rooms/:id/previous', 'staff'],
   ['POST', '/api/meters/shared', 'staff'],
   ['*', '/api/meter-submissions*', 'staff'],
   ['*', '/api/meters/:id/photo/:kind', 'staff'],

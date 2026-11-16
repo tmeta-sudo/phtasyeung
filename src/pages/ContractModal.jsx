@@ -45,7 +45,7 @@ export default function ContractModal({ tenant, onClose }) {
     if (r?.result?.invoiceId) { onClose(); openInvoice(r.result.invoiceId); }
   }
   async function png() {
-    const blob = await nodeToPng(docRef.current, { pixelRatio: 2 });
+    const blob = await nodeToPng(docRef.current, { pixelRatio: 2, width: 794 }); // A4 width
     const how = await shareBlob(blob, `contract-${tenant.roomId || tenant.id}.png`, 'កិច្ចសន្យាជួល');
     if (how === 'downloaded') notify('បានទាញយក PNG');
   }

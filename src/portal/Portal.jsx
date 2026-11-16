@@ -4,7 +4,7 @@ import { ContractDoc } from '../ContractDoc.jsx';
 import { api, uploadFile, compressImage } from '../api.js';
 import { QR, Toast, Field, AddressPicker, StatusPill, Modal } from '../ui.jsx';
 import InvoiceDoc from '../InvoiceDoc.jsx';
-import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords, fmtMoney, fmtAlt, moneyInWords, setClientCurrency } from '../../shared/khmer.js';
+import { usd, num, monthKm, dateKm, greetingKm, nowInCambodia, khr, GENDERS, ID_TYPES, usdInWords, fmtMoney, fmtAlt, moneyInWords, setClientCurrency, setNumeralsSource } from '../../shared/khmer.js';
 import './portal.css';
 import MeterSubmit from './MeterSubmit.jsx';
 import { inTelegram } from './telegram.js';
@@ -51,6 +51,7 @@ export default function Portal({ token }) {
   const n = (v) => num(v, k);
   const cur = data.property.currency === 'KHR' ? 'KHR' : 'USD';
   setClientCurrency(cur);
+  setNumeralsSource(data.property.khmerNumerals === true);
   const $ = (v) => fmtMoney(v, cur, k);
   const open = data.invoices.filter((i) => i.status !== 'paid');
   const owed = open.reduce((s, i) => s + i.total, 0);
