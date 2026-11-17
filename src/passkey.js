@@ -1,19 +1,24 @@
 // Passkey sign-in and registration in the browser (WebAuthn via @simplewebauthn/browser).
-import { startAuthentication, startRegistration, browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
+// The WebAuthn library is only downloaded when someone actually uses a passkey.
 import { api } from './api.js';
 
-export const passkeysSupported = () => { try { return browserSupportsWebAuthn(); } catch { return false; } };
-export const autofillSupported = () => browserSupportsWebAuthnAutofill().catch(() => false);
+const lib = () => import('@simplewebauthn/browser');
+export const passkeysSupported = () => typeof window !== 'undefined' && typeof window.PublicKeyCredential === 'function';
+export const autofillSupported = async () => {
+  try { return passkeysSupported() && !!(await window.PublicKeyCredential.isConditionalMediationAvailable?.()); } catch { return false; }
+};
 
 /** Sign in with a passkey. `autofill` = offer saved passkeys in the e-mail field's suggestions. */
 export async function signInWithPasskey({ autofill = false } = {}) {
   const { options, ticket } = await api('POST', '/api/auth/passkey/options', {});
+  const { startAuthentication } = await lib();
   const response = await startAuthentication({ optionsJSON: options, useBrowserAutofill: autofill });
   return api('POST', '/api/auth/passkey', { ticket, response });
 }
 
 export async function addPasskey(name) {
   const { options, ticket } = await api('POST', '/api/account/passkeys/options', {});
+  const { startRegistration } = await lib();
   const response = await startRegistration({ optionsJSON: options });
   return api('POST', '/api/account/passkeys', { ticket, response, name });
 }

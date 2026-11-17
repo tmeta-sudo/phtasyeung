@@ -4,7 +4,7 @@ import {
   LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download, MessageSquare,
   BarChart3, KeyRound,
 } from 'lucide-react';
-import { api, takeEarly } from './api.js';
+import { api, takeEarly, refreshState } from './api.js';
 import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
 import { setClientCurrency, setNumeralsSource } from '../shared/khmer.js';
 import { AppCtx, useApp, navigate, usePath, Toast, Avatar, tenantPhoto, PrintPortal } from './ui.jsx';
@@ -262,7 +262,8 @@ function Admin({ onLogout }) {
       if (q.sent) notify(`📶 បានផ្ញើលេខកុងទ័រ ${q.sent} ដែលកត់ពេលគ្មានអ៊ីនធឺណិត`);
       for (const f of q.failed) notify(`${f.roomId}: ${f.error}`, true);
       const early = takeEarly('/api/state');
-      const st = await ((!q.sent && early) || api('GET', '/api/state'));
+      const st = await ((!q.sent && early) || refreshState());
+      if (!st) { setState((cur) => (cur?.offline ? { ...cur, offline: false } : cur)); return; } // unchanged
       cacheState(st);
       setState(st);
     } catch (e) {

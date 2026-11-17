@@ -31,3 +31,4 @@ desktop.ini
 
 # App data (database, uploaded ID cards) — private, never commit
 data/
+server/shell.generated.js
