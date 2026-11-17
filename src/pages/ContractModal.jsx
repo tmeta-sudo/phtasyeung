@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { FileText, Printer, Image as ImageIcon, RefreshCw, ReceiptText, Ban, Check } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, usePumi, addressText } from '../ui.jsx';
 import { contractValues, fillTemplate } from '../contract.js';
-import { useAddressText } from '../settings/LocationCard.jsx';
+import { useAddressText } from '../settings/address.js';
 import { nodeToPng, shareBlob } from '../exportImage.js';
 import { ContractDoc } from '../ContractDoc.jsx';
 import SignaturePad from '../SignaturePad.jsx';

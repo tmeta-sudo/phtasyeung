@@ -13,8 +13,26 @@ export async function api(method, url, body) {
     err.status = res.status;
     throw err;
   }
+  // Every reply that is the whole landlord state remembers its fingerprint for the next refresh.
+  if (data && data.today && data.rooms && data.settings) stateTag = res.headers.get('etag') || '';
   return data;
 }
+
+let stateTag = '';
+/**
+ * Background refresh of the landlord state. Returns null when nothing changed since the last
+ * state we received (the server answers 304 with no body), so the app skips parsing and re-drawing.
+ */
+export async function refreshState() {
+  if (!stateTag) return api('GET', '/api/state');
+  const res = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store', headers: { 'if-none-match': stateTag } });
+  if (res.status === 304) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const err = new Error(data.error || `មានបញ្ហា (${res.status})`); err.status = res.status; throw err; }
+  stateTag = res.headers.get('etag') || '';
+  return data;
+}
+export const forgetStateTag = () => { stateTag = ''; };
 
 // Requests started before the app code has even downloaded (see main.jsx), picked up later.
 const early = new Map();

@@ -1,6 +1,8 @@
 // Express app shared by Vercel (api/index.js) and local runs (server/local.js).
+import { fastJson } from './fastjson.js';
 import { recordMeter, editMeter, setPrevious, submitReading, approveSubmission, rejectSubmission } from './readings.js';
-import { FEATURE_IDS } from '../shared/features.js';
+import { FEATURE_IDS, ROOM_FEATURES } from '../shared/features.js';
+import { appShell, withMeta, originOf, sendHtml, esc as escAttr } from './share.js';
 import { recordError, installProcessHandlers } from './errors.js';
 installProcessHandlers();
 import { staffView, MANAGER_SETTINGS } from './roles.js';
@@ -27,7 +29,7 @@ import {
 } from './blob.js';
 import { tgLoginRoutes, configureTgLogin, isTelegramEmail } from './tglogin.js';
 import { api as tgApi, platformBotName } from './telegram.js';
-import { normalizePhone, nowInCambodia, kmDigits } from '../shared/khmer.js';
+import { normalizePhone, nowInCambodia, kmDigits, fmtMoney } from '../shared/khmer.js';
 import { securityHeaders, sameOriginWrites } from './security.js';
 import { passkeyRoutes } from './passkeys.js';
 
@@ -39,6 +41,7 @@ const jsonSmall = express.json({ limit: '2mb' });
 const jsonLarge = express.json({ limit: '12mb' });
 app.use((req, res, next) => (req.path === '/api/backup/restore' ? jsonLarge : jsonSmall)(req, res, next));
 app.use(securityHeaders);
+app.use(fastJson);
 // Cross-site write guard (alongside SameSite cookies). Telegram webhooks and the cron carry no Origin.
 app.use((req, res, next) => (req.path.startsWith('/api/') ? sameOriginWrites(req, res, next) : next()));
 app.use('/api', (req, res, next) => init().then(() => next(), next));
@@ -138,7 +141,7 @@ async function fullState(req) {
     events: s.events.slice(0, 200),
     settings: await publicSettings(),
     bot: await botStatus(),
-    today: nowInCambodia(),
+    today: (({ minute, ...t }) => t)(nowInCambodia()), // no minutes: the state only changes when the data does
     account: await accountInfo(req),
     runtime: { serverless: !!process.env.VERCEL, appUrl: appUrl(), googleDrive: googleEnabled() },
   };
@@ -823,6 +826,94 @@ app.get('/api/listing/:slug/photo/:roomId/:pid', async (req, res) => {
     return sendStored(res, org, room?.photos?.find((p) => p.id === req.params.pid));
   });
 });
+// ---------- link previews and search engines ----------
+
+const priceText = (amount, currency) => fmtMoney(amount, currency).replace('.00', '');
+
+/** /v/:slug served with the house's own title, price, photo and description in the page head. */
+export async function listingPage(req, res) {
+  const origin = originOf(req, appUrl());
+  const html = await appShell(origin);
+  if (!html) return res.status(503).end('Service unavailable');
+  const slug = String(req.params.slug || '').toLowerCase();
+  let meta = null;
+  try {
+    const org = await listingOrg(slug);
+    meta = await withOrg(org, () => {
+      const st = db().settings;
+      if (!st.listing?.enabled) return null;
+      const rooms = vacantRooms();
+      const cur = st.currency === 'KHR' ? 'KHR' : 'USD';
+      const rents = rooms.map((r) => Number(r.rent) || 0).filter((n) => n > 0);
+      const from = rents.length ? priceText(Math.min(...rents), cur) : '';
+      const name = String(st.propertyName || 'ផ្ទះជួល').slice(0, 80);
+      const L = st.location || {};
+      const where = String(L.addressText || st.address || '').slice(0, 120);
+      const feats = ROOM_FEATURES.filter((f) => rooms.some((r) => (r.features || []).includes(f.id))).slice(0, 6).map((f) => `${f.icon} ${f.km}`);
+      const photoRoom = rooms.find((r) => r.photos?.length);
+      const image = st.coverUrl || (photoRoom ? `/api/listing/${slug}/photo/${encodeURIComponent(photoRoom.id)}/${photoRoom.photos[0].id}` : '');
+      const title = rooms.length ? `${name} · បន្ទប់ទំនេរ ${rooms.length}${from ? ` · ចាប់ពី ${from}/ខែ` : ''}` : `${name} · បន្ទប់ជួល`;
+      const description = [where && `📍 ${where}`, feats.join(' · '), String(st.listing.intro || '').slice(0, 160)].filter(Boolean).join(' — ') || 'មើលបន្ទប់ទំនេរ តម្លៃ និងរូបភាព — សួរម្ចាស់ផ្ទះផ្ទាល់តាម Telegram។';
+      const url = `${origin}/v/${slug}`;
+      return {
+        title, description, image, url, imageAlt: name,
+        jsonLd: {
+          '@context': 'https://schema.org', '@type': 'Residence', name, url, description,
+          ...(where ? { address: { '@type': 'PostalAddress', streetAddress: where, addressCountry: 'KH' } } : {}),
+          ...(Number.isFinite(+L.lat) && L.lat !== undefined ? { geo: { '@type': 'GeoCoordinates', latitude: +L.lat, longitude: +L.lng } } : {}),
+          ...(rents.length ? { offers: { '@type': 'AggregateOffer', priceCurrency: cur, lowPrice: Math.min(...rents), highPrice: Math.max(...rents), offerCount: rooms.length } } : {}),
+        },
+      };
+    });
+  } catch { meta = null; }
+  if (!meta) return sendHtml(res.status(404), withMeta(html, { title: 'រកមិនឃើញទំព័រនេះ · ផ្ទះយើង', description: 'ទំព័របន្ទប់ជួលនេះមិនមាន ឬត្រូវបានបិទ។', url: '' }), 60);
+  sendHtml(res, withMeta(html, meta));
+}
+
+/** /map with live totals in its preview ("120 vacant rooms on the map"). */
+export async function mapPage(req, res) {
+  const origin = originOf(req, appUrl());
+  const html = await appShell(origin);
+  if (!html) return res.status(503).end('Service unavailable');
+  const { places } = await publicMap().catch(() => ({ places: [] }));
+  const rooms = places.reduce((a, p) => a + p.rooms.length, 0);
+  sendHtml(res, withMeta(html, {
+    title: rooms ? `បន្ទប់ជួលទំនេរ ${rooms} នៅលើផែនទី · ផ្ទះយើង` : 'ផែនទីបន្ទប់ជួលទំនេរ · ផ្ទះយើង',
+    description: `រកបន្ទប់ជួលនៅជិតអ្នក — តម្លៃពិត រូបភាព និងទីតាំង ពីម្ចាស់ផ្ទះ ${places.length} កន្លែង។ សួរម្ចាស់ផ្ទះផ្ទាល់តាម Telegram។`,
+    url: `${origin}/map`,
+  }));
+}
+
+// Page routes (Vercel rewrites these paths to the API function; the original path is kept).
+// In local development Vite serves the pages itself, with live reload.
+const pages = (fn) => async (req, res, next) => {
+  if (process.env.PY_DEV_SERVER === '1') return next();
+  try { await init(); return await fn(req, res); } catch (e) { return next(e); }
+};
+app.get('/v/:slug', pages(listingPage));
+app.get(['/map', '/map/'], pages(mapPage));
+
+/** Every public page, so Google and others can find the rooms (one URL per house). */
+export async function sitemap(req, res) {
+  const origin = originOf(req, appUrl());
+  const { places } = await publicMap().catch(() => ({ places: [] }));
+  const { rows } = await q(`SELECT o.doc->'settings'->'listing'->>'slug' AS slug FROM orgs o
+    WHERE NOT o.suspended AND NOT o.listing_hidden AND o.doc->'settings'->'listing'->>'enabled' = 'true' LIMIT 20000`);
+  const slugs = new Set([...places.map((p) => p.slug), ...rows.map((r) => r.slug)].filter((x) => /^[a-z0-9-]{3,40}$/.test(x || '')));
+  const urls = ['/', '/map', ...[...slugs].map((x) => `/v/${x}`)];
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.end(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${escAttr(origin + u)}</loc>${u.startsWith('/v/') ? '<changefreq>daily</changefreq>' : ''}</url>`).join('\n')}\n</urlset>\n`);
+}
+export function robots(req, res) {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  // Public pages only; the app, tenant pages and chats stay out of search results.
+  res.end(`User-agent: *\nAllow: /\nAllow: /map\nAllow: /v/\nAllow: /api/listing/\nAllow: /api/cover/\nDisallow: /api/\nDisallow: /p/\nDisallow: /q/\nDisallow: /join\nDisallow: /auth/\n\nSitemap: ${originOf(req, appUrl())}/sitemap.xml\n`);
+}
+app.get('/sitemap.xml', pages(sitemap));
+app.get('/robots.txt', pages(robots));
+
 // ---------- public map of vacant rooms (all landlords who opted in) ----------
 
 let mapCache = { at: 0, data: null };

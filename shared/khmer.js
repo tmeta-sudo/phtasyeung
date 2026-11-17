@@ -35,9 +35,12 @@ export const asciiDigits = (value) => toASCII(String(value ?? ''));
 export const num = (value, khmer = false) => (khmer ? khmerDigitsAlways(value) : String(value ?? ''));
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// Reused number formatters: toLocaleString(…, options) builds a new one on every call, which is slow in long lists.
+const CENTS = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const WHOLE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 export function usd(amount, khmer = false) {
-  const s = '$' + round2(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const s = '$' + CENTS.format(round2(amount));
   return num(s, khmer);
 }
 
@@ -47,7 +50,7 @@ export function toRiel(amountUsd, rate) {
 }
 
 export function khr(riel, khmer = true) {
-  return num(Math.round(Number(riel) || 0).toLocaleString('en-US'), khmer) + ' ៛';
+  return num(WHOLE.format(Math.round(Number(riel) || 0)), khmer) + ' ៛';
 }
 
 /** "ដប់បួនដុល្លារ និងហាសិបសេន" — amount in Khmer words, as printed on Cambodian invoices. */
@@ -83,12 +86,13 @@ export const getClientCurrency = () => clientCurrency;
 export const money = (amount, khmer = false) => fmtMoney(amount, clientCurrency, khmer);
 
 /** Date parts as seen on a wall clock in Phnom Penh. */
+// Building an Intl formatter is slow (~0.5 ms); it is made once and reused (this runs per invoice).
+let phnomPenhClock;
 export function nowInCambodia(date = new Date()) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).formatToParts(date).map((p) => [p.type, p.value]),
-  );
+  phnomPenhClock ||= new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(phnomPenhClock.formatToParts(date).map((p) => [p.type, p.value]));
   return {
     year: +parts.year, month: +parts.month, day: +parts.day, hour: +parts.hour, minute: +parts.minute,
     ymd: `${parts.year}-${parts.month}-${parts.day}`,
@@ -249,6 +253,6 @@ export const priceCur = (own, billing) => (own === 'USD' || own === 'KHR' ? own 
 /** A per-unit price shown exactly (720 ៛/kWh, $0.1825/kWh): not rounded to 100 ៛ or to cents like amounts. */
 export function fmtUnit(v, currency) {
   const n = Number(v) || 0;
-  if (currency === 'KHR') return `${Math.round(n).toLocaleString('en-US')} ៛`;
+  if (currency === 'KHR') return `${WHOLE.format(Math.round(n))} ៛`;
   return `$${n.toFixed(4).replace(/0{1,2}$/, '')}`;
 }
