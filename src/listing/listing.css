@@ -59,11 +59,6 @@
 .mpg-chip { flex-shrink: 0; border: 1px solid var(--ls-line); background: var(--ls-card); color: var(--ls-ink); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .mpg-chip.on { background: var(--ls-ink); color: var(--ls-card); border-color: var(--ls-ink); }
 .mpg-map { grid-row: 2; grid-column: 1; min-height: 0; z-index: 1; }
-.mp-price span { position: absolute; transform: translate(-50%, -100%); display: inline-flex; gap: 3px; align-items: baseline; white-space: nowrap; background: #fff; color: #0d1424; font-weight: 800; font-size: 13.5px; padding: 6px 10px; border-radius: 999px; box-shadow: 0 3px 10px rgba(13,20,36,.25); font-family: 'Inter Tight', 'Kantumruy Pro', sans-serif; }
-.mp-price span::after { content: ''; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
-.mp-price.on span { background: #1f5bff; color: #fff; z-index: 2; } .mp-price.on span::after { border-top-color: #1f5bff; }
-.mp-price small { font-size: 11px; opacity: .75; font-weight: 600; }
-.mp-cluster span { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #1f5bff; color: #fff; font-weight: 800; font-size: 15px; box-shadow: 0 0 0 6px rgba(31,91,255,.25); font-family: 'Inter Tight', sans-serif; }
 .mpg-fab { position: fixed; z-index: 600; display: inline-flex; gap: 6px; align-items: center; border: 0; border-radius: 999px; padding: 11px 16px; font: inherit; font-weight: 700; font-size: 14px; box-shadow: 0 6px 20px rgba(13,20,36,.25); cursor: pointer; }
 .mpg-fab.locate { left: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); background: var(--ls-card); color: var(--ls-ink); }
 .mpg-fab.list { left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); background: #0d1424; color: #fff; }

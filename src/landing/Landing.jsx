@@ -1,12 +1,28 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Send, QrCode, IdCard, ScanLine, CalendarDays, Smartphone, Moon, ShieldCheck, ArrowRight, Check, Sparkles, Zap, ReceiptText,
-  Droplets, Bolt, ChevronDown, Wallet, Bell, Lock, Languages, Building2, Users, Code,
+  Droplets, Bolt, ChevronDown, Wallet, Bell, Lock, Languages, Building2, Users, Code, MapPin,
 } from 'lucide-react';
 import { QR, navigate } from '../ui.jsx';
 import { ThemeToggle } from '../theme.jsx';
 import { usd, khr, toRiel, usdInWords, num, lunarKm, monthKm, nowInCambodia } from '../../shared/khmer.js';
 import './landing.css';
+
+const RoomsMap = lazy(() => import('./RoomsMap.jsx'));
+
+/** Renders the room map only once it is about to scroll into view, so the first paint stays light. */
+function WhenNear({ children, height }) {
+  const ref = useRef(); const [near, setNear] = useState(() => location.hash === '#rooms');
+  useEffect(() => {
+    if (near) return undefined;
+    const el = ref.current;
+    if (!('IntersectionObserver' in window)) { setNear(true); return undefined; }
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setNear(true); io.disconnect(); } }, { rootMargin: '600px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
+  return <div ref={ref} style={near ? undefined : { minHeight: height }}>{near && <Suspense fallback={<div style={{ minHeight: height }} />}>{children}</Suspense>}</div>;
+}
 
 /** Fades/slides children in as they scroll into view. */
 function Reveal({ as: Tag = 'div', className = '', delay = 0, children, ...rest }) {
@@ -48,7 +64,7 @@ export default function Landing() {
           <a href="#how" onClick={jump('how')}>របៀបប្រើ</a>
           <a href="#try" onClick={jump('try')}>សាកល្បង</a>
           <a href="#faq" onClick={jump('faq')}>សំណួរ</a>
-          <a href="/map">🗺️ រកបន្ទប់ជួល</a>
+          <a href="#rooms" onClick={jump('rooms')}>🗺️ រកបន្ទប់ជួល</a>
         </nav>
         <div className="lp-nav-right">
           <ThemeToggle />
@@ -78,8 +94,20 @@ export default function Landing() {
             <span><Check size={15} /> ប្រើលើទូរស័ព្ទបាន</span>
             <span><Check size={15} /> ភាសាខ្មែរពេញលេញ</span>
           </Reveal>
+          <Reveal className="lp-renter" delay={400}>
+            <a href="#rooms" onClick={jump('rooms')}><MapPin size={16} /> កំពុងរកបន្ទប់ជួល? <b>មើលបន្ទប់ទំនេរលើផែនទី</b> <ArrowRight size={15} /></a>
+          </Reveal>
         </div>
         <HeroVisual />
+      </section>
+
+      {/* ---------- rooms map (for people looking for a room) ---------- */}
+      <section className="lp-section" id="rooms">
+        <Reveal className="lp-head">
+          <span className="lp-kicker">សម្រាប់អ្នករកបន្ទប់ជួល</span>
+          <h2>រកបន្ទប់ទំនេរនៅជិតអ្នក<br /><span className="muted-h">តម្លៃពិត ពីម្ចាស់ផ្ទះផ្ទាល់ — សួរតាម Telegram បានភ្លាម។</span></h2>
+        </Reveal>
+        <WhenNear height={520}><RoomsMap /></WhenNear>
       </section>
 
       {/* ---------- built with ---------- */}

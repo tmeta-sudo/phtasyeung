@@ -1,0 +1,5 @@
+.mp-price span { position: absolute; transform: translate(-50%, -100%); display: inline-flex; gap: 3px; align-items: baseline; white-space: nowrap; background: #fff; color: #0d1424; font-weight: 800; font-size: 13.5px; padding: 6px 10px; border-radius: 999px; box-shadow: 0 3px 10px rgba(13,20,36,.25); font-family: 'Inter Tight', 'Kantumruy Pro', sans-serif; }
+.mp-price span::after { content: ''; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
+.mp-price.on span { background: #1f5bff; color: #fff; z-index: 2; } .mp-price.on span::after { border-top-color: #1f5bff; }
+.mp-price small { font-size: 11px; opacity: .75; font-weight: 600; }
+.mp-cluster span { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #1f5bff; color: #fff; font-weight: 800; font-size: 15px; box-shadow: 0 0 0 6px rgba(31,91,255,.25); font-family: 'Inter Tight', sans-serif; }
