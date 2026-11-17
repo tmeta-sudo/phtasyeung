@@ -5,17 +5,12 @@ import { LocateFixed, SlidersHorizontal, List, Map as MapIcon, X, Home, Search, 
 import { api } from '../api.js';
 import { ROOM_FEATURES } from '../../shared/features.js';
 import { fmtMoney } from '../../shared/khmer.js';
+import { PHNOM_PENH, priceOf, usdOf as usd, drawPins, findPlace } from './mapUtil.js';
 import { LAYERS, addBaseLayer, savedLayer, saveLayer } from '../MapPicker.jsx';
 import './listing.css';
 
-const PHNOM_PENH = [11.5564, 104.9282];
 const QUICK = ['ac', 'hotwater', 'bathroom', 'wifi', 'bed', 'fridge'];
 const PRICES = [[0, 'គ្រប់តម្លៃ'], [60, '≤ $60'], [100, '≤ $100'], [150, '≤ $150'], [250, '≤ $250']];
-
-const priceOf = (p, r) => fmtMoney(r.rent, p.currency, false).replace('.00', '');
-const usd = (p, r) => r.rent * p.usdRate;
-// Pins stay short: riel is said the Khmer way, in ម៉ឺន (10,000 ៛), e.g. 30ម៉ឺន៛.
-const pinPrice = (p, r) => (p.currency === 'KHR' && r.rent >= 10000 ? `${+(r.rent / 10000).toFixed(1)}ម៉ឺន៛` : priceOf(p, r));
 
 // Filters and the map position live in the address (?max=100&f=ac,wifi&c=11.55,104.92,15),
 // so a search can be shared on Facebook or Telegram and opens exactly the same view.
@@ -26,30 +21,11 @@ function readUrl() {
     max: PRICES.some(([v]) => v === +u.get('max')) ? +u.get('max') : 0,
     feats: (u.get('f') || '').split(',').filter((id) => QUICK.includes(id)),
     center: c.length === 3 && c.every(Number.isFinite) ? c : null,
+    q: (u.get('q') || '').slice(0, 80), // a place typed on the home page
+    near: u.get('near') === '1',
   };
 }
 const START = readUrl();
-
-/** Find a place in Cambodia by name (Khmer or Latin), using OpenStreetMap's Nominatim. */
-async function findPlace(q) {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=kh&limit=1&accept-language=km,en&q=${encodeURIComponent(q)}`;
-  const r = await fetch(url, { headers: { accept: 'application/json' } });
-  if (!r.ok) throw new Error('search');
-  return (await r.json())[0] || null;
-}
-
-/** Group pins that would overlap on screen at this zoom (simple grid clustering, no extra library). */
-function cluster(map, places) {
-  const cell = 56; const groups = new Map();
-  for (const p of places) {
-    const pt = map.project([p.lat, p.lng], map.getZoom());
-    const key = `${Math.floor(pt.x / cell)}:${Math.floor(pt.y / cell)}`;
-    const g = groups.get(key) || { items: [], lat: 0, lng: 0 };
-    g.items.push(p); g.lat += p.lat; g.lng += p.lng;
-    groups.set(key, g);
-  }
-  return [...groups.values()].map((g) => ({ ...g, lat: g.lat / g.items.length, lng: g.lng / g.items.length }));
-}
 
 /** Public map: every vacant room from landlords who publish them. Tap a pin → their rooms page. */
 export default function MapPage() {
@@ -58,7 +34,7 @@ export default function MapPage() {
   const [error, setError] = useState('');
   const [maxUsd, setMaxUsd] = useState(START.max);
   const [feats, setFeats] = useState(START.feats);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(START.q);
   const [searching, setSearching] = useState(false);
   const [shared, setShared] = useState('');
   const [sel, setSel] = useState(null);
@@ -105,22 +81,7 @@ export default function MapPage() {
 
   useEffect(() => {
     const m = map.current; if (!m) return;
-    layer.current.clearLayers();
-    for (const g of cluster(m, places)) {
-      if (g.items.length > 1) {
-        const n = g.items.reduce((a, p) => a + p.rooms.length, 0);
-        L.marker([g.lat, g.lng], { icon: L.divIcon({ className: 'mp-cluster', html: `<span>${n}</span>`, iconSize: [46, 46], iconAnchor: [23, 23] }) })
-          .on('click', () => m.fitBounds(L.latLngBounds(g.items.map((p) => [p.lat, p.lng])).pad(0.3), { maxZoom: 17 }))
-          .addTo(layer.current);
-      } else {
-        const p = g.items[0];
-        const cheapest = p.rooms.reduce((a, r) => (usd(p, r) < usd(p, a) ? r : a), p.rooms[0]);
-        const on = sel?.slug === p.slug;
-        L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'mp-price' + (on ? ' on' : ''), html: `<span>${pinPrice(p, cheapest)}${p.rooms.length > 1 ? `<small>+${p.rooms.length - 1}</small>` : ''}</span>`, iconSize: null, iconAnchor: [0, 0] }), zIndexOffset: on ? 1000 : 0 })
-          .on('click', (e) => { L.DomEvent.stopPropagation(e); setSel(p); })
-          .addTo(layer.current);
-      }
-    }
+    drawPins(L, m, layer.current, places, { selected: sel?.slug, onSelect: setSel });
   }, [places, view, sel]);
 
   const visible = useMemo(() => {
@@ -142,7 +103,7 @@ export default function MapPage() {
   }, [maxUsd, feats, view]);
 
   async function search(e) {
-    e.preventDefault();
+    e?.preventDefault();
     if (!q.trim()) return;
     setSearching(true); setError('');
     try {
@@ -161,6 +122,8 @@ export default function MapPage() {
     if (navigator.share) { try { await navigator.share({ title: text, url }); return; } catch (err) { if (err.name === 'AbortError') return; } }
     try { await navigator.clipboard.writeText(url); setShared('បានចម្លងតំណ ✅'); } catch { setShared(url); }
   }
+  // Arriving with ?q=ទួលគោក from the home page: go there once the map is ready.
+  useEffect(() => { if (START.q) search(); else if (START.near) nearMe(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!shared) return undefined; const t = setTimeout(() => setShared(''), 2600); return () => clearTimeout(t); }, [shared]);
 
   function nearMe() {
