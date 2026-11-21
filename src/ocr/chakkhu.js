@@ -3,9 +3,8 @@
 //
 // Everything runs in the browser with onnxruntime-web — ID card photos never leave the
 // device. The int8 model (~39 MB) is downloaded once and kept in Cache Storage.
-import wasmUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
 import { prepareCard, flip180 } from './prep.js';
-import mjsUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
+import { getOrt } from './ort.js';
 import { khnormal } from 'khmer-normalizer';
 
 const REPO = 'https://huggingface.co/muyleanging/Chakkhu-OCR-Khmer-ONNX/resolve/main';
@@ -48,9 +47,7 @@ async function cachedFetch(name, onBytes) {
 export function loadChakkhu(onProgress = () => {}) {
   if (!loading) {
     loading = (async () => {
-      const ort = await import('onnxruntime-web/wasm');
-      ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl };
-      ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
+      const ort = await getOrt();
       const sizes = { 'encoder.int8.onnx': 25877062, 'decoder.int8.onnx': 12999851 };
       const done = {};
       const report = () => onProgress(Object.values(done).reduce((a, b) => a + b, 0) / (sizes['encoder.int8.onnx'] + sizes['decoder.int8.onnx']));

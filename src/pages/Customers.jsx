@@ -422,7 +422,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
                 setF((x) => ({
                   ...x,
                   ...Object.fromEntries(['nameKm', 'nameEn', 'idNumber', 'gender', 'dob', 'idIssued', 'idExpiry'].filter((k) => fields[k]).map((k) => [k, fields[k]])),
-                  idType: 'national_id',
+                  idType: fields.idType || 'national_id',
                   address: fields.addressDetail && !x.address?.detail ? { ...x.address, detail: fields.addressDetail } : x.address,
                 }));
                 setPending((p) => ({ ...p, ...(files.front ? { idFront: files.front } : {}), ...(files.back ? { idBack: files.back } : {}) }));

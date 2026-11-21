@@ -3,6 +3,7 @@ import { ScanText, Upload, ShieldCheck, CheckCircle2, Loader2 } from 'lucide-rea
 import { Modal } from '../ui.jsx';
 import { loadChakkhu, readDocument } from './chakkhu.js';
 import { parseIdCard } from './idcard.js';
+import { linesToText, toProfile } from './kyckie/extract.js';
 import { dateKm, GENDERS, labelOf } from '../../shared/khmer.js';
 
 const FIELDS = [
@@ -12,7 +13,9 @@ const FIELDS = [
 const show = (k, v) => (k === 'gender' ? labelOf(GENDERS, v) : ['dob', 'idIssued', 'idExpiry'].includes(k) ? dateKm(v) : v);
 
 /**
- * Read a Khmer ID card on this device with Chakkhu OCR and offer the fields.
+ * Read a Khmer ID card on this device: Chakkhu OCR turns the photos into text, then the
+ * kyc-kie tagger turns the text into fields (the older regex parser fills any gaps, and
+ * takes over if kyc-kie cannot load). Offer the fields for the user to confirm.
  * onApply(fields, { front, back }) — the photos are passed back so they can be saved too.
  */
 export default function IdScanner({ initial = {}, onApply, onClose }) {
@@ -29,6 +32,8 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
     setError('');
     try {
       setStage('loading');
+      const kie = import('./kyckie/load.js').then((m) => m.loadKycKie().then((tagger) => ({ ...m, tagger })));
+      kie.catch(() => {}); // a failure here only means falling back to the regex parser
       const model = await loadChakkhu((p) => setProgress(p));
       setStage('reading');
       const read = {};
@@ -40,7 +45,13 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
         read[side] = doc.lines;
       }
       setLines(read);
-      const r = parseIdCard(read.front, read.back);
+      const legacy = parseIdCard(read.front, read.back);
+      let kyc = null;
+      try {
+        const { extract, tagger } = await kie;
+        kyc = (await extract(linesToText(read.front, read.back), tagger)).fields;
+      } catch (e) { console.warn('kyc-kie unavailable, using the regex parser', e); }
+      const r = { fields: { ...legacy.fields, ...(kyc ? toProfile(kyc) : {}) }, mrzValid: kyc ? kyc.mrz_valid : legacy.mrz ? legacy.mrz.passed === legacy.mrz.checks : null };
       setResult(r);
       setChosen(Object.fromEntries(Object.keys(r.fields).map((k) => [k, true])));
       setStage('done');
@@ -53,7 +64,7 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
 
   return (
     <Modal title="ស្កេនអត្តសញ្ញាណប័ណ្ណ" sub="អានដោយ Chakkhu OCR នៅលើឧបករណ៍របស់អ្នក" onClose={onClose} wide>
-      <p className="ocr-privacy"><ShieldCheck size={15} /> រូបភាពមិនត្រូវបានផ្ញើទៅកន្លែងណាទេ — ការអានធ្វើឡើងក្នុង browser របស់អ្នក។ លើកដំបូងត្រូវទាញយកម៉ូដែល ~៣៩MB (តែម្តង)។</p>
+      <p className="ocr-privacy"><ShieldCheck size={15} /> រូបភាពមិនត្រូវបានផ្ញើទៅកន្លែងណាទេ — ការអានធ្វើឡើងក្នុង browser របស់អ្នក។ លើកដំបូងត្រូវទាញយកម៉ូដែល ~៤១MB (តែម្តង)។</p>
       <div className="ocr-sides">
         {['front', 'back'].map((side) => (
           <button key={side} type="button" className={'ocr-side ' + (files[side] ? 'has' : '')} onClick={() => inputs[side].current.click()} disabled={stage === 'loading' || stage === 'reading'}>
@@ -76,7 +87,7 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
 
       {stage === 'done' && result && (
         <div className="ocr-result">
-          {result.mrz && <p className={'mrz-badge ' + (result.mrz.passed === result.mrz.checks ? 'ok' : 'warn')}><CheckCircle2 size={14} /> MRZ {result.mrz.passed}/{result.mrz.checks} លេខត្រួតពិនិត្យត្រឹមត្រូវ</p>}
+          {result.mrzValid != null && <p className={'mrz-badge ' + (result.mrzValid ? 'ok' : 'warn')}><CheckCircle2 size={14} /> MRZ {result.mrzValid ? 'លេខត្រួតពិនិត្យត្រឹមត្រូវ' : 'លេខត្រួតពិនិត្យមិនត្រូវ — សូមពិនិត្យម្តងទៀត'}</p>}
           {Object.keys(result.fields).length ? (
             <div className="ocr-fields">
               {FIELDS.filter(([k]) => result.fields[k]).map(([k, l]) => (

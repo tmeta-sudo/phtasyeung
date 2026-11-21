@@ -1,0 +1,102 @@
+[
+ {
+  "name": "khmer_id",
+  "text": "•\nO1O234567\nគោត្តនាមនិងនម: សុខ សុភា\nSOK SOPHEA\nថ្ងៃខែឆ្នាំកំណើត: ០៥.០៣.១៩៩០ ភេទ: ស្រី កំពស់: ១៥៨ ស.ម\nទីកន្លែងកំណើត: ឃុំព្រែកអញ្ចាញ ស្រុកមុខកំពូល កណ្តាល\nអាសយដ្ឋាន: ផ្ទះ១២ ផ្លូវ២៧១ ភូមិ៣\n\nសង្កាត់ទឹកថ្លា ខណ្ឌសែនសុខ ភ្នំពេញ\n\nសុពលភាព: ១២.០៦.២០២០ ដល់ថ្ងៃ ១១.០៦.២០៣០\nភិនភាគ: ប្រជ្រុយចំ ០.៥ស.ម លើចិញ្ចើមឆ្វេង\n\nIDKHM0102345670<<<<<<<<<<<<<<< 9003059F3006117KHM<<<<<<<<<<<4 SOK<<SOPHEA<<<<<<<<<<<<<<<<<<<\n",
+  "expected": {
+   "document_type": "id_card",
+   "document_number": "010234567",
+   "passport_number": null,
+   "full_name_km": "សុខ សុភា",
+   "full_name_en": "SOK SOPHEA",
+   "surname": "SOK",
+   "given_names": "SOPHEA",
+   "sex": "F",
+   "date_of_birth": "1990-03-05",
+   "nationality": "KHM",
+   "place_of_birth": "ឃុំព្រែកអញ្ចាញ ស្រុកមុខកំពូល កណ្តាល",
+   "address": "ផ្ទះ១២ ផ្លូវ២៧១ ភូមិ៣ សង្កាត់ទឹកថ្លា ខណ្ឌសែនសុខ ភ្នំពេញ",
+   "height_cm": 158,
+   "distinguishing_marks": "ប្រជ្រុយចំ ០.៥ស.ម លើចិញ្ចើមឆ្វេង",
+   "issue_date": "2020-06-12",
+   "expiry_date": "2030-06-11",
+   "visa_type": null,
+   "mrz": "IDKHM0102345670<<<<<<<<<<<<<<<\n9003059F3006117KHM<<<<<<<<<<<4\nSOK<<SOPHEA<<<<<<<<<<<<<<<<<<<",
+   "mrz_valid": true
+  }
+ },
+ {
+  "name": "khmer_passport",
+  "text": "KINGDOM OF CAMB0DIA\nព្រះរាជាណាចក្រកម្ពុជា\nលិខិតឆ្លងដែន / PASSPORT\nប្រភេទ/Type\nលេខលិខិតឆ្លងដែន/Passport No.\nកូដប្រទេស/Country Code\nPN\nKHM\nN0l875532\nនាមត្រកូល/Sumame\nCHAN\nនាមខ្លួន/Given names\nVICHET\nសញ្ជាតិ/Nationality\nCAMBODIAN\nថ្ងៃខែឆ្នាំកំណើត/Date of birth\n23 NOV l985\nភេទ/Sex\nទីកន្លែងកំណើត/Place of birth\nM\nKAMPONG CHAM\nថ្ងៃចេញ/Date of issue អាជ្ញាធរចេញ/Authority\n14 FEB 2O21\nMOI PHNOM PENH\nថ្ងៃផុតកំណត់/Date of expiry\n14 FEB 2031\nPNKHMCHAN<<VICHET<<<<<<<<<<<<<<<<<<<<<<<<<<<\nN018755320KHM851138M31021450112233445<<<<90\n",
+  "expected": {
+   "document_type": "passport",
+   "document_number": "N01875532",
+   "passport_number": "N01875532",
+   "full_name_km": null,
+   "full_name_en": "CHAN VICHET",
+   "surname": "CHAN",
+   "given_names": "VICHET",
+   "sex": "M",
+   "date_of_birth": "1985-11-23",
+   "nationality": "CAMBODIAN",
+   "place_of_birth": "KAMPONG CHAM",
+   "address": null,
+   "height_cm": null,
+   "distinguishing_marks": null,
+   "issue_date": "2021-02-14",
+   "expiry_date": "2031-02-14",
+   "visa_type": null,
+   "mrz": "PNKHMCHAN<<VICHET<<<<<<<<<<<<<<<<<<<<<<<<<<<\nN018755320KHM851138M31021450112233445<<<<90",
+   "mrz_valid": false
+  }
+ },
+ {
+  "name": "visa",
+  "text": "ព្រះរាជាណាចក្រកម្ពុជា KINGDOM OF CAMBODIA\nទិដ្ឋាការ VISA\nលេខ/No.: KH0045121 ប្រភេទ/Type: T\nWANG XIAOMING\nឈ្មោះ/Name:\nលិខិតឆ្លងដែនលេខ/Passport No. E1234S678\nសញ្ជាតិ/Nationality: CHINESE ភេទ/Sex: ប្រុស M\nថ្ងៃខែឆ្នាំកំណើត/Date of birth: 30/07/1979\nថ្ងៃចេញ/Date of issue: ០៩/០៩/២០២៥\nមានសុពលភាពដល់ / Valid until 08/l2/2025\nEntries/ចំនួនចូល: Single\nDuration of stay: 90 days\nV<KHMWANG<<XIAOMING<<<<<K<<«<<<<<<<<<<<<<<<<\nE123456782CHN7907304M2512082<<<<<<<<<<<<<<<<\n",
+  "expected": {
+   "document_type": "visa",
+   "document_number": "KH0045121",
+   "passport_number": "E1234S678",
+   "full_name_km": null,
+   "full_name_en": "WANG XIAOMING",
+   "surname": "WANG",
+   "given_names": "XIAOMING",
+   "sex": "M",
+   "date_of_birth": "1979-07-30",
+   "nationality": "CHINESE",
+   "place_of_birth": null,
+   "address": null,
+   "height_cm": null,
+   "distinguishing_marks": null,
+   "issue_date": "2025-09-09",
+   "expiry_date": "2025-12-08",
+   "visa_type": "T",
+   "mrz": "V<KHMWANG<<XIAOMING<<<<<K<<<<<<<<<<<<<<<<<<<<\nE123456782CHN7907304M2512082<<<<<<<<<<<<<<<<",
+   "mrz_valid": true
+  }
+ },
+ {
+  "name": "id_no_mrz",
+  "text": "គោត្តនមនិងនាម៖ ហេង ដារ៉ា\nHENG DARA\n100456789 (01)\nថ្ងៃខែឆ្នាំកំណើត ១៧.១២.១៩៧៨ ភេទ: ប្រុស កំពស : ១៧២ស.ម\nអាសយដ្ឋាន: ភូមិ ត្រពាំងក្រសាំង\nទីកន្លែងកំណើត: ឃុំបាធាយ ស្រុកបាធាយ កំពង់ចាម\nឃុំ សំរោង ស្រុក បាទី តាកែវ\nសុពលភព: ០៣.០៤.២០១៨ ដល់ថ្ងៃ ០២.០៤.២០២៨\n",
+  "expected": {
+   "document_type": "id_card",
+   "document_number": "100456789 (01)",
+   "passport_number": null,
+   "full_name_km": "ហេង ដារ៉ា",
+   "full_name_en": "HENG DARA",
+   "surname": null,
+   "given_names": null,
+   "sex": "M",
+   "date_of_birth": "1978-12-17",
+   "nationality": null,
+   "place_of_birth": "ឃុំបាធាយ ស្រុកបាធាយ កំពង់ចាម",
+   "address": "ភូមិ ត្រពាំងក្រសាំង ឃុំ សំរោង ស្រុក បាទី តាកែវ",
+   "height_cm": 172,
+   "distinguishing_marks": null,
+   "issue_date": "2018-04-03",
+   "expiry_date": "2028-04-02",
+   "visa_type": null,
+   "mrz": null,
+   "mrz_valid": null
+  }
+ }
+]
