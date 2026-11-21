@@ -57,7 +57,7 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - Tiered prices (EDC-style bands) and meters shared between rooms.
 
 ### Tenants
-- Full profile with **Khmer ID card OCR** on the device (Chakkhu), auto-cropped and straightened.
+- Full profile with **Khmer ID card OCR** on the device (Chakkhu reads the text, kyc-kie turns it into fields; passports work too), auto-cropped and straightened.
 - Khmer contract with **finger signature**; move-in invoice for deposit + prepaid rent.
 - A private page per tenant (no app to install) that also **opens inside Telegram**.
 - Announcements to everyone, one building, or chosen rooms.
@@ -138,7 +138,7 @@ Landlords then see **«ភ្ជាប់ Google Drive»** in Settings → Backu
 | Server | Node 22, Express 5. One JSON document per landlord in Postgres, locked per request. |
 | Web app | React 19 + Vite, installable PWA, no UI framework. Rarely used pages and heavy tools (QR reading, zip, image export) load only when needed. |
 | Telegram | Bot API by webhook (long polling locally) |
-| OCR | Chakkhu model with onnxruntime-web, entirely in the browser |
+| OCR | Chakkhu model (photo → text) and kyc-kie tagger (text → ID fields) with onnxruntime-web, entirely in the browser |
 | Tests | `node:test` with in-process fakes; GitHub Actions on every pull request |
 
 ## Privacy and security
@@ -171,6 +171,7 @@ This project stands on work shared by Khmer developers and the wider open-source
 | khmernumber, khmerword, split-khmer, is-khmer, pumi | **Seanghay Yath** | Khmer numbers, words, search and addresses |
 | khmer-chhankitek-calendar | **Choch Kimhour** | Lunar calendar and holidays |
 | Chakkhu OCR | **Ing Muyleang** | Reading ID cards, meters and bank slips |
+| kyc-kie | **mrrtmob** | Finding the fields in ID card and passport text |
 | bakong-khqr | **Devit Huotkeo** / NBC KHQR SDK | KHQR |
 | Kantumruy Pro | The Kantumruy Project Authors ([sovichet/kantumruy-pro](https://github.com/sovichet/kantumruy-pro)) | Interface font |
 | Moul, Koulen, Bokor, Battambang, Siemreap | **Danh Hong** and project authors | Khmer display fonts |
