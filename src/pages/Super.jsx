@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap, AlertOctagon, Flag,
+  Shield, Users, Building2, ReceiptText, Send, HardDrive, RefreshCw, Megaphone, Lightbulb, Bug, History, Plus, Pencil, Trash2, Ban, CheckCircle2, Radio, Search, Wallet, Zap, AlertOctagon, Flag, ScanText,
 } from 'lucide-react';
 import { useApp, useFmt, Modal, Field, Empty } from '../ui.jsx';
 import { api } from '../api.js';
 import { StatusTag, FB_STATUS, NEWS_KIND, Thread } from './Feedback.jsx';
 import { usd } from '../../shared/khmer.js';
 
+const TABS_EXTRA = [['ocr', 'ភាពត្រឹមត្រូវស្កេន', ScanText]];
 const TABS = [['overview', 'ទិដ្ឋភាពទូទៅ', Shield], ['landlords', 'ម្ចាស់ផ្ទះ', Users], ['news', 'ដំណឹង / មុខងារថ្មី', Megaphone], ['feedback', 'សំណើ & បញ្ហា', Lightbulb], ['reports', 'របាយការណ៍ទំព័រ', Flag], ['errors', 'កំហុសប្រព័ន្ធ', AlertOctagon], ['audit', 'កំណត់ហេតុ', History]];
 const bytes = (b) => (b > 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB');
 const ago = (d) => {
@@ -27,13 +28,14 @@ export default function Super() {
     <>
       <div className="page-head"><h1><Shield size={28} className="h-icon" /> អ្នកគ្រប់គ្រងប្រព័ន្ធ</h1></div>
       <p className="lunar-line">🔒 អ្នកឃើញតែស្ថិតិសរុប និងព័ត៌មានគណនីម្ចាស់ផ្ទះ — មិនឃើញព័ត៌មានផ្ទាល់ខ្លួន ឬអត្តសញ្ញាណប័ណ្ណរបស់អតិថិជនទេ។</p>
-      <div className="chips-row">{TABS.map(([k, l, I]) => <button key={k} className={'tab-chip ' + (tab === k ? 'active' : '')} onClick={() => setTab(k)}><I size={14} /> {l}</button>)}</div>
+      <div className="chips-row">{[...TABS, ...TABS_EXTRA].map(([k, l, I]) => <button key={k} className={'tab-chip ' + (tab === k ? 'active' : '')} onClick={() => setTab(k)}><I size={14} /> {l}</button>)}</div>
       {tab === 'overview' && <Overview onTab={setTab} />}
       {tab === 'landlords' && <Landlords />}
       {tab === 'news' && <NewsAdmin />}
       {tab === 'feedback' && <FeedbackAdmin />}
       {tab === 'reports' && <Reports />}
       {tab === 'errors' && <Errors />}
+      {tab === 'ocr' && <OcrAccuracy />}
       {tab === 'audit' && <Audit />}
     </>
   );
@@ -402,6 +404,34 @@ function SecurityChecklist({ s }) {
       <h3 className="sec-title"><Shield size={17} /> សុវត្ថិភាពប្រព័ន្ធ</h3>
       <div className="rows">{items.map(([ok, label, hint]) => <div key={label} className="row"><span>{ok ? '✅' : '⚠️'}</span><span><b>{label}</b><small className="muted">{hint}</small></span></div>)}</div>
       <small className="muted">អ្នកប្រើបើក 2FA៖ {n(s.usersWith2fa)}/{n(s.users)}</small>
+    </section>
+  );
+}
+
+const OCR_LABELS = { nameKm: 'ឈ្មោះខ្មែរ', nameEn: 'ឈ្មោះឡាតាំង', idNumber: 'លេខអត្តសញ្ញាណប័ណ្ណ', gender: 'ភេទ', dob: 'ថ្ងៃកំណើត', idIssued: 'ថ្ងៃចេញ', idExpiry: 'ថ្ងៃផុតកំណត់', addressDetail: 'អាសយដ្ឋាន' };
+
+/** How often each scanned ID field was right on real cards (counts only — no names or numbers are kept). */
+function OcrAccuracy() {
+  const { n } = useFmt();
+  const [data] = useLoad('/api/super/ocr?days=90');
+  const [source, setSource] = useState('kyc');
+  const rows = useMemo(() => Object.keys(OCR_LABELS).map((field) => {
+    const c = { ok: 0, fixed: 0, rejected: 0, missed: 0 };
+    for (const r of data?.rows || []) if (r.field === field && r.source === source) c[r.outcome] += r.n;
+    const offered = c.ok + c.fixed + c.rejected;
+    return { field, ...c, offered, acc: offered ? Math.round((c.ok / offered) * 100) : null };
+  }), [data, source]);
+  return (
+    <section className="card">
+      <p className="muted small">ពេលម្ចាស់ផ្ទះរក្សាទុកអតិថិជនដែលបានស្កេន៖ វាលនីមួយៗ ត្រឹមត្រូវ (មិនកែ) · កែដោយដៃ · លុបចោល · ស្កេនរកមិនឃើញ ប៉ុន្តែគេវាយបញ្ចូល។ ៩០ ថ្ងៃចុងក្រោយ។ មិនរក្សាទុកឈ្មោះ លេខ ឬថ្ងៃខែទេ។</p>
+      <div className="chips-row">{[['kyc', 'kyc-kie'], ['regex', 'Regex (fallback)']].map(([k, l]) => <button key={k} className={'tab-chip ' + (source === k ? 'active' : '')} onClick={() => setSource(k)}>{l}</button>)}</div>
+      <table className="tbl">
+        <thead><tr><th>វាល</th><th>ត្រឹមត្រូវ</th><th>បានកែ</th><th>លុបចោល</th><th>រកមិនឃើញ</th><th>% ត្រឹមត្រូវ</th></tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.field}><td>{OCR_LABELS[r.field]}</td><td>{n(r.ok)}</td><td>{n(r.fixed)}</td><td>{n(r.rejected)}</td><td>{n(r.missed)}</td>
+            <td><b className={r.acc != null && r.acc < 80 ? 'warn-text' : ''}>{r.acc == null ? '—' : `${n(r.acc)}%`}</b></td></tr>
+        ))}</tbody>
+      </table>
     </section>
   );
 }

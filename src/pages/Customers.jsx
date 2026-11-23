@@ -7,6 +7,7 @@ import {
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR, AddressPicker, addressText, usePumi, useVillageName, StatusPill } from '../ui.jsx';
 import { uploadFile } from '../api.js';
 import ContractModal from './ContractModal.jsx';
+import { scanOutcomes } from '../ocr/scanStats.js';
 import MoveOutModal, { DepositCard } from './MoveOut.jsx';
 import { lazy, Suspense } from 'react';
 
@@ -318,6 +319,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
     || (idKey(f.idNumber).length >= 6 && idKey(x.idNumber) === idKey(f.idNumber))));
   const owedBy = (x) => state.invoices.filter((i) => i.status !== 'paid' && (i.tenantId === x.id || i.tenantIds?.includes(x.id))).reduce((a, i) => a + (i.balance ?? i.total), 0);
 
+  const scanned = useRef(null); // what the ID scanner offered, to count which fields needed fixing
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -329,6 +331,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
     try {
       for (const [slot, file] of Object.entries(pending)) setState(await uploadFile(`/api/tenants/${id}/files/${slot}`, file));
     } catch (err) { notify(err.message, true); }
+    if (scanned.current) { reportScan(scanned.current, f); scanned.current = null; }
     notify('បានរក្សាទុកអតិថិជន');
     setBusy(false);
     onClose();
@@ -419,7 +422,8 @@ export function CustomerForm({ tenant, preset, onClose }) {
         {scan && (
           <Suspense fallback={null}>
             <IdScanner initial={{ front: pending.idFront, back: pending.idBack }} onClose={() => setScan(false)}
-              onApply={(fields, files) => {
+              onApply={(fields, files, scanMeta) => {
+                scanned.current = scanMeta || null;
                 setF((x) => ({
                   ...x,
                   ...Object.fromEntries(['nameKm', 'nameEn', 'idNumber', 'gender', 'dob', 'idIssued', 'idExpiry'].filter((k) => fields[k]).map((k) => [k, fields[k]])),
@@ -474,4 +478,10 @@ function RecordBox({ t, base, call }) {
       ) : <button className="btn primary sm" onClick={issue}>ចេញប្រវត្តិជួល</button>}
     </div>
   );
+}
+
+/** After a scanned customer is saved, send which fields the scan got right (never the values). */
+function reportScan(meta, f) {
+  const outcomes = scanOutcomes(meta.offered, f);
+  if (Object.keys(outcomes).length) fetch('/api/ocr-stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: meta.source, outcomes }), credentials: 'same-origin' }).catch(() => {});
 }

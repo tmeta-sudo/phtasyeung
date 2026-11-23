@@ -51,7 +51,7 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
         const { extract, tagger } = await kie;
         kyc = (await extract(linesToText(read.front, read.back), tagger)).fields;
       } catch (e) { console.warn('kyc-kie unavailable, using the regex parser', e); }
-      const r = { fields: { ...legacy.fields, ...(kyc ? toProfile(kyc) : {}) }, mrzValid: kyc ? kyc.mrz_valid : legacy.mrz ? legacy.mrz.passed === legacy.mrz.checks : null };
+      const r = { fields: { ...legacy.fields, ...(kyc ? toProfile(kyc) : {}) }, mrzValid: kyc ? kyc.mrz_valid : legacy.mrz ? legacy.mrz.passed === legacy.mrz.checks : null, source: kyc ? 'kyc' : 'regex' };
       setResult(r);
       setChosen(Object.fromEntries(Object.keys(r.fields).map((k) => [k, true])));
       setStage('done');
@@ -108,7 +108,7 @@ export default function IdScanner({ initial = {}, onApply, onClose }) {
         <button type="button" className="btn ghost" onClick={onClose}>បោះបង់</button>
         {stage !== 'done'
           ? <button type="button" className="btn primary" disabled={!files.front && !files.back || stage === 'loading' || stage === 'reading'} onClick={run}><ScanText size={15} /> អាន</button>
-          : <button type="button" className="btn primary" onClick={() => { onApply(Object.fromEntries(Object.entries(result.fields).filter(([k]) => chosen[k])), files); onClose(); }}><CheckCircle2 size={15} /> បំពេញទម្រង់</button>}
+          : <button type="button" className="btn primary" onClick={() => { onApply(Object.fromEntries(Object.entries(result.fields).filter(([k]) => chosen[k])), files, { offered: result.fields, source: result.source }); onClose(); }}><CheckCircle2 size={15} /> បំពេញទម្រង់</button>}
       </div>
     </Modal>
   );
