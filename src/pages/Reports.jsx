@@ -3,6 +3,7 @@ import { BarChart3, Download, Printer, Plus, Trash2 } from 'lucide-react';
 import { useApp, useFmt, Empty, billedOf, collectedOf } from '../ui.jsx';
 import { ResidentList, IncomeSummary } from './Printouts.jsx';
 import { kmDigits } from '../../shared/khmer.js';
+import { repairStats, hoursOrDays } from '../../shared/repairs.js';
 
 const MONTHS_KM = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
 
@@ -201,6 +202,7 @@ export default function Reports() {
         <div className="card stat"><small>អត្រាជួល (ឥឡូវ)</small><b>{n(r.rooms ? Math.round((r.occupied / r.rooms) * 100) : 0)}%</b><span className="muted small">{n(r.occupied)}/{n(r.rooms)} បន្ទប់</span></div>
       </div>
 
+      <RepairCard tickets={state.tickets} />
       {!r.billed && !r.hasUtility && !r.expenses ? <Empty icon={BarChart3} title="មិនទាន់មានទិន្នន័យសម្រាប់ឆ្នាំនេះ">ចេញវិក្កយបត្រ ឬកត់កុងទ័រ ហើយរបាយការណ៍នឹងបង្ហាញនៅទីនេះ។</Empty> : (
         <div className="report-grid">
           <section className="card wide-card">
@@ -235,5 +237,23 @@ export default function Reports() {
         ) : <p className="muted">🎉 គ្មាននរណាជំពាក់ទេ</p>}
       </section>
     </>
+  );
+}
+
+/** How quickly repair requests were answered and fixed (last 90 days). */
+function RepairCard({ tickets }) {
+  const r = useMemo(() => repairStats(tickets || []), [tickets]);
+  if (!r.count && !r.open) return null;
+  const dur = (h) => { const v = hoursOrDays(h); return v ? `${kmDigits(String(v[0]))} ${v[1] === 'h' ? 'ម៉ោង' : 'ថ្ងៃ'}` : '—'; };
+  return (
+    <section className="card repair-card">
+      <h3 className="sec-title">🔧 ការជួសជុល · ៩០ ថ្ងៃចុងក្រោយ</h3>
+      <div className="stat-tiles">
+        <div className="stat"><small>សំណើ</small><b>{kmDigits(String(r.count))}</b><span className="muted small">រួចរាល់ {kmDigits(String(r.done))}</span></div>
+        <div className="stat"><small>ឆ្លើយតបលើកដំបូង (មធ្យម)</small><b>{dur(r.medianReplyH)}</b></div>
+        <div className="stat"><small>ជួសជុលរួច (មធ្យម)</small><b>{dur(r.medianFixH)}</b></div>
+        <div className="stat"><small>កំពុងរង់ចាំ</small><b className={r.open ? 'warn-text' : ''}>{kmDigits(String(r.open))}</b>{r.open > 0 && <span className="muted small">យូរបំផុត {dur(r.oldestOpenH)}</span>}</div>
+      </div>
+    </section>
   );
 }

@@ -1179,7 +1179,9 @@ app.post('/api/tickets/:id/reply', ...owner(async (req) => {
 
 app.get('/api/tickets/:id/photo/:i', ...owner(async (req, res) => {
   const t = db().tickets.find((x) => x.id === req.params.id);
-  const fileId = t?.messages[+req.params.i]?.photo;
+  const m = t?.messages[+req.params.i];
+  if (m?.file) return sendStored(res, req.session.orgId, m.file);
+  const fileId = m?.photo;
   if (!fileId) return res.status(404).end();
   const f = await fetchTelegramFile(fileId);
   res.setHeader('Content-Type', f.type);
@@ -1543,11 +1545,57 @@ async function portalState(t) {
     roommates: tenantsOfRoom(t.roomId).filter((x) => x.id !== t.id).map((x) => ({ name: x.nameKm || x.nameEn })),
     myReading: (s.meterSubmissions || []).filter((x) => x.tenantId === t.id).at(-1) || null,
     sharedKinds: ['water', 'electric'].filter((k) => (st.sharedMeters || []).some((g) => g.kind === k && g.rooms.includes(t.roomId))),
+    tickets: (s.tickets || []).filter((x) => x.tenantId === t.id && x.kind !== 'inquiry').slice(-20).reverse().map(portalTicket),
     notices: (s.notices || []).filter((n) => n.rooms?.includes(t.roomId) && Date.now() - new Date(n.at).getTime() < 60 * 86400000).slice(0, 5).map(({ id, at, text }) => ({ id, at, text })),
   };
 }
 
 app.get('/api/portal/:token', ...portal((req, res, t) => portalState(t)));
+
+/** What a tenant sees of their own repair request or message (no Telegram ids). */
+function portalTicket(x) {
+  return {
+    id: x.id, no: x.no, kind: x.kind, status: x.status, createdAt: x.createdAt, updatedAt: x.updatedAt, doneAt: x.doneAt || null,
+    messages: x.messages.map((m, i) => ({ from: m.from, text: m.text, at: m.at, photo: m.file ? i : null })),
+  };
+}
+
+// Tenants report a repair or message the owner from their page (Telegram not needed).
+app.post('/api/portal/:token/tickets', ...portal(async (req, res, t) => {
+  const kind = req.body?.kind === 'message' ? 'message' : 'maintenance';
+  const text = str(req.body?.text, 3000);
+  let file;
+  if (req.file) { const r = await storeImage(req.file, `repair ${t.roomId || ''}`); if (r.error) fail(r.error); file = r.meta; }
+  if (!text && !file) fail('សូមរៀបរាប់បញ្ហា');
+  const s = db();
+  let tk = req.body?.ticketId && s.tickets.find((x) => x.id === req.body.ticketId && x.tenantId === t.id && x.kind !== 'inquiry');
+  if (!tk) {
+    const open = s.tickets.filter((x) => x.tenantId === t.id && x.status !== 'done').length;
+    if (open >= 10) fail('មានសំណើបើកច្រើនពេក — សូមរង់ចាំម្ចាស់ផ្ទះឆ្លើយតបសិន');
+    s.counters.ticket = (s.counters.ticket || 0) + 1;
+    tk = { id: uid(), no: s.counters.ticket, kind, tenantId: t.id, roomId: t.roomId, name: t.nameKm || t.nameEn, status: 'open', createdAt: now(), updatedAt: now(), unread: 0, messages: [], adminMsgIds: [], tenantMsgIds: [] };
+    s.tickets.push(tk);
+    if (s.tickets.length > 500) s.tickets.splice(0, s.tickets.length - 500);
+    if (kind === 'maintenance') s.activities.push({ id: uid(), kind: 'maintenance', title: text.slice(0, 120) || '📷 រូបភាព', detail: `#${tk.no} · ${tk.name}`, roomId: t.roomId, done: false, at: now(), ticketId: tk.id });
+  }
+  const msg = { from: 'tenant', text, at: now(), via: 'portal', ...(file ? { file } : {}) };
+  tk.messages.push(msg);
+  if (tk.messages.length > 200) tk.messages.splice(1, tk.messages.length - 200);
+  tk.unread = (tk.unread || 0) + 1; tk.updatedAt = now();
+  if (tk.status === 'done') { tk.status = 'open'; delete tk.doneAt; }
+  save();
+  logEvent('tenant', `${kind === 'maintenance' ? '🔧' : '💬'} #${tk.no} ពី ${tk.name} (${tk.roomId || '—'})`, { ticketId: tk.id });
+  await forwardToOwners(tk, { ...msg, text: text || '📷 រូបភាព' }).catch(() => {});
+  save();
+  return portalState(t);
+}, upload));
+
+app.get('/api/portal/:token/tickets/:id/photo/:i', ...portal((req, res, t, org) => {
+  const tk = db().tickets.find((x) => x.id === req.params.id && x.tenantId === t.id);
+  const m = tk?.messages[+req.params.i];
+  if (!m?.file) return res.status(404).end();
+  return sendStored(res, org, m.file);
+}));
 
 // Each customer's portal installs as its own app, opening straight to their page.
 app.get('/api/portal/:token/manifest.webmanifest', ...portal((req, res, t) => {

@@ -1433,3 +1433,5 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 
 .pin-needed { display: grid; gap: 8px; margin: 6px 0 10px; }
 .pin-needed .map-wrap { border-radius: 14px; overflow: hidden; }
+.repair-card { margin-bottom: 14px; }
+.repair-card .stat-tiles { margin: 8px 0 0; }

@@ -609,7 +609,15 @@ export async function replyToTicket(t, text, via) {
     return { ok: true };
   }
   const tenant = db().tenants.find((x) => x.id === t.tenantId);
-  if (!tenant?.telegram?.chatId) return { ok: false, error: 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram' };
+  if (!tenant) return { ok: false, error: 'រកមិនឃើញអតិថិជន' };
+  if (!tenant.telegram?.chatId) { // no Telegram: the reply waits on the tenant's own page
+    t.messages.push({ from: 'owner', text: text.slice(0, 3000), at: now(), via });
+    t.unread = 0; t.updatedAt = now();
+    if (t.status === 'open') t.status = 'progress';
+    if (!t.firstReplyAt) t.firstReplyAt = now();
+    save();
+    return { ok: true };
+  }
   try {
     const sent = await send(tenant.telegram.chatId, `💬 <b>ម្ចាស់ផ្ទះ</b> (#${kmDigits(t.no)})\n\n${esc(text)}\n\n<i>ឆ្លើយតប (reply) សារនេះ ដើម្បីឆ្លើយទៅវិញ។</i>`);
     t.tenantMsgIds = [...(t.tenantMsgIds || []), sent.message_id].slice(-30);
@@ -617,6 +625,7 @@ export async function replyToTicket(t, text, via) {
     t.unread = 0;
     t.updatedAt = now();
     if (t.status === 'open') t.status = 'progress';
+    if (!t.firstReplyAt) t.firstReplyAt = now();
     save();
     return { ok: true };
   } catch (e) {
@@ -627,6 +636,7 @@ export async function replyToTicket(t, text, via) {
 export async function setTicketStatus(t, status) {
   t.status = status;
   t.updatedAt = now();
+  if (status === 'done') t.doneAt = now(); else delete t.doneAt;
   if (status === 'done') {
     const act = db().activities.find((a) => a.ticketId === t.id);
     if (act) act.done = true;
