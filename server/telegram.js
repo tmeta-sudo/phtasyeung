@@ -14,6 +14,7 @@ import { monthKm, kmDigits, nowInCambodia, dateKm, asciiDigits } from '../shared
 import { fm as usd, fmAlt } from './db.js';
 import { botLoginStart, botLoginCallback, botRecover, linkTelegramToOrgOwners } from './tglogin.js';
 import { checkInvoice } from './bakong.js';
+import { ownerAnswer, OWNER_COMMANDS, OWNER_HELP } from './ownerbot.js';
 
 const API = process.env.TELEGRAM_API_BASE || 'https://api.telegram.org';
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -156,7 +157,7 @@ const MENU = {
   ],
   resize_keyboard: true,
 };
-const ADMIN_MENU = { keyboard: [[{ text: '📊 សង្ខេបខែនេះ' }, { text: '⏳ មិនទាន់បង់' }], [{ text: '🔑 ចូលគណនី' }, { text: '❓ ជំនួយ' }]], resize_keyboard: true };
+const ADMIN_MENU = { keyboard: [[{ text: '📊 សង្ខេបខែនេះ' }, { text: '⏳ មិនទាន់បង់' }], [{ text: '💰 ចំណូល' }, { text: '🔧 ការជួសជុល' }], [{ text: '📅 ជិតផុតកំណត់' }, { text: '❓ ជំនួយ' }], [{ text: '🔑 ចូលគណនី' }]], resize_keyboard: true };
 
 export const send = (chatId, html, extra = {}) =>
   call('sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
@@ -378,7 +379,7 @@ export async function handleUpdate(botKey, token, u) {
       if (!admin && !tenant && await handleProspectMessage(chatId, m, text)) return;
       if (admin && await handleAdminText(chatId, text)) return;
       if (!tenant) {
-        if (admin) await send(chatId, '📊 /summary · ⏳ /unpaid · 🧾 /generate', { reply_markup: ADMIN_MENU });
+        if (admin) await send(chatId, OWNER_HELP, { reply_markup: ADMIN_MENU });
         return;
       }
       if (text === '📟 ផ្ញើលេខកុងទ័រ' || text === '/meter') return startMeterConversation(tenant);
@@ -421,6 +422,7 @@ async function linkAdmin(botKey, m) {
   s.settings.telegram.adminLinkCode = uid(6); // single use
   save();
   if (botKey === 'platform') await linkTelegramToOrgOwners(orgId(), m.from); // enables sign-in & recovery via the bot
+  await call('setMyCommands', { commands: OWNER_COMMANDS, scope: { type: 'chat', chat_id: chatId } }).catch(() => {}); // owner commands in this chat's / menu
   logEvent('admin', `ម្ចាស់ផ្ទះបានភ្ជាប់ Telegram (${m.from.first_name || ''})`);
   return send(chatId, `🔐 <b>បានភ្ជាប់ជាម្ចាស់ផ្ទះ ${esc(s.settings.propertyName)}</b>\nអ្នកនឹងទទួលការជូនដំណឹងការបង់ប្រាក់ និងការងារសំខាន់ៗនៅទីនេះ។`, { reply_markup: ADMIN_MENU });
 }
@@ -443,6 +445,8 @@ async function linkTenant(botKey, m, code) {
 }
 
 async function handleAdminText(chatId, text) {
+  const quick = ownerAnswer(text);
+  if (quick) { await send(chatId, propertyTag() + quick, { reply_markup: ADMIN_MENU }); return true; }
   if (text === '/summary' || text === '📊 សង្ខេបខែនេះ') {
     const ym = nowInCambodia().ym;
     const inv = db().invoices.filter((i) => i.month === ym);
