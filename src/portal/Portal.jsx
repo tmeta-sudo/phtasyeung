@@ -104,7 +104,6 @@ export default function Portal({ token }) {
             <div className="pt-chips">
               <button className="active" onClick={() => setTab('home')}><span><Home size={15} /></span>{t('home')}</button>
               <button onClick={() => setTab('bills')}><span><ReceiptText size={15} /></span>{t('bills')}</button>
-              <button onClick={() => setTab('help')}><span><Wrench size={15} /></span>{t('help')}</button>
               <button onClick={() => setTab('me')}><span><UserRound size={15} /></span>{t('me')}</button>
             </div>
             {data.notices?.length > 0 && (
