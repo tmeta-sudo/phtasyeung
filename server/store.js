@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS errors (fingerprint text PRIMARY KEY, source text NOT
   first_at timestamptz NOT NULL DEFAULT now(), last_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS memberships (user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE, org_id text NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
   role text NOT NULL DEFAULT 'owner', created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, org_id));
+CREATE TABLE IF NOT EXISTS ocr_stats (day date NOT NULL, source text NOT NULL, field text NOT NULL, outcome text NOT NULL, count int NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, source, field, outcome));
 CREATE TABLE IF NOT EXISTS admin_audit (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), actor text NOT NULL, action text NOT NULL, target text NOT NULL DEFAULT '', detail text NOT NULL DEFAULT '');
 `;
 
@@ -190,6 +192,7 @@ function lookupKeys(doc) {
   }
   for (const c of doc.settings?.telegram?.adminChats || []) keys.push([`chat:${botKey}`, String(c.chatId)]);
   if (doc.settings?.telegram?.adminLinkCode) keys.push(['admin-link', doc.settings.telegram.adminLinkCode]);
+  for (const r of doc.records || []) if (!r.revokedAt) keys.push(['record', r.token]);
   if (doc.settings?.listing?.enabled && doc.settings.listing.slug) keys.push(['listing', doc.settings.listing.slug]);
   for (const t of doc.tickets || []) {
     if (t.kind !== 'inquiry' || t.status === 'done' || !t.chatToken) continue;

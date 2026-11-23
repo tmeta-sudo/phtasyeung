@@ -7,6 +7,7 @@ import {
 import { useApp, useFmt, navigate, Modal, Field, Avatar, tenantPhoto, Empty, QR, AddressPicker, addressText, usePumi, useVillageName, StatusPill } from '../ui.jsx';
 import { uploadFile } from '../api.js';
 import ContractModal from './ContractModal.jsx';
+import { scanOutcomes } from '../ocr/scanStats.js';
 import MoveOutModal, { DepositCard } from './MoveOut.jsx';
 import { lazy, Suspense } from 'react';
 
@@ -147,6 +148,7 @@ export function CustomerDetail({ id }) {
             <button className="btn ghost sm" onClick={() => window.confirm('បង្កើតតំណថ្មី? តំណ/QR ចាស់នឹងលែងប្រើបាន។') && call('POST', `/api/tenants/${t.id}/rotate`, { what: 'portal' }, 'បានបង្កើតតំណថ្មី')}><RefreshCw size={14} /> ប្តូរតំណគណនី</button>
             <button className="btn ghost sm" onClick={() => { navigator.clipboard?.writeText(portal); }}><Link2 size={14} /> ចម្លងតំណ</button>
           </div>
+          {t.status !== 'prospect' && <RecordBox t={t} base={base} call={call} />}
         </aside>
 
         <div className="detail-main">
@@ -317,6 +319,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
     || (idKey(f.idNumber).length >= 6 && idKey(x.idNumber) === idKey(f.idNumber))));
   const owedBy = (x) => state.invoices.filter((i) => i.status !== 'paid' && (i.tenantId === x.id || i.tenantIds?.includes(x.id))).reduce((a, i) => a + (i.balance ?? i.total), 0);
 
+  const scanned = useRef(null); // what the ID scanner offered, to count which fields needed fixing
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -328,6 +331,7 @@ export function CustomerForm({ tenant, preset, onClose }) {
     try {
       for (const [slot, file] of Object.entries(pending)) setState(await uploadFile(`/api/tenants/${id}/files/${slot}`, file));
     } catch (err) { notify(err.message, true); }
+    if (scanned.current) { reportScan(scanned.current, f); scanned.current = null; }
     notify('បានរក្សាទុកអតិថិជន');
     setBusy(false);
     onClose();
@@ -418,7 +422,8 @@ export function CustomerForm({ tenant, preset, onClose }) {
         {scan && (
           <Suspense fallback={null}>
             <IdScanner initial={{ front: pending.idFront, back: pending.idBack }} onClose={() => setScan(false)}
-              onApply={(fields, files) => {
+              onApply={(fields, files, scanMeta) => {
+                scanned.current = scanMeta || null;
                 setF((x) => ({
                   ...x,
                   ...Object.fromEntries(['nameKm', 'nameEn', 'idNumber', 'gender', 'dob', 'idIssued', 'idExpiry'].filter((k) => fields[k]).map((k) => [k, fields[k]])),
@@ -448,4 +453,35 @@ export function CustomerForm({ tenant, preset, onClose }) {
       </form>
     </Modal>
   );
+}
+
+/** 🏅 Rental record: a summary of this tenant's payments that they can show a future landlord. */
+function RecordBox({ t, base, call }) {
+  const url = t.record ? `${base}/r/${t.record.token}` : '';
+  async function issue() {
+    const note = window.prompt('មតិសម្រាប់ម្ចាស់ផ្ទះថ្មី (មិនចាំបាច់ · អតិបរមា ៣០០ តួ)៖', '');
+    if (note === null) return;
+    const r = await call('POST', `/api/tenants/${t.id}/record`, { note }, t.telegram?.chatId ? 'បានចេញ និងផ្ញើទៅ Telegram របស់អតិថិជន' : 'បានចេញប្រវត្តិជួល');
+    if (r?.result?.url) navigator.clipboard?.writeText(r.result.url).catch(() => {});
+  }
+  return (
+    <div className="record-box">
+      <b>🏅 ប្រវត្តិជួល</b>
+      <small className="muted">សង្ខេបការបង់ប្រាក់ (គ្មានលេខអត្តសញ្ញាណប័ណ្ណ ឬទូរស័ព្ទ) ដែលអតិថិជនអាចបង្ហាញម្ចាស់ផ្ទះថ្មី។</small>
+      {url ? (
+        <div className="row-btns">
+          <a className="btn ghost sm" href={url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> មើល</a>
+          <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(url)}><Link2 size={14} /> ចម្លង</button>
+          <button className="btn ghost sm" onClick={issue}>ធ្វើបច្ចុប្បន្នភាព</button>
+          <button className="btn ghost sm" onClick={() => window.confirm('ដកប្រវត្តិជួលវិញ? តំណនឹងលែងប្រើបាន។') && call('DELETE', `/api/tenants/${t.id}/record`, undefined, 'បានដកវិញ')}>ដកវិញ</button>
+        </div>
+      ) : <button className="btn primary sm" onClick={issue}>ចេញប្រវត្តិជួល</button>}
+    </div>
+  );
+}
+
+/** After a scanned customer is saved, send which fields the scan got right (never the values). */
+function reportScan(meta, f) {
+  const outcomes = scanOutcomes(meta.offered, f);
+  if (Object.keys(outcomes).length) fetch('/api/ocr-stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source: meta.source, outcomes }), credentials: 'same-origin' }).catch(() => {});
 }

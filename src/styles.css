@@ -1433,3 +1433,9 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 
 .pin-needed { display: grid; gap: 8px; margin: 6px 0 10px; }
 .pin-needed .map-wrap { border-radius: 14px; overflow: hidden; }
+.repair-card { margin-bottom: 14px; }
+.repair-card .stat-tiles { margin: 8px 0 0; }
+.record-box { display: grid; gap: 6px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line, rgba(0,0,0,.08)); text-align: left; }
+.record-box .row-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-note-admin { margin-bottom: 14px; }
+.status-note-admin input { flex: 1; min-width: 200px; }

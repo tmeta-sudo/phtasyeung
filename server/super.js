@@ -8,6 +8,7 @@ import { requireOwner } from './auth.js';
 import { api as tgApi, appUrl, platformBotDiagnostics, ensurePlatformWebhook } from './telegram.js';
 import { nowInCambodia } from '../shared/khmer.js';
 import { pushToOrg } from './push.js';
+import { clearStatusCache } from './status.js';
 
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const superEmails = () => String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
@@ -121,6 +122,9 @@ export async function handleSuperTelegramReply(chatId, m) {
   return true;
 }
 
+const OCR_FIELDS = ['nameKm', 'nameEn', 'idNumber', 'gender', 'dob', 'idIssued', 'idExpiry', 'addressDetail'];
+const OCR_OUTCOMES = ['ok', 'fixed', 'rejected', 'missed'];
+
 export function superRoutes(app) {
   // ---------- landlord side: what's new ----------
 
@@ -191,6 +195,36 @@ export function superRoutes(app) {
   });
 
   // ---------- super admin ----------
+
+  // ---------- ID scanner accuracy: counts only, never what was read ----------
+
+  app.post('/api/ocr-stats', requireOwner, async (req, res) => {
+    if (!(await rateLimit(`ocr:${req.session.userId}`, 60, 3600))) return res.status(429).json({ error: 'ច្រើនដងពេក' });
+    const source = req.body?.source === 'regex' ? 'regex' : 'kyc';
+    const rows = Object.entries(req.body?.outcomes || {}).filter(([f, o]) => OCR_FIELDS.includes(f) && OCR_OUTCOMES.includes(o));
+    for (const [field, outcome] of rows) {
+      await q(`INSERT INTO ocr_stats (day, source, field, outcome, count) VALUES ((now() AT TIME ZONE 'Asia/Phnom_Penh')::date, $1, $2, $3, 1)
+        ON CONFLICT (day, source, field, outcome) DO UPDATE SET count = ocr_stats.count + 1`, [source, field, outcome]);
+    }
+    res.json({ ok: true, counted: rows.length });
+  });
+
+  // A short notice on the public status page ("Telegram is slow today, we are on it"). Empty text clears it.
+  app.put('/api/super/status-note', requireSuper, async (req, res) => {
+    const text = String(req.body?.text ?? '').trim().slice(0, 500);
+    const level = ['info', 'warn', 'down'].includes(req.body?.level) ? req.body.level : 'info';
+    await q("INSERT INTO platform_kv (key, value) VALUES ('status_note', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [JSON.stringify(text ? { text, level, at: new Date().toISOString() } : {})]);
+    clearStatusCache();
+    res.json({ ok: true });
+  });
+
+  app.get('/api/super/ocr', requireSuper, async (req, res) => {
+    const days = Math.min(365, Math.max(1, +req.query.days || 90));
+    const { rows } = await q(`SELECT source, field, outcome, sum(count)::int AS n FROM ocr_stats WHERE day > (now() AT TIME ZONE 'Asia/Phnom_Penh')::date - $1::int
+      GROUP BY source, field, outcome`, [days]);
+    res.json({ days, rows });
+  });
 
   app.get('/api/super/stats', requireSuper, async (req, res) => {
     const ym = nowInCambodia().ym;

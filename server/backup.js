@@ -96,7 +96,7 @@ export async function restoreData(data) {
   const s = db();
   const keep = { telegram: s.settings.telegram, storage: s.settings.storage, backup: s.settings.backup };
   // Portal/Telegram link codes must stay unique across all landlords.
-  const tenants = arr(data.tenants, 5000).map((t) => ({ ...t, files: {}, restoredFiles: t.files || {} }));
+  const tenants = arr(data.tenants, 5000).map((t) => ({ ...t, files: {}, restoredFiles: t.files || {}, record: null })); // record links are not restored
   for (const t of tenants) {
     const { rows } = await q("SELECT 1 FROM lookups WHERE kind IN ('portal','link') AND key IN ($1, $2) AND org_id <> $3 LIMIT 1", [t.portalToken || '', t.linkCode || '', orgId()]);
     if (rows.length || !t.portalToken) { t.portalToken = uid(18); t.linkCode = uid(6); }

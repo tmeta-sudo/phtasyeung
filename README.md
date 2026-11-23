@@ -59,7 +59,9 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 ### Tenants
 - Full profile with **Khmer ID card OCR** on the device (Chakkhu reads the text, kyc-kie turns it into fields; passports work too), auto-cropped and straightened.
 - Khmer contract with **finger signature**; move-in invoice for deposit + prepaid rent.
-- A private page per tenant (no app to install) that also **opens inside Telegram**.
+- A private page per tenant (no app to install) that also **opens inside Telegram**, in **Khmer, English or Chinese**.
+- **Repairs and messages** from Telegram or the tenant's page (with photos), followed to done; Reports show how fast repairs are answered and fixed.
+- A **rental record** the tenant can show their next landlord: bills paid on time, anything owed, deposit at move-out — a fixed snapshot behind a private link, no ID or phone numbers.
 - Announcements to everyone, one building, or chosen rooms.
 - A **public vacant-rooms page** to share on Facebook and Telegram; inquiries arrive in the Inbox.
 - **Cover photo** of the property changed straight from the phone (home screen → 📷).
@@ -76,8 +78,10 @@ Rental management built for Cambodian landlords: Khmer first, Telegram and KHQR 
 - Free signup; each landlord's data is separate. **Several properties** under one login.
 - **Team roles**: owner, manager, staff (staff never see money or ID cards).
 - Web Push and Telegram notifications, installable PWA, dark mode.
+- **Owner answers in Telegram**: `/income`, `/unpaid`, `/expiring`, `/repairs`, `/room A1`.
+- A public **status page** (`/status`) for the app, database, Telegram and the daily jobs.
 - One-click **backup and restore**: download, the owner's Telegram (weekly), **Google Drive with one tap (daily, plus monthly copies)**, or **iCloud Drive on iPhone** (Save to Files). Optional storage of ID photos in the landlord's own Google Drive or Cloudflare R2.
-- Super admin: statistics, announcements, feature requests, and an error log with personal data removed.
+- Super admin: statistics, announcements, feature requests, an error log with personal data removed, a status notice, and **ID-scanner accuracy on real cards** (counts of kept / fixed fields only — no ID data is kept).
 
 <p align="center">
   <img src="docs/screenshots/meters.png" width="23%" alt="Meter reading" />
