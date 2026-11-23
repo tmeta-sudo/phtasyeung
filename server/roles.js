@@ -18,6 +18,7 @@ const RULES = [
   ['*', '/api/meters/:id/photo/:kind', 'staff'],
   ['DELETE', '/api/meters/shared/:id', 'manager'],
   ['DELETE', '/api/meters/:id', 'manager'],
+  ['*', '/api/tenants/:id/record', 'manager'],
   ['POST', '/api/tickets/:id/reply', 'staff'],
   ['GET', '/api/tickets/:id/photo/:i', 'staff'],
   ['PUT', '/api/tickets/:id', 'staff'],

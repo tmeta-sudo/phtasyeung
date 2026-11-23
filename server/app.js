@@ -32,6 +32,7 @@ import { api as tgApi, platformBotName } from './telegram.js';
 import { normalizePhone, nowInCambodia, kmDigits, fmtMoney } from '../shared/khmer.js';
 import { securityHeaders, sameOriginWrites } from './security.js';
 import { passkeyRoutes } from './passkeys.js';
+import { issueRecord, revokeRecord, publicRecord } from './records.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -290,6 +291,36 @@ app.post('/api/tenants/:id/rotate', ...owner(async (req) => {
   save();
   return adminState(req);
 }));
+
+// ---------- rental record (a summary the tenant can show a future landlord) ----------
+
+app.post('/api/tenants/:id/record', ...owner(async (req) => {
+  const t = db().tenants.find((x) => x.id === req.params.id) || fail('រកមិនឃើញ', 404);
+  if (t.status === 'prospect') fail('អ្នកចាប់អារម្មណ៍មិនទាន់មានប្រវត្តិជួល');
+  const rec = issueRecord(t, { note: str(req.body?.note, 300) });
+  const url = `${appUrl() || originOf(req, '')}/r/${rec.token}`;
+  if (t.telegram?.chatId && req.body?.send !== false) {
+    await notifyTenant(t, `🏅 <b>ប្រវត្តិជួលរបស់អ្នក</b> ពី ${escAttr(db().settings.propertyName)}\nបង្ហាញតំណនេះទៅម្ចាស់ផ្ទះថ្មី៖\n${url}`).catch(() => {});
+  }
+  return adminState(req).then((st) => ({ ...st, result: { url } }));
+}));
+
+app.delete('/api/tenants/:id/record', ...owner(async (req) => {
+  const t = db().tenants.find((x) => x.id === req.params.id) || fail('រកមិនឃើញ', 404);
+  revokeRecord(t);
+  return adminState(req);
+}));
+
+app.get('/api/r/:token', async (req, res) => {
+  if (!(await rateLimit(`record:${req.ip}`, 60, 600))) fail('ច្រើនដងពេក', 429);
+  const token = str(req.params.token, 40);
+  const [org] = token.length >= 16 ? await findOrgs('record', token) : [];
+  const rec = org ? await withOrg(org, () => publicRecord(token)) : null;
+  if (!rec) fail('ប្រវត្តិជួលនេះមិនមាន ឬម្ចាស់ផ្ទះបានដកវិញ', 404);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  res.json(rec);
+});
 
 app.post('/api/tenants/:id/unlink-telegram', ...owner(async (req) => {
   const t = findTenant(req.params.id);

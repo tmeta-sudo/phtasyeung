@@ -155,6 +155,26 @@ const D = {
   // rental record
   record: { km: 'ប្រវត្តិជួល', en: 'Rental record', zh: '租房记录' },
   recordSub: { km: 'ឯកសារបញ្ជាក់ពីម្ចាស់ផ្ទះ សម្រាប់បង្ហាញម្ចាស់ផ្ទះថ្មី', en: 'A record from your landlord to show your next landlord', zh: '房东出具的记录，可给下一位房东查看' },
+  r_title: { km: 'ប្រវត្តិជួល', en: 'Rental record', zh: '租房记录' },
+  r_issuedBy: { km: 'ចេញដោយ {p} · {d}', en: 'Issued by {p} · {d}', zh: '由 {p} 出具 · {d}' },
+  r_tenant: { km: 'អ្នកជួល', en: 'Tenant', zh: '租客' },
+  r_where: { km: 'ទីកន្លែង', en: 'Where', zh: '地点' },
+  r_period: { km: 'រយៈពេល', en: 'Period', zh: '租期' },
+  r_now: { km: 'បច្ចុប្បន្ន', en: 'now', zh: '至今' },
+  r_bills: { km: 'វិក្កយបត្រ', en: 'Monthly bills', zh: '月度账单' },
+  r_onTime: { km: 'បង់ទាន់ពេល', en: 'Paid on time', zh: '按时支付' },
+  r_late: { km: 'បង់យឺត', en: 'Paid late', zh: '逾期支付' },
+  r_unpaid: { km: 'មិនទាន់បង់', en: 'Unpaid', zh: '未支付' },
+  r_owes: { km: 'នៅជំពាក់ {a}', en: 'Still owes {a}', zh: '尚欠 {a}' },
+  r_nothingOwed: { km: 'គ្មានជំពាក់', en: 'Nothing owed', zh: '无欠款' },
+  r_deposit: { km: 'ប្រាក់កក់ពេលចាកចេញ', en: 'Deposit at move-out', zh: '退租时押金' },
+  r_depositFull: { km: '✅ បានប្រគល់វិញទាំងស្រុង ({a})', en: '✅ Returned in full ({a})', zh: '✅ 全额退还（{a}）' },
+  r_depositPart: { km: 'បានប្រគល់វិញ {a} · កាត់ {b}', en: 'Returned {a} · {b} deducted', zh: '退还 {a} · 扣除 {b}' },
+  r_note: { km: 'មតិម្ចាស់ផ្ទះ', en: "Landlord's note", zh: '房东备注' },
+  r_score: { km: '{p}% បង់ទាន់ពេល', en: '{p}% paid on time', zh: '{p}% 按时支付' },
+  r_how: { km: 'ទិន្នន័យនេះមកពីវិក្កយបត្រក្នុង «ផ្ទះយើង» ហើយម្ចាស់ផ្ទះមិនអាចកែលេខបានទេ។ មិនមានលេខអត្តសញ្ញាណប័ណ្ណ ឬលេខទូរស័ព្ទទេ។', en: 'These numbers come from the bills in Phteah Yeung; the landlord cannot edit them. No ID or phone numbers are shown.', zh: '这些数据来自 Phteah Yeung 中的账单，房东无法修改。不显示证件号码或电话号码。' },
+  r_gone: { km: 'ប្រវត្តិជួលនេះមិនមាន ឬម្ចាស់ផ្ទះបានដកវិញ', en: 'This rental record does not exist or was withdrawn by the landlord', zh: '此租房记录不存在或已被房东撤回' },
+  r_open: { km: 'បើក និងចែករំលែក', en: 'Open and share', zh: '打开并分享' },
 };
 
 const LOCALE = { km: 'km-KH', en: 'en-GB', zh: 'zh-CN' };

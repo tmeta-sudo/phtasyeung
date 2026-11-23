@@ -190,6 +190,7 @@ function lookupKeys(doc) {
   }
   for (const c of doc.settings?.telegram?.adminChats || []) keys.push([`chat:${botKey}`, String(c.chatId)]);
   if (doc.settings?.telegram?.adminLinkCode) keys.push(['admin-link', doc.settings.telegram.adminLinkCode]);
+  for (const r of doc.records || []) if (!r.revokedAt) keys.push(['record', r.token]);
   if (doc.settings?.listing?.enabled && doc.settings.listing.slug) keys.push(['listing', doc.settings.listing.slug]);
   for (const t of doc.tickets || []) {
     if (t.kind !== 'inquiry' || t.status === 'done' || !t.chatToken) continue;

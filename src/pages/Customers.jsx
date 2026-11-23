@@ -147,6 +147,7 @@ export function CustomerDetail({ id }) {
             <button className="btn ghost sm" onClick={() => window.confirm('បង្កើតតំណថ្មី? តំណ/QR ចាស់នឹងលែងប្រើបាន។') && call('POST', `/api/tenants/${t.id}/rotate`, { what: 'portal' }, 'បានបង្កើតតំណថ្មី')}><RefreshCw size={14} /> ប្តូរតំណគណនី</button>
             <button className="btn ghost sm" onClick={() => { navigator.clipboard?.writeText(portal); }}><Link2 size={14} /> ចម្លងតំណ</button>
           </div>
+          {t.status !== 'prospect' && <RecordBox t={t} base={base} call={call} />}
         </aside>
 
         <div className="detail-main">
@@ -447,5 +448,30 @@ export function CustomerForm({ tenant, preset, onClose }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** 🏅 Rental record: a summary of this tenant's payments that they can show a future landlord. */
+function RecordBox({ t, base, call }) {
+  const url = t.record ? `${base}/r/${t.record.token}` : '';
+  async function issue() {
+    const note = window.prompt('មតិសម្រាប់ម្ចាស់ផ្ទះថ្មី (មិនចាំបាច់ · អតិបរមា ៣០០ តួ)៖', '');
+    if (note === null) return;
+    const r = await call('POST', `/api/tenants/${t.id}/record`, { note }, t.telegram?.chatId ? 'បានចេញ និងផ្ញើទៅ Telegram របស់អតិថិជន' : 'បានចេញប្រវត្តិជួល');
+    if (r?.result?.url) navigator.clipboard?.writeText(r.result.url).catch(() => {});
+  }
+  return (
+    <div className="record-box">
+      <b>🏅 ប្រវត្តិជួល</b>
+      <small className="muted">សង្ខេបការបង់ប្រាក់ (គ្មានលេខអត្តសញ្ញាណប័ណ្ណ ឬទូរស័ព្ទ) ដែលអតិថិជនអាចបង្ហាញម្ចាស់ផ្ទះថ្មី។</small>
+      {url ? (
+        <div className="row-btns">
+          <a className="btn ghost sm" href={url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> មើល</a>
+          <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(url)}><Link2 size={14} /> ចម្លង</button>
+          <button className="btn ghost sm" onClick={issue}>ធ្វើបច្ចុប្បន្នភាព</button>
+          <button className="btn ghost sm" onClick={() => window.confirm('ដកប្រវត្តិជួលវិញ? តំណនឹងលែងប្រើបាន។') && call('DELETE', `/api/tenants/${t.id}/record`, undefined, 'បានដកវិញ')}>ដកវិញ</button>
+        </div>
+      ) : <button className="btn primary sm" onClick={issue}>ចេញប្រវត្តិជួល</button>}
+    </div>
   );
 }

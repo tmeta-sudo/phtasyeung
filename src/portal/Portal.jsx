@@ -158,6 +158,13 @@ export default function Portal({ token }) {
               <span><b>{t('helpCard')}</b><small>{openReq ? t('openCount', { n: n(openReq) }) : t('helpCardSub')}</small></span>
               <ChevronRight size={18} />
             </button>
+            {p.record?.token && (
+              <a className="pt-card pt-tg" href={`/r/${p.record.token}`} target="_blank" rel="noreferrer">
+                <span className="pt-tg-icon lease">🏅</span>
+                <span><b>{t('record')}</b><small>{t('recordSub')}</small></span>
+                <ChevronRight size={18} />
+              </a>
+            )}
             <MeterSubmit token={token} data={data} onDone={load} notify={notify} />
             {data.meters[0] && (
               <div className="pt-card">
