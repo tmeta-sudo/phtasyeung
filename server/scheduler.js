@@ -2,7 +2,7 @@
 // (/api/cron/daily) in production, or hourly by a timer when running locally.
 // Each step is idempotent (lastRunMonth / lastReminderDay), so extra runs are harmless.
 import { db, save, logEvent } from './db.js';
-import { withOrg, listOrgIds } from './store.js';
+import { withOrg, listOrgIds, q } from './store.js';
 import { googleUpload } from './blob.js';
 import { sendBackupToTelegram, buildZip } from './backup.js';
 import { now } from './db.js';
@@ -131,6 +131,9 @@ export async function runDailyAll({ respectHour = false, concurrency = 4 } = {})
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+  // For the public status page: when the daily jobs (invoices, reminders, backups) last ran.
+  await q("INSERT INTO platform_kv (key, value) VALUES ('daily_last', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+    [JSON.stringify({ at: new Date().toISOString(), orgs: results.orgs, errors: results.errors })]).catch(() => {});
   return results;
 }
 

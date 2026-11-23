@@ -168,3 +168,12 @@
 .rec-dl dd { margin: 0; text-align: right; font-weight: 600; overflow-wrap: anywhere; }
 .rec-note { margin: 6px 0 0; padding: 10px 12px; background: var(--surface); border-radius: 14px; display: grid; gap: 4px; white-space: pre-wrap; }
 .rec-note small { color: var(--ink-2); }
+/* status page */
+.status-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 6px 0; }
+.status-row span { display: grid; }
+.status-row small { color: var(--ink-2); font-size: 12px; }
+.status-row em { font-style: normal; color: var(--ink-2); font-size: 13px; }
+.status-note { gap: 4px; }
+.status-note.warn { background: #fff2d6; color: #5c3d00; }
+.status-note.down { background: #fde2e2; color: #7a1414; }
+.status-note small { opacity: .7; }

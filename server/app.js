@@ -33,6 +33,7 @@ import { normalizePhone, nowInCambodia, kmDigits, fmtMoney } from '../shared/khm
 import { securityHeaders, sameOriginWrites } from './security.js';
 import { passkeyRoutes } from './passkeys.js';
 import { issueRecord, revokeRecord, publicRecord } from './records.js';
+import { statusRoutes } from './status.js';
 
 const app = express();
 app.set('trust proxy', process.env.VERCEL ? true : 'loopback');
@@ -1748,6 +1749,7 @@ app.get('/api/cron/daily', cronAuth, async (req, res) => {
 });
 
 superRoutes(app);
+statusRoutes(app);
 
 app.get('/api/health', async (req, res) => res.json({ ok: true, store: storeKind(), time: now() }));
 

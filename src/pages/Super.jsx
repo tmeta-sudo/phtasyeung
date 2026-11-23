@@ -34,7 +34,7 @@ export default function Super() {
       {tab === 'news' && <NewsAdmin />}
       {tab === 'feedback' && <FeedbackAdmin />}
       {tab === 'reports' && <Reports />}
-      {tab === 'errors' && <Errors />}
+      {tab === 'errors' && <><StatusNote /><Errors /></>}
       {tab === 'ocr' && <OcrAccuracy />}
       {tab === 'audit' && <Audit />}
     </>
@@ -432,6 +432,25 @@ function OcrAccuracy() {
             <td><b className={r.acc != null && r.acc < 80 ? 'warn-text' : ''}>{r.acc == null ? '—' : `${n(r.acc)}%`}</b></td></tr>
         ))}</tbody>
       </table>
+    </section>
+  );
+}
+
+/** Notice shown on the public /status page. */
+function StatusNote() {
+  const { notify } = useApp();
+  const [text, setText] = useState('');
+  const [level, setLevel] = useState('info');
+  const save = (t) => api('PUT', '/api/super/status-note', { text: t, level }).then(() => notify(t ? 'បានបង្ហោះនៅទំព័រ /status' : 'បានលុបសេចក្តីជូនដំណឹង')).catch((e) => notify(e.message, true));
+  return (
+    <section className="card status-note-admin">
+      <p className="muted small">សេចក្តីជូនដំណឹងនៅទំព័រ <a href="/status" target="_blank" rel="noreferrer">/status</a> (ឧ. Telegram យឺតថ្ងៃនេះ)</p>
+      <div className="row-btns">
+        <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="សរសេរសេចក្តីជូនដំណឹង…" />
+        <select value={level} onChange={(e) => setLevel(e.target.value)}><option value="info">ℹ️ ព័ត៌មាន</option><option value="warn">⚠️ យឺត / មួយផ្នែក</option><option value="down">⛔ មិនដំណើរការ</option></select>
+        <button className="btn primary sm" disabled={!text.trim()} onClick={() => save(text.trim())}>បង្ហោះ</button>
+        <button className="btn ghost sm" onClick={() => { setText(''); save(''); }}>លុប</button>
+      </div>
     </section>
   );
 }

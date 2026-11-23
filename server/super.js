@@ -8,6 +8,7 @@ import { requireOwner } from './auth.js';
 import { api as tgApi, appUrl, platformBotDiagnostics, ensurePlatformWebhook } from './telegram.js';
 import { nowInCambodia } from '../shared/khmer.js';
 import { pushToOrg } from './push.js';
+import { clearStatusCache } from './status.js';
 
 const PLATFORM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const superEmails = () => String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
@@ -206,6 +207,16 @@ export function superRoutes(app) {
         ON CONFLICT (day, source, field, outcome) DO UPDATE SET count = ocr_stats.count + 1`, [source, field, outcome]);
     }
     res.json({ ok: true, counted: rows.length });
+  });
+
+  // A short notice on the public status page ("Telegram is slow today, we are on it"). Empty text clears it.
+  app.put('/api/super/status-note', requireSuper, async (req, res) => {
+    const text = String(req.body?.text ?? '').trim().slice(0, 500);
+    const level = ['info', 'warn', 'down'].includes(req.body?.level) ? req.body.level : 'info';
+    await q("INSERT INTO platform_kv (key, value) VALUES ('status_note', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [JSON.stringify(text ? { text, level, at: new Date().toISOString() } : {})]);
+    clearStatusCache();
+    res.json({ ok: true });
   });
 
   app.get('/api/super/ocr', requireSuper, async (req, res) => {

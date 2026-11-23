@@ -26,13 +26,14 @@ const MapPage = lazy(() => import('./listing/MapPage.jsx'));
 const Legal = lazy(() => import('./legal/Legal.jsx'));
 const InquiryChat = lazy(() => import('./listing/InquiryChat.jsx'));
 const RecordPage = lazy(() => import('./portal/RecordPage.jsx'));
+const StatusPage = lazy(() => import('./status/StatusPage.jsx'));
 const Magic = lazy(() => import('./TelegramLogin.jsx').then((m) => ({ default: m.MagicLogin })));
 
 const authHint = () => { try { return localStorage.getItem('py-authed') === '1'; } catch { return false; } };
 
 // Signed in on this phone before and opening the app: fetch the account and its data right away,
 // in parallel with downloading the app code, instead of one after the other.
-if (authHint() && !/^\/(p|v|q|r|map|join|auth|privacy|terms)\b/.test(location.pathname) && navigator.onLine !== false) {
+if (authHint() && !/^\/(p|v|q|r|map|status|join|auth|privacy|terms)\b/.test(location.pathname) && navigator.onLine !== false) {
   fetchEarly('/api/auth/state');
   fetchEarly('/api/state');
 }
@@ -43,6 +44,7 @@ function Root() {
   if (path === '/' && !authHint()) {
     return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><LandingGate /></Suspense>;
   }
+  if (path === '/status' || path === '/status/') return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><StatusPage /></Suspense>;
   const rec = path.match(/^\/r\/([\w-]{16,40})\/?$/);
   if (rec) return <Suspense fallback={<div className="boot"><span className="spinner" /></div>}><RecordPage token={rec[1]} /></Suspense>;
   const qchat = path.match(/^\/q\/([\w-]{16,40})\/?$/);
