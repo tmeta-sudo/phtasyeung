@@ -259,23 +259,6 @@ function LangPicker({ lang, onChange }) {
       <Languages size={15} />
       {LANGS.map(([k, l]) => <button key={k} type="button" className={k === lang ? 'on' : ''} onClick={() => onChange(k)}>{l}</button>)}
     </div>
-    </TCtx.Provider>
-  );
-}
-
-function Pill({ inv }) {
-  const t = useT();
-  const st = invStatus(inv);
-  const [, tone] = STATUS[st] || STATUS.unpaid;
-  return <span className={'pill ' + tone}><i />{t(`inv_${STATUS[st] ? st : 'unpaid'}`)}</span>;
-}
-
-function LangPicker({ lang, onChange }) {
-  return (
-    <div className="pt-langs" role="group" aria-label="Language">
-      <Languages size={15} />
-      {LANGS.map(([k, l]) => <button key={k} type="button" className={k === lang ? 'on' : ''} onClick={() => onChange(k)}>{l}</button>)}
-    </div>
   );
 }
 
