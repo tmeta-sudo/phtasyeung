@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Gauge, Send, Phone, BellRing, Check, ChevronRight } from 'lucide-react';
 import { useApp, useFmt, navigate, billedOf, collectedOf } from '../ui.jsx';
 import { greetingKm, monthKm, dateKm } from '../../shared/khmer.js';
+import { celebrate } from '../sfx.jsx';
 
 export const simpleMode = {
   get: () => { try { return localStorage.getItem('py-simple') === '1'; } catch { return false; } },
@@ -53,7 +54,7 @@ export default function SimpleHome({ onFull }) {
           {claimed.map((i) => (
             <div key={i.id} className="sh-row">
               <button className="sh-who" onClick={() => openInvoice(i.id)}><b>បន្ទប់ {i.roomId}</b><span>{i.name} · {$(i.balance ?? i.total)}</span></button>
-              <button className="sh-act ok" onClick={() => call('PUT', `/api/invoices/${i.id}`, { status: 'paid' }, `បានទទួល ${$(i.balance ?? i.total)} ✅`)}><Check size={22} /> បានទទួល</button>
+              <button className="sh-act ok" onClick={() => call('PUT', `/api/invoices/${i.id}`, { status: 'paid' }, `បានទទួល ${$(i.balance ?? i.total)} ✅`).then((r) => r && celebrate())}><Check size={22} /> បានទទួល</button>
             </div>
           ))}
         </section>
@@ -80,7 +81,7 @@ export default function SimpleHome({ onFull }) {
             <button className="sh-who" onClick={() => openInvoice(i.id)}><b>បន្ទប់ {i.roomId}</b><span>{i.name}</span><em>{$(i.balance ?? i.total)}{i.overdue ? ' · ហួសកំណត់' : ''}</em></button>
             {phoneOf(i) && <a className="sh-act" href={`tel:${phoneOf(i).replace(/\s/g, '')}`} aria-label="ហៅទូរស័ព្ទ"><Phone size={22} /></a>}
             <button className="sh-act" disabled={!canSend(i)} aria-label="រំលឹក" onClick={() => call('POST', `/api/invoices/${i.id}/send`, { reminder: !!i.sentAt }, 'បានរំលឹក 🔔')}><BellRing size={22} /></button>
-            <button className="sh-act ok" aria-label="បានបង់" onClick={() => window.confirm(`បន្ទប់ ${i.roomId} បានបង់ ${$(i.balance ?? i.total)}?`) && call('PUT', `/api/invoices/${i.id}`, { status: 'paid' }, 'បានទទួល ✅')}><Check size={22} /></button>
+            <button className="sh-act ok" aria-label="បានបង់" onClick={() => window.confirm(`បន្ទប់ ${i.roomId} បានបង់ ${$(i.balance ?? i.total)}?`) && call('PUT', `/api/invoices/${i.id}`, { status: 'paid' }, 'បានទទួល ✅').then((r) => r && celebrate())}><Check size={22} /></button>
           </div>
         ))}
         {unpaid.length > 6 && !showAll && <button className="sh-more" onClick={() => setShowAll(true)}>មើលទាំងអស់ ({n(unpaid.length)}) <ChevronRight size={18} /></button>}

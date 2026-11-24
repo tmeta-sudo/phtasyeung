@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Camera, Send } from 'lucide-react';
+import { ArrowLeft, Camera } from 'lucide-react';
+import { Send } from 'jiggicons-react';
 import { api, compressImage } from '../api.js';
 import { useT } from './i18n.js';
 
@@ -81,7 +82,7 @@ function Compose({ token, kind, ticketId, setData, notify, onSent, compact }) {
       <textarea rows={compact ? 2 : 4} value={text} maxLength={3000} onChange={(e) => setText(e.target.value)} placeholder={compact ? t('reply') : kind === 'maintenance' ? t('describe') : t('writeMessage')} />
       <div className="pt-compose-row">
         <label className={'pt-ghost pt-photo' + (photo ? ' on' : '')}><Camera size={15} /> {photo ? photo.name.slice(0, 18) : t('addPhoto')}<input type="file" accept="image/*" hidden onChange={(e) => setPhoto(e.target.files?.[0] || null)} /></label>
-        <button className="pt-pink" disabled={busy || (!text.trim() && !photo)}><Send size={15} /> {busy ? t('sending') : t('send')}</button>
+        <button className="pt-pink" disabled={busy || (!text.trim() && !photo)}><Send size={15} animate="click" sound /> {busy ? t('sending') : t('send')}</button>
       </div>
     </form>
   );

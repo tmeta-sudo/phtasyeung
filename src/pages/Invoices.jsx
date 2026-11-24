@@ -7,6 +7,8 @@ import { nodeToPng, shareBlob } from '../exportImage.js';
 import { api } from '../api.js';
 import SlipCheck from '../SlipCheck.jsx';
 import { monthKm, matchesQuery, dateKm } from '../../shared/khmer.js';
+import { Money, Send as JSend } from 'jiggicons-react';
+import { celebrate } from '../sfx.jsx';
 
 export default function Invoices() {
   const { state, call, openInvoice, print } = useApp();
@@ -178,7 +180,7 @@ export function InvoiceModal({ id, onClose }) {
           <span>💸 អតិថិជនបានជូនដំណឹងថាបានបង់ តាម{lastClaim?.source === 'portal' ? 'គេហទំព័រ' : ' Telegram'}{lastClaim?.telegramFileId ? ' (មានរូបបង្កាន់ដៃនៅក្នុង Telegram)' : ''}។</span>
           <span>
             <button className="btn ghost sm" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'unpaid' }, 'បានបដិសេធ')}>មិនទាន់ទទួល</button>
-            <button className="btn primary sm" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, 'បានបញ្ជាក់ការបង់ប្រាក់')}><Check size={14} /> បញ្ជាក់</button>
+            <button className="btn primary sm" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, 'បានបញ្ជាក់ការបង់ប្រាក់').then((r) => r && celebrate())}><Money size={14} animate="none" /> បញ្ជាក់</button>
           </span>
         </div>
       )}
@@ -220,11 +222,11 @@ export function InvoiceModal({ id, onClose }) {
             }}><Send size={15} /> {busy === 'img' ? '…' : 'ផ្ញើរូបភាព'}</button>
           <button className="btn ghost" disabled={!canSend || inv.status === 'paid'} title={canSend ? '' : 'អតិថិជនមិនទាន់ភ្ជាប់ Telegram ឬ bot មិនដំណើរការ'}
             onClick={() => call('POST', `/api/invoices/${inv.id}/send`, { reminder: !!inv.sentAt }, inv.sentAt ? 'បានផ្ញើការរំលឹក' : 'បានផ្ញើតាម Telegram')}>
-            <Send size={15} /> {inv.sentAt ? 'រំលឹក' : 'ផ្ញើ Telegram'}
+            <JSend size={15} animate="click" sound /> {inv.sentAt ? 'រំលឹក' : 'ផ្ញើ Telegram'}
           </button>
           {inv.status === 'paid'
             ? <button className="btn ghost" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'unpaid' }, 'បានសម្គាល់មិនទាន់បង់')}><Undo2 size={15} /> មិនទាន់បង់</button>
-            : <button className="btn primary" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, `បានទទួល ${$(inv.balance ?? inv.total)}`)}><Check size={15} /> បានបង់គ្រប់</button>}
+            : <button className="btn primary" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, `បានទទួល ${$(inv.balance ?? inv.total)}`).then((r) => r && celebrate())}><Money size={15} animate="none" /> បានបង់គ្រប់</button>}
         </div>
       )}
     </Modal>

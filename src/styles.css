@@ -1439,3 +1439,8 @@ body.modal-open .tabbar, body.modal-open .mainnav, body.modal-open .nav-backdrop
 .record-box .row-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .status-note-admin { margin-bottom: 14px; }
 .status-note-admin input { flex: 1; min-width: 200px; }
+/* animated icons with sound (Jiggicons) */
+.celebrate { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 9999; color: var(--accent, #1f5bff); animation: celebrate-fade 1.8s ease forwards; }
+@keyframes celebrate-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .celebrate { animation: none; } }
+.sound-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer; }
