@@ -114,6 +114,7 @@ const D = {
   saved: { km: 'បានរក្សាទុក ✅', en: 'Saved ✅', zh: '已保存 ✅' },
   photoSent: { km: 'បានផ្ញើរូបភាព ✅', en: 'Photo sent ✅', zh: '照片已上传 ✅' },
   language: { km: 'ភាសា', en: 'Language', zh: '语言' },
+  sound: { km: 'សំឡេងរូបតំណាង', en: 'Icon sounds', zh: '图标音效' },
   // contract
   signed: { km: '✅ បានចុះហត្ថលេខា', en: '✅ Signed', zh: '✅ 已签署' },
   signAgain: { km: 'កិច្ចសន្យាត្រូវបានកែប្រែ — សូមចុះហត្ថលេខាម្តងទៀត', en: 'The contract was changed — please sign again', zh: '合同已修改 — 请重新签署' },

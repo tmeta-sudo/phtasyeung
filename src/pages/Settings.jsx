@@ -17,6 +17,7 @@ import ListingCard from '../settings/ListingCard.jsx';
 import TeamCard from '../settings/TeamCard.jsx';
 import { useApp, useFmt, Field, QR } from '../ui.jsx';
 import { api } from '../api.js';
+import { SoundToggle } from '../sfx.jsx';
 import { moneyInWords, khr, toRiel, kmDigits, lunarKm } from '../../shared/khmer.js';
 
 export default function SettingsPage() {
@@ -169,6 +170,8 @@ export default function SettingsPage() {
           <h3 className="sec-title"><Palette size={17} /> រូបរាង</h3>
           <ThemePicker />
           <p className="muted small">«តាមប្រព័ន្ធ» ប្តូរពន្លឺ/ងងឹតតាមការកំណត់ទូរស័ព្ទ ឬកុំព្យូទ័ររបស់អ្នក។</p>
+          <SoundToggle label="សំឡេងរូបតំណាង (ពេលចុច និងពេលទទួលប្រាក់)" />
+          <p className="muted small">កំណត់សម្រាប់ឧបករណ៍នេះ។ បើទូរស័ព្ទកំណត់ «កាត់បន្ថយចលនា» រូបតំណាងនៅស្ងៀម។</p>
         </div>
 
         <NotifyCard />

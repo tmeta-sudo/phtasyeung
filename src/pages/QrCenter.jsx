@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ScanLine, Camera, ImageUp, DoorOpen, UserRound, ReceiptText, Gauge, Send, Check, Printer, QrCode, Wallet } from 'lucide-react';
 import { useApp, useFmt, Modal, QR, Avatar, tenantPhoto, StatusPill, navigate } from '../ui.jsx';
 import { StickerSheet } from './Rooms.jsx';
+import { celebrate } from '../sfx.jsx';
 
 /** Minimal EMVCo TLV reader (KHQR is EMVCo). */
 function tlv(s) {
@@ -162,7 +163,7 @@ function ScanResult({ result, onAgain, onDone }) {
         <div className="scan-head"><span className="sq-icon"><ReceiptText size={18} /></span><div><b>{inv.number}</b><small>{inv.roomId} · {inv.name} · {$(inv.total)}</small></div><StatusPill inv={inv} /></div>
         {r.kind === 'khqr' && <p className="muted">KHQR → {r.account} · {r.amount} {r.currency}</p>}
         <div className="scan-actions">
-          {inv.status !== 'paid' && <button className="action-tile primary" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, `បានទទួល ${$(inv.total)}`)}><Check size={20} /> សម្គាល់ថាបានបង់</button>}
+          {inv.status !== 'paid' && <button className="action-tile primary" onClick={() => call('PUT', `/api/invoices/${inv.id}`, { status: 'paid' }, `បានទទួល ${$(inv.total)}`).then((r) => r && celebrate())}><Check size={20} /> សម្គាល់ថាបានបង់</button>}
           {inv.status !== 'paid' && state.bot.running && <button className="action-tile" onClick={() => call('POST', `/api/invoices/${inv.id}/send`, { reminder: true }, 'បានផ្ញើការរំលឹក')}><Send size={20} /> ផ្ញើរំលឹក</button>}
           <button className="action-tile" onClick={() => go(() => openInvoice(inv.id))}><ReceiptText size={20} /> មើលវិក្កយបត្រ</button>
         </div>

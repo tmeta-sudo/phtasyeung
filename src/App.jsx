@@ -4,6 +4,8 @@ import {
   LogOut, ChevronRight, ChevronDown, Menu, X, Shield, Sparkles, Lightbulb, Bug, Download, MessageSquare,
   BarChart3, KeyRound,
 } from 'lucide-react';
+import { Home as JHome, Receipt as JReceipt, Message as JMessage, Send as JSend, Bell as JBell } from 'jiggicons-react';
+import { CelebrateHost } from './sfx.jsx';
 import { api, takeEarly, refreshState } from './api.js';
 import { cacheState, cachedState, isNetworkError, flushQueue } from './offline.js';
 import { setClientCurrency, setNumeralsSource } from '../shared/khmer.js';
@@ -53,15 +55,15 @@ function prefetchLater() {
 }
 
 const NAV = [
-  ['/', 'ទំព័រដើម', HomeIcon],
+  ['/', 'ទំព័រដើម', JHome],
   ['/customers', 'អតិថិជន', UsersRound],
   ['/rooms', 'បន្ទប់', DoorOpen],
-  ['/invoices', 'វិក្កយបត្រ', ReceiptText],
+  ['/invoices', 'វិក្កយបត្រ', JReceipt],
   ['/meters', 'កុងទ័រ', Gauge],
   ['/reports', 'របាយការណ៍', BarChart3],
-  ['/inbox', 'សារ', MessageSquare],
+  ['/inbox', 'សារ', JMessage],
   ['/qr', 'QR', QrCode],
-  ['/telegram', 'Telegram', Send],
+  ['/telegram', 'Telegram', JSend],
 ];
 
 // Which pages each team role sees (the server enforces the same rules).
@@ -414,6 +416,7 @@ function Admin({ onLogout }) {
       {(modal?.type === 'scanner' || modal?.type === 'scan-result') && <ScannerModal initialText={modal.text} onClose={() => setModal(null)} />}
       {printing && <PrintPortal>{printing}</PrintPortal>}
       <Toast toast={toast} />
+      <CelebrateHost />
     </AppCtx.Provider>
   );
 }
@@ -421,8 +424,8 @@ function Admin({ onLogout }) {
 /** Phone-only bottom tab bar: the four most used pages, a big scan button, and "more". */
 function TabBar({ role, section, badges, menuOpen, onMenu, onScan, k }) {
   const tabs = role === 'staff'
-    ? [['/meters', 'កុងទ័រ', Gauge], ['/inbox', 'សារ', MessageSquare], null, ['/rooms', 'បន្ទប់', DoorOpen]]
-    : [['/', 'ដើម', HomeIcon], ['/customers', 'អតិថិជន', UsersRound], null, ['/invoices', 'វិក្កយបត្រ', ReceiptText]];
+    ? [['/meters', 'កុងទ័រ', Gauge], ['/inbox', 'សារ', JMessage], null, ['/rooms', 'បន្ទប់', DoorOpen]]
+    : [['/', 'ដើម', JHome], ['/customers', 'អតិថិជន', UsersRound], null, ['/invoices', 'វិក្កយបត្រ', JReceipt]];
   const current = role === 'staff' && section === '/' ? '/meters' : section;
   return (
     <nav className="tabbar" aria-label="ម៉ឺនុយខាងក្រោម">
@@ -493,7 +496,7 @@ function Notifications() {
   };
   return (
     <div className="pop-wrap">
-      <button className="icon-btn" onClick={toggle} aria-label="ការជូនដំណឹង"><Bell size={18} />{unread > 0 && <i className="dot" />}</button>
+      <button className="icon-btn" onClick={toggle} aria-label="ការជូនដំណឹង"><JBell size={18} animate="click" sound />{unread > 0 && <i className="dot" />}</button>
       {open && (
         <div className="dropdown right events">
           <h4>សកម្មភាពថ្មីៗ</h4>

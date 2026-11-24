@@ -15,6 +15,7 @@
 | [khmer-normalizer](https://github.com/sillsdev/khmer-normalizer) 1.0.2 | Marc Durdin / SIL | MIT | Khmer Unicode normalisation |
 | [bakong-khqr](https://www.npmjs.com/package/bakong-khqr) 1.0.20 | Devit Huotkeo (NBC KHQR SDK) | ISC | KHQR generation and decoding |
 | [Chakkhu-OCR-Khmer-ONNX](https://huggingface.co/muyleanging/Chakkhu-OCR-Khmer-ONNX) | Ing Muyleang | Apache-2.0 | On-device OCR: ID cards, meters, bank slips. The model is downloaded by the browser from Hugging Face; it is not stored in this repository. |
+| [Jiggicons](https://jiggicons.com) (`jiggicons-react` 0.1.1) | Adrian Abelarde | Code: MIT. Icons, motions and sounds: [Jiggicons licence](https://jiggicons.com/terms) (free set) | Animated icons with sound. Installed from npm, not copied into this repository; only the 80 free icons are used. |
 | [kyc-kie](https://github.com/mrrtmob/kyc-kie) 0.1.0 (commit fc8351b) | mrrtmob | MIT | Turns the OCR text of an ID card or passport into fields. The ONNX model is included in `src/ocr/kyckie/` with its licence; the Python code is ported to JavaScript there. |
 
 KHQR is the National Bank of Cambodia's QR payment standard. Payment confirmation uses the NBC Bakong Open API with a token the operator or landlord registers for. "KHQR", "Bakong", and bank names such as ABA, ACLEDA and Wing belong to their owners; this project is not affiliated with or endorsed by them.

@@ -6,6 +6,8 @@ import { QR, Toast, Field, AddressPicker, Modal, STATUS, invStatus } from '../ui
 import InvoiceDoc from '../InvoiceDoc.jsx';
 import { num, nowInCambodia, GENDERS, ID_TYPES, fmtMoney, fmtAlt, moneyInWords, setClientCurrency, setNumeralsSource } from '../../shared/khmer.js';
 import Requests from './Requests.jsx';
+import { Home as JHome, Receipt as JReceipt, Send as JSend, Bell as JBell, Money, Trophy } from 'jiggicons-react';
+import { CelebrateHost, celebrate, SoundToggle } from '../sfx.jsx';
 import { LANGS, makeT, savedLang, saveLang, TCtx, useT } from './i18n.js';
 import './portal.css';
 import MeterSubmit from './MeterSubmit.jsx';
@@ -35,7 +37,7 @@ export default function Portal({ token }) {
       if (stop || Date.now() - started > 15 * 60000) return;
       try {
         const r = await api('GET', `/api/portal/${token}/invoices/${pay.id}/status`);
-        if (r.status === 'paid') { await load(); setPay((p) => (p ? { ...p, status: 'paid' } : p)); notify(t('paidThanks')); return; }
+        if (r.status === 'paid') { await load(); setPay((p) => (p ? { ...p, status: 'paid' } : p)); celebrate(); notify(t('paidThanks')); return; }
       } catch { /* keep trying */ }
       setTimeout(tick, document.visibilityState === 'visible' ? 5000 : 15000);
     };
@@ -97,7 +99,7 @@ export default function Portal({ token }) {
           <>
             <header className="pt-top">
               <div><b>{t.greeting(nowInCambodia().hour)}, {lang === 'km' ? p.nameKm || p.nameEn : p.nameEn || p.nameKm}</b><small>📍 {data.property.name}{data.room ? ` · ${t('room', { r: data.room.id })}` : ''}</small></div>
-              <span className="pt-top-actions"><ThemeToggle className="pt-round" /><button className="pt-round" onClick={() => setTab('bills')} aria-label={t('bills')}><Bell size={18} />{open.length > 0 && <i />}</button></span>
+              <span className="pt-top-actions"><ThemeToggle className="pt-round" /><button className="pt-round" onClick={() => setTab('bills')} aria-label={t('bills')}><JBell size={18} animate="click" sound />{open.length > 0 && <i />}</button></span>
             </header>
             {!inTelegram() && <PwaBar appName={data.property.name} className="portal" />}
             <h1 className="pt-title" dangerouslySetInnerHTML={{ __html: t('heroTitle') }} />
@@ -126,7 +128,7 @@ export default function Portal({ token }) {
             </div>
             {!data.telegram.linked && data.telegram.link && (
               <a className="pt-card pt-tg" href={data.telegram.link} target="_blank" rel="noreferrer">
-                <span className="pt-tg-icon"><Send size={18} /></span>
+                <span className="pt-tg-icon"><JSend size={18} /></span>
                 <span><b>{t('linkTg')}</b><small>{t('linkTgSub')}</small></span>
                 <ChevronRight size={18} />
               </a>
@@ -159,7 +161,7 @@ export default function Portal({ token }) {
             </button>
             {p.record?.token && (
               <a className="pt-card pt-tg" href={`/r/${p.record.token}`} target="_blank" rel="noreferrer">
-                <span className="pt-tg-icon lease">🏅</span>
+                <span className="pt-tg-icon lease"><Trophy size={18} variant="solid" /></span>
                 <span><b>{t('record')}</b><small>{t('recordSub')}</small></span>
                 <ChevronRight size={18} />
               </a>
@@ -219,7 +221,7 @@ export default function Portal({ token }) {
               {pay.status === 'unpaid' && (
                 <span className="pt-claim">
                   <label className="pt-slip" title={t('attachSlip')}>📎<input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && claim(pay, e.target.files[0])} /></label>
-                  <button className="pt-pink" onClick={() => claim(pay)}>{t('iPaid')}</button>
+                  <button className="pt-pink" onClick={() => claim(pay)}><Money size={18} animate="click" sound /> {t('iPaid')}</button>
                 </span>
               )}
               {pay.status === 'claimed' && <span className="pt-wait">{t('waitConfirm')}</span>}
@@ -230,14 +232,15 @@ export default function Portal({ token }) {
       )}
 
       <nav className="pt-nav">
-        <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}><Home size={18} /><span>{t('home')}</span></button>
-        <button className={tab === 'bills' ? 'on' : ''} onClick={() => setTab('bills')}><ReceiptText size={18} /><span>{t('bills')}</span></button>
+        <button className={tab === 'home' ? 'on' : ''} onClick={() => setTab('home')}><JHome size={18} animate="click" /><span>{t('home')}</span></button>
+        <button className={tab === 'bills' ? 'on' : ''} onClick={() => setTab('bills')}><JReceipt size={18} animate="click" /><span>{t('bills')}</span></button>
         <button className={tab === 'help' ? 'on' : ''} onClick={() => setTab('help')}><Wrench size={18} /><span>{t('help')}</span></button>
-        {data.telegram.link && <a href={data.telegram.link} target="_blank" rel="noreferrer"><Send size={18} /><span>Telegram</span></a>}
+        {data.telegram.link && <a href={data.telegram.link} target="_blank" rel="noreferrer"><JSend size={18} animate="click" /><span>Telegram</span></a>}
         <button className={tab === 'me' ? 'on' : ''} onClick={() => setTab('me')}><UserRound size={18} /><span>{t('me')}</span></button>
       </nav>
       {showLease && data.lease && <LeaseModal token={token} data={data} onClose={() => setShowLease(false)} onSigned={(d) => { setData(d); notify(t('signedThanks')); }} notify={notify} />}
       <Toast toast={toast} />
+      <CelebrateHost />
     </div>
     </TCtx.Provider>
   );
@@ -283,7 +286,7 @@ function Profile({ token, data, setData, notify, onBack, lang, onLang }) {
   return (
     <>
       <header className="pt-top"><button className="pt-round" onClick={onBack} aria-label={t('back')}><ArrowLeft size={18} /></button><b>{t('myInfo')}</b><span /></header>
-      <div className="pt-card"><b className="pt-card-title"><Languages size={16} /> {t('language')}</b><LangPicker lang={lang} onChange={onLang} /></div>
+      <div className="pt-card"><b className="pt-card-title"><Languages size={16} /> {t('language')}</b><LangPicker lang={lang} onChange={onLang} /><SoundToggle label={t('sound')} /></div>
       <div className="pt-me-head">
         <label className="pt-avatar">
           {fileUrl('photo') ? <img src={fileUrl('photo')} alt="" /> : <UserRound size={34} />}
